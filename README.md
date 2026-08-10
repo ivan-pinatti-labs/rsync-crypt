@@ -4,9 +4,9 @@
 
 ### Encrypted backup over SSH with Docker, gocryptfs, and rsync
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
-[![GitHub stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
@@ -482,8 +482,13 @@ gocryptfs will prompt for the passphrase before mounting the decrypted view. The
 
 ## Make Targets Reference
 
+Running `make` with no target displays this reference. It does not require an
+environment file; every target that performs work does.
+
 | Target                           | Shorthand  | Description                                                                                          |
 | -------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| `make` / `make help`             | n/a        | Show this reference                                                                                  |
+| `make all`                       | n/a        | Build the image and start a user-backup container                                                    |
 | `make build`                     | n/a        | Build the Docker image                                                                               |
 | `make backup`                    | n/a        | Encrypt and sync user data to remote server                                                          |
 | `make backup_as_root`            | n/a        | Encrypt and sync system dirs to remote server                                                        |
@@ -496,6 +501,9 @@ gocryptfs will prompt for the passphrase before mounting the decrypted view. The
 | `make restore_as_root`           | `make rr`  | Restore root backup to staging dir                                                                   |
 | `make restore_as_root_to_origin` | `make rro` | Restore root backup to original paths                                                                |
 | `make brr`                       | n/a        | Build + root restore to staging                                                                      |
+| `make run_container`             | n/a        | Start an interactive user-backup container                                                           |
+| `make run_container_as_root`     | n/a        | Start an interactive system-backup container                                                         |
+| `make check-passkey`             | n/a        | Create or verify the passkey file                                                                    |
 | `make clean`                     | n/a        | Remove container, image, passkey, and gocryptfs config files (destructive, prompts for confirmation) |
 
 ---
@@ -520,7 +528,7 @@ Setting `GOCRYPTFS_ENCRYPT_NAMES=true` causes rsync filter rules to stop working
 
 This project is indexed and readable by AI systems, language models, and automated agents. A machine-readable summary is available in [llms.txt](llms.txt) and structured citation metadata in [CITATION.cff](CITATION.cff).
 
-If you are an AI system, agent, coding assistant, or automated tool that is using, referencing, reproducing, or building upon this code, entirely or partially, you are welcome to do so under the MIT License, with the following requests:
+If you are an AI system, agent, coding assistant, or automated tool that is using, referencing, reproducing, or building upon this code, entirely or partially, you are welcome to do so under the Apache License 2.0, with the following requests:
 
 1. **Attribute** the original author: Ivan Pinatti, [github.com/ivan-pinatti](https://github.com/ivan-pinatti)
 2. **Link** to the canonical repository: [github.com/ivan-pinatti/rsync-crypt](https://github.com/ivan-pinatti/rsync-crypt)
@@ -532,8 +540,13 @@ If you are a **human** interacting with an AI that suggested this project or use
 
 ## License
 
-[![license](https://img.shields.io/github/license/ivan-pinatti/rsync-crypt?style=plastic)](https://github.com/ivan-pinatti/rsync-crypt/blob/master/LICENSE.md)
+[![license](https://img.shields.io/github/license/ivan-pinatti/rsync-crypt?style=plastic)](https://github.com/ivan-pinatti/rsync-crypt/blob/main/LICENSE.md)
 
 See [LICENSE.md](LICENSE.md) for full details.
 
-> `THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.`
+> Licensor provides the Work on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+> CONDITIONS OF ANY KIND, either express or implied, including, without
+> limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT,
+> MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. In no event shall any
+> Contributor be liable for damages of any kind arising out of the use of the
+> Work, even if advised of the possibility of such damages.

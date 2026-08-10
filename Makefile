@@ -1,4 +1,5 @@
 ENV_FILE ?= .env
+.DEFAULT_GOAL := help
 
 define _missing_env_file_message
 
@@ -14,8 +15,7 @@ If the file does not exist yet, create it first:
   cp .env.example .env.myconfig
 endef
 
-ifeq ($(MAKECMDGOALS),help)
-else
+ifneq ($(filter-out help,$(MAKECMDGOALS)),)
 ifeq ($(wildcard $(ENV_FILE)),)
 $(error $(_missing_env_file_message))
 endif
@@ -60,21 +60,42 @@ else \
 fi
 endef
 
-.PHONY: help build backup backup_as_root \
+.PHONY: all help build backup backup_as_root bb bbr brr \
         restore restore_to_origin restore_as_root restore_as_root_to_origin \
-        view view_as_root \
+        r ro rr rro view view_as_root v vr \
         run_container run_container_as_root check-passkey clean
 
 all: build run_container
 
 help:
-	@echo "Usage:"
-	@echo "  make <target>"
-	@echo "  ENV_FILE=.env.myconfig make <target>"
-	@echo "  make <target> ENV_FILE=.env.myconfig"
-	@echo
-	@echo "If the env file does not exist, create it first:"
-	@echo "  cp .env.example .env.myconfig"
+	@printf '%s\n' \
+		'Usage:' \
+		'  make <target>' \
+		'  ENV_FILE=.env.myconfig make <target>' \
+		'  make <target> ENV_FILE=.env.myconfig' \
+		'' \
+		'Targets:' \
+		'  all                         Build the image and start a user-backup container.' \
+		'  build                       Build the Docker image.' \
+		'  backup                      Encrypt and sync user data.' \
+		'  backup_as_root              Encrypt and sync system data.' \
+		'  bb                          Build and back up user data.' \
+		'  bbr                         Build and back up system data.' \
+		'  restore (r)                 Restore user data to staging.' \
+		'  restore_to_origin (ro)      Restore user data to its original location.' \
+		'  restore_as_root (rr)        Restore system data to staging.' \
+		'  restore_as_root_to_origin (rro) Restore system data to original paths.' \
+		'  brr                         Build and restore system data to staging.' \
+		'  view (v)                    Browse the decrypted user backup over SFTP.' \
+		'  view_as_root (vr)           Browse the decrypted system backup over SFTP.' \
+		'  run_container               Start an interactive user-backup container.' \
+		'  run_container_as_root       Start an interactive system-backup container.' \
+		'  check-passkey               Create or verify the passkey file.' \
+		'  clean                       Remove backup state and image (prompts; destructive).' \
+		'  help                        Show this help.' \
+		'' \
+		'If the env file does not exist, create it first:' \
+		'  cp .env.example .env.myconfig'
 
 # build and backup
 bb: build backup
