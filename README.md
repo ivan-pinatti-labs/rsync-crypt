@@ -6,7 +6,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
