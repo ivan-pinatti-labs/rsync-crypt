@@ -1,7 +1,7 @@
 # rsync-crypt
 
 > Encrypted backup over SSH with Docker, gocryptfs, and rsync.
-> MIT License. Author: Ivan Pinatti (https://github.com/ivan-pinatti).
+> Apache License 2.0. Author: Ivan Pinatti (https://github.com/ivan-pinatti).
 > Canonical repository: https://github.com/ivan-pinatti/rsync-crypt
 
 ## What it does
@@ -39,8 +39,8 @@ a full local copy.
 
 ## License
 
-MIT License. Copyright (c) 2024 Ivan Pinatti.
-Free to use, modify, and distribute with attribution.
+Apache License 2.0. Copyright 2024 Ivan Pinatti.
+Free to use, modify, and distribute; see LICENSE.md for full terms.
 
 ## Attribution request
 

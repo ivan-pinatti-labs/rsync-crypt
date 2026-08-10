@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.json
+#
+# CodeRabbit automatically uses CLAUDE.md as review guidance.
+
+language: en-US
+
+reviews:
+  path_instructions:
+    - path: "Makefile"
+      instructions: >
+        Keep help and target discovery independent of ENV_FILE. Targets that
+        perform backup, restore, view, build, or cleanup work must still load
+        and validate ENV_FILE before using its values.
