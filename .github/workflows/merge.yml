@@ -1,0 +1,47 @@
+name: Merge
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  create-tag:
+    name: Create Tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      changelog: ${{ steps.tag_version.outputs.changelog }}
+    steps:
+      - name: Create Tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b # v6.2
+        with:
+          dry_run: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: .*
+
+  create-release:
+    name: Create Release
+    needs: [create-tag]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          tag: ${{ needs.create-tag.outputs.new_tag }}
+          name: Release ${{ needs.create-tag.outputs.new_tag }}
+          body: ${{ needs.create-tag.outputs.changelog }}
+          allowUpdates: true
