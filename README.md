@@ -90,6 +90,7 @@ Please make sure pre-commit hooks pass before submitting (`pre-commit run --all-
   - [Backup](#backup)
   - [View](#view)
 - [Make Targets Reference](#make-targets-reference)
+- [Tests](#tests)
 - [Known Issues and Limitations](#known-issues-and-limitations)
 - [AI Usage and Attribution](#ai-usage-and-attribution)
 - [License](#license)
@@ -505,6 +506,34 @@ environment file; every target that performs work does.
 | `make run_container_as_root`     | n/a        | Start an interactive system-backup container                                                         |
 | `make check-passkey`             | n/a        | Create or verify the passkey file                                                                    |
 | `make clean`                     | n/a        | Remove container, image, passkey, and gocryptfs config files (destructive, prompts for confirmation) |
+
+---
+
+## Tests
+
+The suite drives the real Makefile targets. The integration tests start a
+throwaway sshd container that stands in for the remote backup server, run a
+full backup into it, then restore and compare the result against the source.
+
+```bash
+python3 -m venv tests/.venv
+tests/.venv/bin/pip install -r tests/requirements.txt
+tests/.venv/bin/pytest tests
+```
+
+Requirements: Docker and a working `/dev/fuse`. Nothing outside the pytest
+temporary directory is touched, and the image is tagged `local/gocryptfs-test`
+so a normal `make build` image is never overwritten. The tests run on every
+pull request via the `Tests` job.
+
+| File                | Covers                                                        |
+| ------------------- | ------------------------------------------------------------- |
+| `test_makefile.py`  | Help output, `ENV_FILE` handling, `.env.example` completeness |
+| `test_build.py`     | Image builds, required binaries, gocryptfs version pin        |
+| `test_roundtrip.py` | Backup, filter rule exclusions, encryption at rest, restore   |
+
+The suite runs serially: the Makefile names its container `gocryptfs`, so two
+targets cannot run at the same time.
 
 ---
 
