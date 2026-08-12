@@ -367,6 +367,27 @@ def remote_listing():
     )
 
 
+def remote_manifest():
+    """Map of remote file path to content digest.
+
+    A listing alone cannot tell whether a repeated backup rewrote ciphertext,
+    so the idempotency check compares digests too.
+    """
+    result = run(
+        [
+            "docker", "exec", REMOTE_CONTAINER, "sh", "-c",
+            f"cd {REMOTE_BACKUP_DIR} && find . -type f -exec sha256sum {{}} +",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    manifest = {}
+    for line in result.stdout.splitlines():
+        digest, _, path = line.partition("  ")
+        if path:
+            manifest[path.removeprefix("./")] = digest
+    return manifest
+
+
 def remote_bytes(relative_path):
     """Raw bytes of a file on the remote, as stored (encrypted)."""
     result = subprocess.run(

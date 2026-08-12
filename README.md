@@ -521,10 +521,21 @@ tests/.venv/bin/pip install -r tests/requirements.txt
 tests/.venv/bin/pytest tests
 ```
 
-Requirements: Docker and a working `/dev/fuse`. Nothing outside the pytest
-temporary directory is touched, and the image is tagged `local/gocryptfs-test`
-so a normal `make build` image is never overwritten. The tests run on every
-pull request via the `Tests` job.
+Requirements: Docker and a working `/dev/fuse`.
+
+Test files and everything mounted into a container live under the pytest
+temporary directory, so no real backup, passkey, or config is touched. Two
+Docker resources are created outside it: the `rsync-crypt-test-remote`
+container, removed automatically when the session ends, and the
+`local/gocryptfs-test` image, which is left behind so repeat runs skip the
+build. It is tagged separately from `local/gocryptfs`, so the image a normal
+`make build` produces is never overwritten. Remove it with:
+
+```bash
+docker rmi local/gocryptfs-test
+```
+
+The tests run on every pull request via the `Tests` job.
 
 | File                | Covers                                                        |
 | ------------------- | ------------------------------------------------------------- |

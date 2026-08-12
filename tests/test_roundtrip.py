@@ -14,6 +14,7 @@ from conftest import (
     docker_rm,
     remote_bytes,
     remote_listing,
+    remote_manifest,
     run_make,
 )
 
@@ -111,11 +112,18 @@ def test_excluded_file_is_absent_after_restore(restored, path):
 
 
 def test_backup_is_idempotent(env_file, backup):
-    """Running it twice must succeed and change nothing on the remote."""
-    before = remote_listing()
+    """Running it twice must succeed and change nothing on the remote.
+
+    Digests are compared as well as paths: gocryptfs reverse mode derives file
+    IDs deterministically so that unchanged files produce identical ciphertext,
+    which is what keeps incremental rsync cheap. A listing-only check would
+    miss a regression there.
+    """
+    before = remote_manifest()
+    assert before, "the remote should not be empty before the second backup"
 
     docker_rm(MAKE_CONTAINER)
     second = run_make("backup", env_file)
     assert second.returncode == 0, second.stdout
 
-    assert remote_listing() == before
+    assert remote_manifest() == before
