@@ -27,6 +27,8 @@ RUN apk update \
         /root/.ssh \
         /home/crypt/.ssh \
     && chmod 700 /root/.ssh /home/crypt/.ssh \
+    && touch /root/.ssh/known_hosts /home/crypt/.ssh/known_hosts \
+    && chmod 644 /root/.ssh/known_hosts /home/crypt/.ssh/known_hosts \
     && chown -R root:root /root \
     && chown -R crypt:crypt \
         /app \
@@ -38,10 +40,10 @@ RUN apk update \
 COPY --chown=crypt:crypt scripts/* /app/
 COPY --chown=root:root files/bash/* /root/
 COPY --chown=crypt:crypt files/bash/* /home/crypt/
-COPY --chown=root:root files/ssh/* /root/.ssh/
-COPY --chown=crypt:crypt files/ssh/* /home/crypt/.ssh/
 
-RUN chmod 644 /root/.ssh/known_hosts /home/crypt/.ssh/known_hosts
+# known_hosts is created empty above rather than copied in: files/ssh/ is
+# gitignored, so copying it broke the build on a fresh clone. The Makefile
+# mounts the real known_hosts over these at run time.
 
 USER crypt
 WORKDIR /app

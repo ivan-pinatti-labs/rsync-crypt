@@ -31,3 +31,9 @@ jspm_packages/
 
 # known hosts
 files/ssh/known_hosts
+
+### Python / tests ###
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/.venv/

@@ -23,3 +23,32 @@ jobs:
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         with:
           extra_args: --all-files
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install test dependencies
+        run: pip install --requirement tests/requirements.txt
+
+      # gocryptfs needs FUSE. The runner exposes /dev/fuse, which the Makefile
+      # already passes through, but fail loudly here rather than part way
+      # through a backup if that ever stops being true.
+      - name: Verify FUSE is available
+        run: test -c /dev/fuse
+
+      - name: Run tests
+        run: pytest tests --verbose
