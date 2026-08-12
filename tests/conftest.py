@@ -254,30 +254,64 @@ def initialised_source(image, workspace):
     exercise the steady-state path (mount plus rsync) rather than hanging on a
     one-time prompt. Writing .gocryptfs.reverse.conf.original is what makes
     backup.sh take its already-initialised branch.
+
+    Both the init and the copy happen inside the container. gocryptfs writes
+    the config 0600 as the container's root, and whether the host user can
+    then read it depends on whether Docker is rootful or rootless: rootless
+    maps container root to the invoking user, rootful does not. Keeping the
+    copy on the container side works either way, and backup.sh reads both
+    files as root regardless.
     """
     src = workspace["src"]
-    conf = src / ".gocryptfs.reverse.conf"
-    if not conf.exists():
+    marker = src / ".gocryptfs.reverse.conf.original"
+    if not marker.exists():
+        script = (
+            "set -euo pipefail\n"
+            "gocryptfs -reverse -init -plaintextnames"
+            f" -scryptn {SCRYPT_N} -passfile /passfile /src\n"
+            "cp /src/.gocryptfs.reverse.conf /src/.gocryptfs.reverse.conf.original\n"
+            "chmod 600 /src/.gocryptfs.reverse.conf /src/.gocryptfs.reverse.conf.original\n"
+        )
         result = run(
             [
                 "docker", "run", "--rm", "--user", "root",
-                "--entrypoint", "/usr/bin/gocryptfs",
+                "--entrypoint", "/bin/bash",
                 "--volume", f"{src}:/src",
                 "--volume", f"{workspace['passkey']}:/passfile:ro",
-                IMAGE_REF,
-                "-reverse", "-init", "-plaintextnames",
-                "-scryptn", str(SCRYPT_N),
-                "-passfile", "/passfile", "/src",
+                IMAGE_REF, "-c", script,
             ]
         )
         assert result.returncode == 0, result.stdout + result.stderr
-    shutil.copy(conf, src / ".gocryptfs.reverse.conf.original")
     return src
+
+
+def _chown_to_container_root(paths):
+    """Hand files to whichever uid the container sees as root.
+
+    ssh refuses an identity file owned by neither root nor the calling user,
+    and every Makefile target runs as root inside the container. Under
+    rootless Docker container root already maps to the invoking user, so this
+    is a no-op; under rootful Docker, which is what GitHub runners provide, it
+    hands the file to real root so the container sees uid 0.
+    """
+    volumes = []
+    for index, path in enumerate(paths):
+        volumes += ["--volume", f"{path}:/chown/{index}"]
+    result = run(
+        [
+            "docker", "run", "--rm", "--user", "root",
+            "--entrypoint", "/bin/bash", *volumes,
+            IMAGE_REF, "-c", "chown 0:0 /chown/*",
+        ]
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.fixture(scope="session")
 def env_file(workspace, remote, initialised_source):
     """Full env file wired to the throwaway remote."""
+    _chown_to_container_root([workspace["key_file"], workspace["known_hosts"]])
+
     path = workspace["root"] / "env.test"
     path.write_text(
         "\n".join(
