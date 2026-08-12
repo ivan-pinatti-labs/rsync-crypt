@@ -14,7 +14,7 @@ repos:
 
   # Shellcheck
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
 
@@ -32,7 +32,7 @@ repos:
 
   # Hadolint - Docker
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.14.0
+    rev: v2.15.1
     hooks:
       - id: hadolint-docker
         name: Lint Dockerfile
