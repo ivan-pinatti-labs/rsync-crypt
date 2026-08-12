@@ -1,0 +1,58 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Dependabot handles GitHub Actions and pre-commit hooks, see dependabot.yml.
+  // Renovate handles the asdf tool versions and the Alpine pin in .env.example,
+  // neither of which Dependabot can parse.
+  extends: ["config:recommended"],
+
+  // config:recommended enables a standing "Dependency Dashboard" issue that
+  // never resolves on its own; PRs still open on the normal schedule below
+  // without it, this just drops the one consolidated overview issue.
+  dependencyDashboard: false,
+
+  timezone: "America/Toronto",
+  schedule: ["before 7am on Monday"],
+
+  labels: ["dependencies"],
+  commitMessagePrefix: "chore:",
+
+  // Keep PR volume manageable so CI is not overwhelmed.
+  prConcurrentLimit: 5,
+  prHourlyLimit: 2,
+  automerge: false,
+
+  // Dependabot owns these two ecosystems; disabling them here avoids
+  // duplicate pull requests for the same update.
+  enabledManagers: ["asdf", "custom.regex"],
+
+  packageRules: [
+    {
+      matchManagers: ["asdf"],
+      groupName: "asdf tool versions",
+      groupSlug: "asdf-tools",
+      labels: ["dependencies", "tooling"],
+    },
+    {
+      matchManagers: ["custom.regex"],
+      labels: ["dependencies", "docker"],
+    },
+  ],
+
+  customManagers: [
+    {
+      // Matches the pattern:
+      //   # renovate: datasource=<ds> depName=<name> [versioning=<scheme>]
+      //   VAR="<currentValue>"
+      //
+      // GOCRYPTFS_VERSION is intentionally left unannotated: it is an apk
+      // version constraint rather than a Docker tag, so it is bumped by hand.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.env\\.example$/"],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+[A-Z0-9_]+="(?<currentValue>[^"]+)"',
+      ],
+      versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+    },
+  ],
+}
