@@ -2,12 +2,38 @@
 
 from __future__ import annotations
 
+import fnmatch
+
 import pytest
 
-from conftest import run
+from conftest import REPO_ROOT, run
 
 # Every binary the scripts check for at startup, plus the ones view mode needs.
 REQUIRED_BINARIES = ["gocryptfs", "rsync", "sshfs", "fusermount", "ssh", "sshd"]
+
+
+def test_dockerfile_only_copies_tracked_files():
+    """Every COPY source must be in git, or the build breaks on a fresh clone.
+
+    This caught a real failure: files/ssh/ is gitignored, so 'COPY files/ssh/*'
+    only ever worked on a machine that happened to have the directory left
+    over locally. Anyone cloning the repository hit
+    'lstat /files/ssh: no such file or directory'.
+    """
+    tracked = run(["git", "ls-files"]).stdout.split()
+
+    unresolved = []
+    for line in (REPO_ROOT / "Dockerfile").read_text().splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("COPY "):
+            continue
+        # COPY [--flag ...] <src>... <dest>
+        parts = [p for p in stripped.split()[1:] if not p.startswith("--")]
+        for source in parts[:-1]:
+            if not any(fnmatch.fnmatch(path, source) for path in tracked):
+                unresolved.append(source)
+
+    assert not unresolved, f"Dockerfile COPY sources not tracked by git: {unresolved}"
 
 
 @pytest.mark.parametrize("binary", REQUIRED_BINARIES)
