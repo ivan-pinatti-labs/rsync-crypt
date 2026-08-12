@@ -44,3 +44,4 @@ jobs:
           tag: ${{ needs.create-tag.outputs.new_tag }}
           name: Release ${{ needs.create-tag.outputs.new_tag }}
           body: ${{ needs.create-tag.outputs.changelog }}
+          allowUpdates: true
