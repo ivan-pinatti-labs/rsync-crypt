@@ -123,7 +123,17 @@ def workspace(tmp_path_factory):
     keys.mkdir()
     key_file = keys / "id_ed25519"
     keygen = run(
-        ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", "rsync-crypt-test", "-f", str(key_file)]
+        [
+            "ssh-keygen",
+            "-t",
+            "ed25519",
+            "-N",
+            "",
+            "-C",
+            "rsync-crypt-test",
+            "-f",
+            str(key_file),
+        ]
     )
     assert keygen.returncode == 0, keygen.stdout + keygen.stderr
     (keys / "known_hosts").touch()
@@ -199,12 +209,20 @@ exec /usr/sbin/sshd -D -e -o PermitRootLogin=yes
 """
     started = run(
         [
-            "docker", "run", "--detach",
-            "--name", REMOTE_CONTAINER,
-            "--user", "root",
-            "--entrypoint", "/bin/bash",
-            "--volume", f"{workspace['key_file']}.pub:/keys/authorized_keys:ro",
-            IMAGE_REF, "-c", setup,
+            "docker",
+            "run",
+            "--detach",
+            "--name",
+            REMOTE_CONTAINER,
+            "--user",
+            "root",
+            "--entrypoint",
+            "/bin/bash",
+            "--volume",
+            f"{workspace['key_file']}.pub:/keys/authorized_keys:ro",
+            IMAGE_REF,
+            "-c",
+            setup,
         ]
     )
     assert started.returncode == 0, started.stderr
@@ -233,11 +251,21 @@ def _wait_for_sshd(address, known_hosts, attempts=30):
     for _ in range(attempts):
         scan = run(
             [
-                "docker", "run", "--rm", "--entrypoint", "ssh-keyscan",
-                IMAGE_REF, "-H", address,
+                "docker",
+                "run",
+                "--rm",
+                "--entrypoint",
+                "ssh-keyscan",
+                IMAGE_REF,
+                "-H",
+                address,
             ]
         )
-        keys = [line for line in scan.stdout.splitlines() if line and not line.startswith("#")]
+        keys = [
+            line
+            for line in scan.stdout.splitlines()
+            if line and not line.startswith("#")
+        ]
         if keys:
             Path(known_hosts).write_text("\n".join(keys) + "\n")
             return
@@ -270,15 +298,25 @@ def initialised_source(image, workspace):
             "gocryptfs -reverse -init -plaintextnames"
             f" -scryptn {SCRYPT_N} -passfile /passfile /src\n"
             "cp /src/.gocryptfs.reverse.conf /src/.gocryptfs.reverse.conf.original\n"
-            "chmod 600 /src/.gocryptfs.reverse.conf /src/.gocryptfs.reverse.conf.original\n"
+            "chmod 600 /src/.gocryptfs.reverse.conf"
+            " /src/.gocryptfs.reverse.conf.original\n"
         )
         result = run(
             [
-                "docker", "run", "--rm", "--user", "root",
-                "--entrypoint", "/bin/bash",
-                "--volume", f"{src}:/src",
-                "--volume", f"{workspace['passkey']}:/passfile:ro",
-                IMAGE_REF, "-c", script,
+                "docker",
+                "run",
+                "--rm",
+                "--user",
+                "root",
+                "--entrypoint",
+                "/bin/bash",
+                "--volume",
+                f"{src}:/src",
+                "--volume",
+                f"{workspace['passkey']}:/passfile:ro",
+                IMAGE_REF,
+                "-c",
+                script,
             ]
         )
         assert result.returncode == 0, result.stdout + result.stderr
@@ -299,9 +337,17 @@ def _chown_to_container_root(paths):
         volumes += ["--volume", f"{path}:/chown/{index}"]
     result = run(
         [
-            "docker", "run", "--rm", "--user", "root",
-            "--entrypoint", "/bin/bash", *volumes,
-            IMAGE_REF, "-c", "chown 0:0 /chown/*",
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "root",
+            "--entrypoint",
+            "/bin/bash",
+            *volumes,
+            IMAGE_REF,
+            "-c",
+            "chown 0:0 /chown/*",
         ]
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -358,12 +404,22 @@ def remote_listing():
     find, which has no -printf.
     """
     result = run(
-        ["docker", "exec", REMOTE_CONTAINER, "find", REMOTE_BACKUP_DIR, "-mindepth", "1"]
+        [
+            "docker",
+            "exec",
+            REMOTE_CONTAINER,
+            "find",
+            REMOTE_BACKUP_DIR,
+            "-mindepth",
+            "1",
+        ]
     )
     assert result.returncode == 0, result.stderr
     prefix = f"{REMOTE_BACKUP_DIR}/"
     return sorted(
-        line[len(prefix):] for line in result.stdout.splitlines() if line.startswith(prefix)
+        line[len(prefix) :]
+        for line in result.stdout.splitlines()
+        if line.startswith(prefix)
     )
 
 
@@ -375,7 +431,11 @@ def remote_manifest():
     """
     result = run(
         [
-            "docker", "exec", REMOTE_CONTAINER, "sh", "-c",
+            "docker",
+            "exec",
+            REMOTE_CONTAINER,
+            "sh",
+            "-c",
             f"cd {REMOTE_BACKUP_DIR} && find . -type f -exec sha256sum {{}} +",
         ]
     )
@@ -391,7 +451,13 @@ def remote_manifest():
 def remote_bytes(relative_path):
     """Raw bytes of a file on the remote, as stored (encrypted)."""
     result = subprocess.run(
-        ["docker", "exec", REMOTE_CONTAINER, "cat", f"{REMOTE_BACKUP_DIR}/{relative_path}"],
+        [
+            "docker",
+            "exec",
+            REMOTE_CONTAINER,
+            "cat",
+            f"{REMOTE_BACKUP_DIR}/{relative_path}",
+        ],
         capture_output=True,
         timeout=60,
         check=False,

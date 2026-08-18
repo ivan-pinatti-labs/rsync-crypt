@@ -5,10 +5,6 @@ These need neither Docker nor a remote, so they stay fast and run first.
 
 from __future__ import annotations
 
-import subprocess
-
-import pytest
-
 from conftest import REPO_ROOT, run
 
 
@@ -78,7 +74,9 @@ def test_example_env_documents_every_variable_the_makefile_reads():
             referenced.add(name)
 
     missing = sorted(referenced - documented - internal)
-    assert not missing, f"variables used by the Makefile but absent from .env.example: {missing}"
+    assert not missing, (
+        f"variables used by the Makefile but absent from .env.example: {missing}"
+    )
 
 
 def test_no_blanket_error_suppression_in_the_makefile():
