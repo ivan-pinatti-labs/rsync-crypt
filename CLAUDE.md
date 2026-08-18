@@ -65,6 +65,51 @@ The `chmod 600` is guarded: exits with an error if the passkey file does not exi
 Cipher, scryptn, and encrypt_names are stored in `.gocryptfs.reverse.conf` on first init.
 Changing them after init requires deleting the conf and re-encrypting the full backup.
 
+### CI never autofixes
+
+Settled decision, do not revisit. Formatting hooks auto-fix locally (ruff
+--fix, ruff-format, shfmt --write, prettier --write, markdownlint `fix: true`,
+end-of-file-fixer, trailing-whitespace). In CI they run identically, rewrite
+files inside the runner's checkout, and pre-commit exits non-zero so the job
+fails. Nothing is ever committed or pushed back to a branch by CI.
+
+- No `ci:` block in `.pre-commit-config.yaml`. That block configures
+  pre-commit.ci, whose `autofix_prs` is the only mechanism that would push.
+  The app is not installed here (verified against the repo's check runs).
+- No auto-commit or auto-push step in any workflow. Checkouts keep
+  `persist-credentials: false`; jobs hold `contents: read`.
+- A fixable finding fails the PR. The author fixes it locally and pushes.
+
+### Branch, PR, gates, then merge
+
+No direct commits to `main`; `checklist-git-protected-branches` enforces it.
+Branch out, commit, push, open a draft PR, mark it ready, wait for the gates
+and CodeRabbit, address the comments, and merge once green. Branch names are
+lowercase slugs (`fix/flaky-test`); commit messages are Conventional Commits.
+
+### Two selectors deviate from the library's templates
+
+Both are in `.pre-commit-config.yaml` with the reasoning inline.
+
+`checklist-dev-shell` uses `files:` rather than `types: [shell]`. At
+`rev: v2.1.3` the hook's manifest bakes in `files: \.(sh|bash)$`, and
+pre-commit ANDs that with a consumer's `types:`, which silently drops
+`files/bash/.bashrc` and `.bash_aliases`. A consumer `files:` replaces the
+manifest regex instead of intersecting with it. Revert to `types: [shell]`
+once pre-commit-checklists#10 ships.
+
+`checklist-json` uses `types_or: [json, json5]`. The only JSON-family file
+here is `.github/renovate.json5`, and `identify` tags that `json5`, so a plain
+`types: [json]` matches nothing at all.
+
+### dotenv-linter is a local hook, not checklist-dev-dotenv
+
+`.env.example` quotes its values deliberately, which is 16 `QuoteCharacter`
+findings. `checklist-dev-dotenv` cannot be passed `--ignore-checks`: every
+`checklist-*` id routes through `run-checklist.sh` with the checklist name as
+its first argument, so an `args:` entry replaces that name instead of reaching
+the tool. The library documents the local-hook copy as the supported way out.
+
 ## User Preferences
 
 - No em-dashes (`—` or `--`) in prose; use commas or parentheses instead

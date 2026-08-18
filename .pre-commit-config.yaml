@@ -1,54 +1,124 @@
+---
+# Hooks come from ivan-pinatti/pre-commit-checklists. See docs/hook-catalogue.md
+# in that repository for what each id runs, and CLAUDE.md here for the two
+# selectors below that deviate from its shipped templates.
+#
+# checklist-git-commit-msg runs at the commit-msg git stage rather than
+# pre-commit, so default_install_hook_types wires both stages up. Every other
+# hook is pinned to stages: [pre-commit] so it does not also re-run,
+# redundantly, during that commit-msg invocation.
+#
+# There is deliberately no `ci:` block. That block configures pre-commit.ci,
+# whose autofix_prs would commit and push fixes back to a pull request branch.
+# CI here is a gate: a hook that finds something fixable fails the run and the
+# author fixes it. See "CI never autofixes" in CLAUDE.md.
+default_install_hook_types: [pre-commit, commit-msg]
 repos:
-  # Detect Secrets
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
+  - repo: https://github.com/ivan-pinatti/pre-commit-checklists
+    rev: v2.1.3
     hooks:
-      - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
+      # Large-file, merge-conflict and line-ending hygiene. No selector needed.
+      - id: checklist-basic
+        stages: [pre-commit]
 
-  # Prettier
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v4.0.0-alpha.8
+      # cspell over everything it can read; words live in .cspell.json.
+      - id: checklist-spell
+        stages: [pre-commit]
+
+      # markdownlint-cli2 and markdown-link-check.
+      - id: checklist-markdown
+        types: [markdown]
+        stages: [pre-commit]
+
+      # check-json and Prettier. json5 is included because the only
+      # JSON-family file here is .github/renovate.json5, and `identify` tags
+      # that `json5`, not `json`, so a plain types: [json] would match nothing
+      # at all. check-json self-filters on its own types: [json] and never
+      # sees the json5 file, which is correct: it is a strict JSON parser and
+      # renovate.json5 has comments and unquoted keys. Prettier reads json5
+      # natively and formats it.
+      - id: checklist-json
+        types_or: [json, json5]
+        stages: [pre-commit]
+
+      # check-yaml, yamllint (config in .yamllint.yml), Prettier.
+      - id: checklist-yaml
+        types: [yaml]
+        stages: [pre-commit]
+
+      # detect-private-key and detect-secrets, against .secrets.baseline.
+      - id: checklist-security-credentials
+        stages: [pre-commit]
+
+      # editorconfig-checker against .editorconfig. No selector needed.
+      - id: checklist-dev-editorconfig
+        stages: [pre-commit]
+
+      # files: rather than types: [shell] on purpose. At this rev the hook's
+      # own manifest bakes in `files: \.(sh|bash)$`, and pre-commit ANDs a
+      # manifest selector with a consumer's types:, which would silently drop
+      # files/bash/.bashrc and .bash_aliases: both are typed `shell` but have
+      # no extension. A consumer files: replaces the manifest regex instead of
+      # intersecting with it (verified against v2.1.3), so this widens the
+      # match rather than narrowing it. Revert to types: [shell] once
+      # pre-commit-checklists#10 ships.
+      - id: checklist-dev-shell
+        files: '(\.(sh|bash)$|(^|/)\.bash[a-z_]*$)'
+        stages: [pre-commit]
+
+      # check-ast, check-builtin-literals, debug-statements, name-tests-test,
+      # requirements-txt-fixer, ruff-check --fix, ruff-format.
+      - id: checklist-dev-python
+        files: '(\.py$|(^|/)requirements\.txt$)'
+        stages: [pre-commit]
+
+      # hadolint-docker. Its own types: [dockerfile] scopes it already.
+      - id: checklist-dev-docker
+        stages: [pre-commit]
+
+      # actionlint-docker and zizmor.
+      - id: checklist-github-actions
+        files: ^\.github/
+        stages: [pre-commit]
+
+      # Rejects branch names outside the convention.
+      - id: checklist-git-valid-branches
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Conventional Commits, at the commit-msg stage.
+      - id: checklist-git-commit-msg
+        stages: [commit-msg]
+        files: ^\.git/COMMIT_EDITMSG$
+
+      # Blocks direct commits to main/master/develop/staging.
+      - id: checklist-git-protected-branches
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+  # dotenv-linter is run directly rather than through checklist-dev-dotenv.
+  # That id cannot be passed --ignore-checks: every checklist-* id routes
+  # through run-checklist.sh with the checklist name as its first argument, so
+  # an args: entry replaces that name instead of reaching the tool. .env.example
+  # quotes its values deliberately, which is 16 QuoteCharacter findings, and
+  # the library documents this local-hook copy as the supported way out. Same
+  # image and flags as checklists/checklist-dev-dotenv.yaml otherwise.
+  - repo: local
     hooks:
-      - id: prettier
-
-  # Shellcheck
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
-    hooks:
-      - id: shellcheck
-
-  # pre-commit hooks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
-    hooks:
-      - id: check-added-large-files
-      - id: check-json
-      - id: check-symlinks
-      - id: check-xml
-      - id: check-yaml
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-
-  # Hadolint - Docker
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.15.1
-    hooks:
-      - id: hadolint-docker
-        name: Lint Dockerfile
-        args:
-          - --config
-          - ./.hadolint.yaml
-        files: ^.*Dockerfile.*
-
-ci:
-  autofix_commit_msg: |
-    [pre-commit.ci] auto fixes from pre-commit.com hooks
-
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
-  autoupdate_branch: ""
-  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
-  autoupdate_schedule: weekly
-  skip: []
-  submodules: false
+      - id: dotenv-linter
+        name: dotenv-linter (dotenv-linter/dotenv-linter, Rust)
+        language: system
+        files: '(^|/)\.env(\..+)?$'
+        stages: [pre-commit]
+        entry: >-
+          bash -c '
+          runtime=$(command -v docker || command -v podman) || {
+          echo "dotenv-linter needs docker or podman on PATH." >&2;
+          exit 1;
+          };
+          exec "${runtime}" run --rm -v "$(pwd):/src:ro,Z" -w /src
+          docker.io/dotenvlinter/dotenv-linter:4.0.0 check --skip-updates
+          --ignore-checks QuoteCharacter "$@"
+          ' --

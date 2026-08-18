@@ -44,6 +44,7 @@
     "bwlimit",
     "conftest",
     "datareporting",
+    "dotenvlinter",
     "endef",
     "ENODATA",
     "errno",
@@ -72,6 +73,7 @@
     "Thunar",
     "torbrowser",
     "UKVC",
-    "youruser"
+    "youruser",
+    "zizmor"
   ]
 }
