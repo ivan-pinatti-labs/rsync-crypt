@@ -1,5 +1,10 @@
 # Apache License 2.0
 
+<!-- Everything below is the Apache License 2.0 reproduced verbatim, including
+    its two-spaces-after-list-marker style (MD030) and its centred layout. It
+    is a legal document quoted as published, not prose to restyle. -->
+<!-- markdownlint-disable -->
+
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/

@@ -22,7 +22,8 @@ Makefile-driven. Alpine image. Key binaries: gocryptfs, rsync, sshfs, openssh (s
 
 1. `gocryptfs -reverse` mounts a read-only encrypted virtual view of `BACKUP_SOURCE_FOLDER`
 2. `rsync` pushes the encrypted view to the remote server over SSH
-3. View mode: `sshfs` mounts the remote encrypted dir, `gocryptfs` decrypts it, `sshd` serves it via SFTP on `127.0.0.1:2222`
+3. View mode: `sshfs` mounts the remote encrypted dir, `gocryptfs` decrypts it, `sshd` serves it via
+   SFTP on `127.0.0.1:2222`
 
 ## Known Gotchas
 
@@ -33,7 +34,8 @@ Default is `false`. File contents are still fully encrypted either way.
 gocryptfs has `-exclude-wildcard` with gitignore negation, but the include-first
 catch-all-exclude pattern in the filter file cannot be expressed with excludes alone.
 Wiring gocryptfs `-exclude-from` instead of rsync filters is a planned future improvement.
-Upstream: https://github.com/rfjakob/gocryptfs/issues/1000 proposes a `-filter-from` flag with rsync-style first-match-wins semantics.
+Upstream: <https://github.com/rfjakob/gocryptfs/issues/1000> proposes a `-filter-from` flag with
+rsync-style first-match-wins semantics.
 
 ### Alpine gocryptfs version
 
@@ -49,7 +51,8 @@ With `RSYNC_LOOP=true` these used to cause infinite retry loops.
 ### ENODATA (errno 61) from gocryptfs
 
 Happens when gocryptfs reverse mode cannot read locked files (SQLite WAL, LevelDB LOCK).
-Fixed by excluding `*.lock`, `*.db-wal`, `*.db-shm`, `*.sqlite-wal`, `*.sqlite-shm`, `**/LOCK` in filter rules.
+Fixed by excluding `*.lock`, `*.db-wal`, `*.db-shm`, `*.sqlite-wal`, `*.sqlite-shm`, `**/LOCK` in
+filter rules.
 
 ### check-passkey requires a real TTY
 
