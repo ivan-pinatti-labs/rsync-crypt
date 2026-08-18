@@ -24,13 +24,13 @@ indent_style = space
 indent_size = 2
 max_line_length = 100
 
-[*.{tf,tfvars}]
-indent_size = 2
-indent_style = space
-
+# indent_size is unset for the same reason max_line_length is: a continuation
+# line under an ordered list marker is three spaces ("1. " is three characters
+# wide), which is correct Markdown and not a multiple of 2. markdownlint owns
+# list indentation instead, via MD005/MD007/MD030, which understand markers.
 [*.md]
 indent_style = space
-indent_size = 2
+indent_size = unset
 max_line_length = off
 trim_trailing_whitespace = false
 

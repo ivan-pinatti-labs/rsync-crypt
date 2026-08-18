@@ -9,3 +9,12 @@ MD013:
   line_length: 100
   code_blocks: false
   tables: false
+
+# MD024: no-duplicate-heading. Scoped to siblings so the same heading may
+# appear under different parents, which this README relies on: "Backup" and
+# "View" are each both a data-flow description under "How It Works" and a
+# command walkthrough under "Usage", and "Paranoid Mode" appears under each
+# of those two. Renaming them to be globally unique would make every one of
+# them worse, and would churn the anchors they are linked by.
+MD024:
+  siblings_only: true
