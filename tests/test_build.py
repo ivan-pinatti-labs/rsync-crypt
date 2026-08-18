@@ -51,8 +51,17 @@ def test_entrypoint_is_gocryptfs(image):
 
 
 def test_image_runs_as_the_crypt_user(image):
+    """USER is the numeric uid (hadolint DL3066), which must still be crypt.
+
+    Asserting on the number alone would pass even if the account behind it
+    changed, so this also resolves the id inside the image.
+    """
     result = run(["docker", "inspect", "-f", "{{.Config.User}}", image])
-    assert result.stdout.strip() == "crypt"
+    assert result.stdout.strip() == "1000"
+
+    resolved = run(["docker", "run", "--rm", "--entrypoint", "id", image, "-un"])
+    assert resolved.returncode == 0, resolved.stderr
+    assert resolved.stdout.strip() == "crypt"
 
 
 def test_gocryptfs_version_matches_the_pin(image, build_env_file):
