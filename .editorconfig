@@ -1,0 +1,76 @@
+# EditorConfig is awesome: https://EditorConfig.org
+# Checked by checklist-dev-editorconfig (editorconfig-checker).
+#
+# Line length is deliberately not enforced here for Markdown. markdownlint
+# owns it instead (MD013 in .markdownlint.yaml), because it understands
+# what editorconfig-checker cannot: that a wrapped pipe table or fenced
+# code block is not a style violation. Two tools enforcing one rule with
+# different awareness only produces findings that cannot both be fixed.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 2
+indent_style = space
+insert_final_newline = true
+quote_type = double
+tab_width = 2
+trim_trailing_whitespace = true
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+[*.{tf,tfvars}]
+indent_size = 2
+indent_style = space
+
+[*.md]
+indent_style = space
+indent_size = 2
+max_line_length = off
+trim_trailing_whitespace = false
+
+# A Makefile legitimately mixes three kinds of leading whitespace and
+# editorconfig cannot express that, so indent_style is left unset rather than
+# asserted as tab: recipe lines must start with a tab, `.PHONY` continuation
+# lines and the `define ... endef` help block are spaces (the latter is literal
+# output text, not code), and recipe continuation lines are a tab followed by
+# alignment spaces. editorconfig-checker flags all three of the non-recipe
+# cases as "spaces instead of tabs"; every one of those findings is wrong.
+[Makefile]
+tab_width = 2
+indent_style = unset
+
+[COMMIT_EDITMSG]
+max_line_length = 0
+
+[*.py]
+max_line_length = 88
+
+[*.json]
+indent_size = 2
+max_line_length = 100
+
+[*.{bash,sh}]
+indent_size = 2
+quote_type = ignore
+
+# rsync filter rules and the llms.txt manifest are plain-text data files whose
+# alignment is meaningful to a human reader, not code. Indentation rules do not
+# apply.
+[*.txt]
+indent_style = unset
+indent_size = unset
+max_line_length = off
+
+# The verbatim Apache License 2.0 text, centred with spaces exactly as
+# published. It is a legal document reproduced as-is, not something to
+# reformat to a house style.
+[LICENSE.md]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false

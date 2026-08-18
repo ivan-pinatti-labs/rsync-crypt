@@ -1,0 +1,11 @@
+# Checked by checklist-markdown (markdownlint-cli2).
+
+# Automatically fix problems markdownlint-cli2 knows how to fix.
+fix: true
+
+# MD013: line-length. Relaxed to 100 to match .editorconfig, and turned
+# off inside code blocks and tables, where wrapping is usually wrong.
+MD013:
+  line_length: 100
+  code_blocks: false
+  tables: false

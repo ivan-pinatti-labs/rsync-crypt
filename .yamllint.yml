@@ -1,0 +1,9 @@
+---
+# Checked by checklist-yaml (yamllint). Starts from yamllint's own
+# "default" rule set and only relaxes line length, to match the
+# .editorconfig max_line_length used across this library's templates.
+extends: default
+
+rules:
+  line-length:
+    max: 100
