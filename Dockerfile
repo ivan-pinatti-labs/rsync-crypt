@@ -6,15 +6,15 @@ ARG GOCRYPTFS_VERSION
 RUN apk update \
     && apk upgrade \
     && apk add --no-cache \
-        bash \
+        bash~=5.3 \
         gocryptfs~=${GOCRYPTFS_VERSION} \
-        less \
-        openssh \
-        rsync \
-        sshfs \
-        vim \
+        less~=685 \
+        openssh~=10.2 \
+        rsync~=3.4 \
+        sshfs~=3.7 \
+        vim~=9.2 \
     && rm -rf /var/cache/apk/* \
-    && adduser -D crypt \
+    && adduser -D -u 1000 crypt \
     && mkdir -p \
         /app \
         /backup/enc \
@@ -45,6 +45,8 @@ COPY --chown=crypt:crypt files/bash/* /home/crypt/
 # gitignored, so copying it broke the build on a fresh clone. The Makefile
 # mounts the real known_hosts over these at run time.
 
-USER crypt
+# Numeric, so the id resolves without the container's passwd database (DL3066).
+# Note every `docker run` in the Makefile overrides this with `--user root`.
+USER 1000
 WORKDIR /app
 ENTRYPOINT ["/usr/bin/gocryptfs"]
