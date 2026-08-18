@@ -6,10 +6,14 @@
   // neither of which Dependabot can parse.
   extends: ["config:recommended"],
 
-  // config:recommended enables a standing "Dependency Dashboard" issue that
-  // never resolves on its own; PRs still open on the normal schedule below
-  // without it, this just drops the one consolidated overview issue.
-  dependencyDashboard: false,
+  // Kept on despite the standing, never-resolving tracking issue it opens.
+  // Without it, "Renovate found nothing to update" and "Renovate silently
+  // stopped seeing your dependencies" look identical, and the dashboard is the
+  // only place Renovate reports detection errors and rate-limited updates.
+  // That matters most for the custom regex manager below, which depends on a
+  // hand-written pattern that will match nothing, silently, if .env.example is
+  // renamed or its `# renovate:` annotation format changes.
+  dependencyDashboard: true,
 
   timezone: "America/Toronto",
   schedule: ["before 7am on Monday"],
