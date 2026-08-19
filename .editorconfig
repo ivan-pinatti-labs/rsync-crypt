@@ -1,6 +1,14 @@
 # EditorConfig is awesome: https://EditorConfig.org
 # Checked by checklist-dev-editorconfig (editorconfig-checker).
 #
+# `unset` rather than `off` wherever a property is switched off. Both are in
+# the EditorConfig specification and editorconfig-checker treats them
+# identically (verified: a 140 character Markdown line is exempt under either,
+# and still flagged when a number is given instead), but `unset` is the generic
+# mechanism that applies to any property, `off` is specific to
+# max_line_length, and this file already uses `unset` for indent_style and
+# indent_size. One spelling is easier to read than two.
+#
 # Line length is deliberately not enforced here for Markdown. markdownlint
 # owns it instead (MD013 in .markdownlint.yaml), because it understands
 # what editorconfig-checker cannot: that a wrapped pipe table or fenced
@@ -31,7 +39,7 @@ max_line_length = 100
 [*.md]
 indent_style = space
 indent_size = unset
-max_line_length = off
+max_line_length = unset
 trim_trailing_whitespace = false
 
 # A Makefile legitimately mixes three kinds of leading whitespace and
@@ -45,11 +53,12 @@ trim_trailing_whitespace = false
 tab_width = 2
 indent_style = unset
 
-# `off`, not 0: the EditorConfig specification defines max_line_length as a
-# positive integer or the literal `off`, so 0 is outside the spec and each
-# tool is free to interpret it however it likes.
+# Not 0: the EditorConfig specification defines max_line_length as a positive
+# integer or the literal `off`, so 0 is outside the spec entirely and each tool
+# is free to interpret it however it likes. `unset` here for the reason at the
+# top of this file.
 [COMMIT_EDITMSG]
-max_line_length = off
+max_line_length = unset
 
 [*.py]
 max_line_length = 88
@@ -68,7 +77,7 @@ quote_type = ignore
 [*.txt]
 indent_style = unset
 indent_size = unset
-max_line_length = off
+max_line_length = unset
 
 # The verbatim Apache License 2.0 text, centred with spaces exactly as
 # published. It is a legal document reproduced as-is, not something to
