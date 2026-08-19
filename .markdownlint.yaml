@@ -9,7 +9,7 @@
 # hand; add a `.markdownlint-cli2.yaml` if auto-fixing is ever wanted.
 
 # MD013: line-length, set to 100. This is the only thing enforcing Markdown
-# line length: .editorconfig deliberately sets `max_line_length = off` for
+# line length: .editorconfig deliberately sets `max_line_length = unset` for
 # *.md, because editorconfig-checker cannot tell that a wrapped pipe table or
 # fenced code block is not a violation. Turned off inside code blocks and
 # tables here for the same reason.
