@@ -21,8 +21,11 @@ reviews:
     # review that silently stops is worse than one that costs a slot.
     auto_pause_after_reviewed_commits: 0
 
-    # Reviews wait for a pull request to be marked ready rather than firing
-    # on every push to a draft. CodeRabbit is a GitHub App posting a check,
+    # Automatic reviews wait for a pull request to be marked ready rather
+    # than firing on every push to a draft. This governs automatic reviews
+    # only: the setting lives under reviews.auto_review, so an explicit
+    # `@coderabbitai review` still works on a draft when one is genuinely
+    # wanted early. CodeRabbit is a GitHub App posting a check,
     # not a workflow job, so it cannot be ordered after the pre-commit job
     # with a needs: dependency the way a workflow job can. Skipping drafts is
     # the lever instead: open as a draft, let pre-commit and the tests find

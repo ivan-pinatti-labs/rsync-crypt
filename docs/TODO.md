@@ -23,9 +23,12 @@ confirmed rejected.
 ### Steps left
 
 1. Merge `#12`, once its current head has been reviewed clean.
-2. `#13` auto-retargets to `main`. **Mark it ready** so CodeRabbit reviews it
-   (it skips drafts), wait for CI, which only runs now that its base is
-   `main`, then merge. Repeat for `#15`, then `#16`.
+2. `#13` auto-retargets to `main`. **Wait for CI to run and pass first**,
+   which only happens now that its base is `main`, fix anything it reports,
+   and only then mark it ready so CodeRabbit reviews a diff the mechanical
+   checks have already been through. Merge, then repeat for `#15`, then
+   `#16`. Marking it ready before CI finishes inverts the whole point of
+   `drafts: false`.
 3. After `#16`, delete the `ci:` block's replacement worry: it is already gone
    from `.pre-commit-config.yaml`, but confirm pre-commit.ci is still not
    installed on the repository.
@@ -41,7 +44,7 @@ Both cost a round trip; worth knowing before the next stacked change.
 - **`pre-commit run --all-files` only sees tracked files.** A new file passes
   locally and fails in CI until it is `git add`ed. This bit the adoption twice.
 - **CodeRabbit can stop reviewing without saying so**, through two separate
-  mechanisms that are easy to confuse. The one that caused a twelve hour
+  mechanisms that are easy to confuse. The one that caused a twelve-hour
   stall here was `auto_pause_after_reviewed_commits`, whose default of 5
   pauses automatic reviews on a branch once five commits have been reviewed;
   that is config-fixable and is now set to 0. The other is running out of the
