@@ -5,7 +5,6 @@ from __future__ import annotations
 import fnmatch
 
 import pytest
-
 from conftest import REPO_ROOT, run
 
 # Every binary the scripts check for at startup, plus the ones view mode needs.
@@ -39,7 +38,16 @@ def test_dockerfile_only_copies_tracked_files():
 @pytest.mark.parametrize("binary", REQUIRED_BINARIES)
 def test_required_binary_is_present(image, binary):
     result = run(
-        ["docker", "run", "--rm", "--entrypoint", "/bin/bash", image, "-c", f"command -v {binary}"]
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "/bin/bash",
+            image,
+            "-c",
+            f"command -v {binary}",
+        ]
     )
     assert result.returncode == 0, f"{binary} is missing from the image"
 
@@ -73,7 +81,15 @@ def test_gocryptfs_version_matches_the_pin(image, build_env_file):
     assert pinned, "GOCRYPTFS_VERSION missing from the build env file"
 
     result = run(
-        ["docker", "run", "--rm", "--entrypoint", "/usr/bin/gocryptfs", image, "-version"]
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "/usr/bin/gocryptfs",
+            image,
+            "-version",
+        ]
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"gocryptfs v{pinned}" in result.stdout
@@ -87,6 +103,16 @@ def test_block_size_flag_is_not_supported(image):
     accepting it, this test fails and the note can be revisited.
     """
     result = run(
-        ["docker", "run", "--rm", "--entrypoint", "/usr/bin/gocryptfs", image, "-bs", "4096", "-version"]
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "/usr/bin/gocryptfs",
+            image,
+            "-bs",
+            "4096",
+            "-version",
+        ]
     )
     assert result.returncode != 0, "-bs is now accepted; revisit the note in CLAUDE.md"
