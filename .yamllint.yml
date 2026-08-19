@@ -1,0 +1,14 @@
+---
+# Checked by checklist-yaml (yamllint). Starts from yamllint's own "default"
+# rule set and only relaxes line length, to 100, matching the
+# `max_line_length = 100` .editorconfig sets for *.{yml,yaml} in this repo.
+#
+# Unlike Markdown, YAML line length is enforced in both places on purpose:
+# editorconfig-checker and yamllint agree on what a long YAML line is, so
+# there is no conflict of the kind that made .editorconfig defer to
+# markdownlint for *.md.
+extends: default
+
+rules:
+  line-length:
+    max: 100
