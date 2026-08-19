@@ -3,6 +3,21 @@
     be wrapped without breaking them. MD041/MD001 fire because the h1
     sits inside that div rather than on line 1. -->
 <!-- markdownlint-disable MD001 MD013 MD033 MD041 -->
+<!-- The stars badge links to the repository, not to /stargazers, because
+     the link checker cannot resolve /stargazers.
+
+     What was actually observed, on 2026-08-19: requests to
+     https://github.com/ivan-pinatti/rsync-crypt/stargazers returned 404 with
+     a plain-text "Not Found" body, from plain curl, from curl with a browser
+     user agent, from curl with a full set of Sec-Fetch-* navigation headers,
+     and from curl with an authenticated Bearer token. /watchers behaved the
+     same way; /forks, /issues, /pulse and /network/members all returned 200.
+     Whether that generalises to every client or every repository was not
+     established, so no claim is made about it here.
+
+     The count itself comes from the shields.io image URL above and is
+     unaffected by the link target. If you point this back at /stargazers,
+     expect markdown-link-check to fail on it. -->
 <div align="center">
 
 # rsync-crypt
@@ -11,7 +26,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.

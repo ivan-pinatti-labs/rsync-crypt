@@ -1,0 +1,17 @@
+---
+# Read automatically by zizmor, which runs as part of checklist-github-actions.
+rules:
+  superfluous-actions:
+    ignore:
+      # Scoped to the exact line rather than the whole file: a bare
+      # `merge.yml` would also hide any future superfluous-actions finding on
+      # a different step in that workflow, which is the opposite of what an
+      # ignore should do.
+      #
+      # zizmor suggests replacing this with `gh release create` in a script
+      # step. Kept deliberately: the action is pinned by SHA, and it carries
+      # allowUpdates: true, which `gh release create` has no equivalent for
+      # (it errors on an existing tag rather than updating it). Swapping the
+      # release path is worth doing on its own, where a mistake surfaces
+      # before the next release rather than during it.
+      - merge.yml:42
