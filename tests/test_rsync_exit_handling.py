@@ -45,7 +45,7 @@ def test_partial_transfer_statuses_break_the_loop(name):
     branch = re.search(
         r"elif \[ \"\$\{__rsync_exit\}\" -eq 23 \].*?(?=\n  else\b)",
         body,
-        re.S,
+        re.DOTALL,
     )
     assert branch, f"{name}: could not locate the 23/24 branch"
     assert "break" in branch.group(0), (

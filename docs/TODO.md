@@ -1,6 +1,7 @@
 # TODO
 
-<!-- cspell:words checkmake coderabbit coderabbitai maxbodylength mbake minphony mktemp phonydeclared shutil zizmor -->
+<!-- cspell:words checkmake coderabbit maxbodylength mbake -->
+<!-- cspell:words minphony mktemp phonydeclared shutil -->
 
 ## Outstanding: finish the pre-commit-checklists adoption
 
