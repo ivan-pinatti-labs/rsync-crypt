@@ -5,6 +5,35 @@
 language: en-US
 
 reviews:
+  auto_review:
+    # Never stop reviewing a branch for being busy. The default is 5, which
+    # pauses automatic reviews once five commits on a branch have been
+    # reviewed, and the pause is silent: the CodeRabbit check still reports
+    # green, so the pull request looks reviewed when nothing has read its
+    # current head.
+    #
+    # Observed directly on pre-commit-checklists#12, a branch with seven
+    # commits: automatic reviews stopped after the fifth, and twelve hours
+    # passed with no review of the head commit and no indication that
+    # anything was waiting. Recovering needs a manual `@coderabbitai review`.
+    #
+    # The reviews this saves are on fixup commits, which is real, but a
+    # review that silently stops is worse than one that costs a slot.
+    auto_pause_after_reviewed_commits: 0
+
+    # Reviews wait for a pull request to be marked ready rather than firing
+    # on every push to a draft. CodeRabbit is a GitHub App posting a check,
+    # not a workflow job, so it cannot be ordered after the pre-commit job
+    # with a needs: dependency the way a workflow job can. Skipping drafts is
+    # the lever instead: open as a draft, let pre-commit and the tests find
+    # the mechanical defects first, then mark it ready so CodeRabbit reviews
+    # a diff those have already cleaned rather than spending a review slot on
+    # something a linter would have caught.
+    #
+    # This is the default. Stated explicitly because the review order depends
+    # on it, and a default that quietly changed would change the order too.
+    drafts: false
+
   path_instructions:
     - path: "Makefile"
       instructions: >
