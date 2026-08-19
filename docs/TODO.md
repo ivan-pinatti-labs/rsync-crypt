@@ -40,13 +40,25 @@ Both cost a round trip; worth knowing before the next stacked change.
 
 - **`pre-commit run --all-files` only sees tracked files.** A new file passes
   locally and fails in CI until it is `git add`ed. This bit the adoption twice.
-- **CodeRabbit drops reviews rather than queuing them.** A push that arrives
-  while its 3-per-hour quota is exhausted is declined and never retried:
-  confirmed by 12 hours passing with roughly 12 quota resets and zero reviews.
-  A review has to be re-requested by hand with `@coderabbitai review` once
-  quota is free. A green CodeRabbit _check_ does not mean a review happened,
-  and resolved threads do not mean a fix was verified, only that the lines
-  moved.
+- **CodeRabbit can stop reviewing without saying so**, through two separate
+  mechanisms that are easy to confuse. The one that caused a twelve hour
+  stall here was `auto_pause_after_reviewed_commits`, whose default of 5
+  pauses automatic reviews on a branch once five commits have been reviewed;
+  that is config-fixable and is now set to 0. The other is running out of the
+  plan's included-review allowance, which **drops** a review rather than
+  queueing it, so a push arriving during exhaustion is declined and never
+  retried; that one has no setting at all. Either way a review has to be
+  re-requested by hand, with `@coderabbitai review`, or
+  `@coderabbitai full review` when the incremental logic has already marked
+  the commits as seen.
+- **Every CodeRabbit signal is time-independent unless you check it
+  yourself.** A green _check_ is green on a skipped draft and on a
+  rate-limited decline. A _resolved thread_ only means a later commit changed
+  those lines, not that the fix was read. A _clean verdict comment_ can
+  predate the current head by hours. And a clean review creates no review
+  object at all, only a comment, so "no review object" does not mean "not
+  reviewed". The only reliable test is comparing the verdict's timestamp
+  against the head commit's.
 
 ### Once `pre-commit-checklists` ships its own TODO items
 
