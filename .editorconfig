@@ -45,8 +45,11 @@ trim_trailing_whitespace = false
 tab_width = 2
 indent_style = unset
 
+# `off`, not 0: the EditorConfig specification defines max_line_length as a
+# positive integer or the literal `off`, so 0 is outside the spec and each
+# tool is free to interpret it however it likes.
 [COMMIT_EDITMSG]
-max_line_length = 0
+max_line_length = off
 
 [*.py]
 max_line_length = 88

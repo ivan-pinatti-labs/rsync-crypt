@@ -1,10 +1,18 @@
 # Checked by checklist-markdown (markdownlint-cli2).
+#
+# This is markdownlint's rule configuration, not markdownlint-cli2's runner
+# configuration, so runner options do not belong here. `fix: true` used to sit
+# at the top of this file and did nothing at all: verified with an
+# auto-fixable MD009 trailing-whitespace probe, which markdownlint-cli2 leaves
+# untouched when `fix` is declared here, and rewrites when the same option is
+# declared in a `.markdownlint-cli2.yaml`. Findings are reported and fixed by
+# hand; add a `.markdownlint-cli2.yaml` if auto-fixing is ever wanted.
 
-# Automatically fix problems markdownlint-cli2 knows how to fix.
-fix: true
-
-# MD013: line-length. Relaxed to 100 to match .editorconfig, and turned
-# off inside code blocks and tables, where wrapping is usually wrong.
+# MD013: line-length, set to 100. This is the only thing enforcing Markdown
+# line length: .editorconfig deliberately sets `max_line_length = off` for
+# *.md, because editorconfig-checker cannot tell that a wrapped pipe table or
+# fenced code block is not a violation. Turned off inside code blocks and
+# tables here for the same reason.
 MD013:
   line_length: 100
   code_blocks: false
