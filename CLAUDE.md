@@ -87,20 +87,22 @@ Branch out, commit, push, open a draft PR, mark it ready, wait for the gates
 and CodeRabbit, address the comments, and merge once green. Branch names are
 lowercase slugs (`fix/flaky-test`); commit messages are Conventional Commits.
 
-### Two selectors deviate from the library's templates
+### Selectors match the library's templates
 
-Both are in `.pre-commit-config.yaml` with the reasoning inline.
+Both selectors that once deviated no longer do, as of `rev: v2.2.0`.
 
-`checklist-dev-shell` uses `files:` rather than `types: [shell]`. At
-`rev: v2.1.3` the hook's manifest bakes in `files: \.(sh|bash)$`, and
-pre-commit ANDs that with a consumer's `types:`, which silently drops
-`files/bash/.bashrc` and `.bash_aliases`. A consumer `files:` replaces the
-manifest regex instead of intersecting with it. Revert to `types: [shell]`
-once pre-commit-checklists#10 ships.
+`checklist-dev-shell` uses `types: [shell]`, which reaches
+`files/bash/.bashrc` and `.bash_aliases` as well as `scripts/*.sh`: all are
+typed `shell` by `identify` despite the dotfiles having no extension. Before
+v2.1.4 the hook's manifest baked in `files: \.(sh|bash)$`, which pre-commit
+ANDs with a consumer's `types:`, silently dropping both dotfiles. This repo
+carried a `files:` override until that was fixed upstream.
 
 `checklist-json` uses `types_or: [json, json5]`. The only JSON-family file
-here is `.github/renovate.json5`, and `identify` tags that `json5`, so a plain
-`types: [json]` matches nothing at all.
+here is `.github/renovate.json5`, and `identify` tags that `json5`, so a
+plain `types: [json]` would match nothing at all. `check-json` self-filters
+and never sees the json5 file, which is correct: it is a strict JSON parser
+and that file has comments and unquoted keys. Prettier formats it.
 
 ### dotenv-linter is a local hook, not checklist-dev-dotenv
 

@@ -15,7 +15,7 @@
 default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: https://github.com/ivan-pinatti/pre-commit-checklists
-    rev: v2.1.3
+    rev: v2.2.0
     hooks:
       # Large-file, merge-conflict and line-ending hygiene. No selector needed.
       - id: checklist-basic
@@ -54,16 +54,14 @@ repos:
       - id: checklist-dev-editorconfig
         stages: [pre-commit]
 
-      # files: rather than types: [shell] on purpose. At this rev the hook's
-      # own manifest bakes in `files: \.(sh|bash)$`, and pre-commit ANDs a
-      # manifest selector with a consumer's types:, which would silently drop
-      # files/bash/.bashrc and .bash_aliases: both are typed `shell` but have
-      # no extension. A consumer files: replaces the manifest regex instead of
-      # intersecting with it (verified against v2.1.3), so this widens the
-      # match rather than narrowing it. Revert to types: [shell] once
-      # pre-commit-checklists#10 ships.
+      # types: [shell] reaches files/bash/.bashrc and .bash_aliases as well as
+      # scripts/*.sh: both are typed `shell` by identify despite having no
+      # extension. That only works from v2.1.4 on. Before it, the hook's own
+      # manifest baked in `files: \.(sh|bash)$`, which pre-commit ANDs with a
+      # consumer's types:, silently dropping both dotfiles; this repo carried
+      # a files: override to work around exactly that.
       - id: checklist-dev-shell
-        files: '(\.(sh|bash)$|(^|/)\.bash[a-z_]*$)'
+        types: [shell]
         stages: [pre-commit]
 
       # check-ast, check-builtin-literals, debug-statements, name-tests-test,
