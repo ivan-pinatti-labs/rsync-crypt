@@ -1,13 +1,26 @@
 # EditorConfig is awesome: https://EditorConfig.org
 # Checked by checklist-dev-editorconfig (editorconfig-checker).
 #
-# `unset` rather than `off` wherever a property is switched off. Both are in
-# the EditorConfig specification and editorconfig-checker treats them
-# identically (verified: a 140 character Markdown line is exempt under either,
-# and still flagged when a number is given instead), but `unset` is the generic
-# mechanism that applies to any property, `off` is specific to
-# max_line_length, and this file already uses `unset` for indent_style and
-# indent_size. One spelling is easier to read than two.
+# `unset` rather than `off` wherever a property is switched off, for a reason
+# worth stating precisely.
+#
+# max_line_length is not an EditorConfig property. The specification at
+# https://spec.editorconfig.org/ lists indent_style, indent_size, tab_width,
+# end_of_line, charset, spelling_language, trim_trailing_whitespace,
+# insert_final_newline and root, and nothing else. max_line_length is a widely
+# supported extension, honoured by editorconfig-checker among others, but the
+# spec says nothing about it and therefore nothing about which values it takes.
+#
+# `unset` is in the spec, and applies to any pair: "a value of `unset` removes
+# the effect of that pair, even if it has been set before". So `unset` is
+# defined behaviour for a property the spec has never heard of, while `off` is
+# a convention that happens to work in the tools that implement the extension.
+# Confirmed empirically for editorconfig-checker: a 140 character Markdown line
+# is exempt under `off` and under `unset`, and still flagged when a number is
+# given instead. Both work here; only one is specified anywhere.
+#
+# This file also already used `unset` for indent_style and indent_size, so one
+# spelling is easier to read than two.
 #
 # Line length is deliberately not enforced here for Markdown. markdownlint
 # owns it instead (MD013 in .markdownlint.yaml), because it understands
@@ -53,10 +66,11 @@ trim_trailing_whitespace = false
 tab_width = 2
 indent_style = unset
 
-# Not 0: the EditorConfig specification defines max_line_length as a positive
-# integer or the literal `off`, so 0 is outside the spec entirely and each tool
-# is free to interpret it however it likes. `unset` here for the reason at the
-# top of this file.
+# Not 0. This used to read `max_line_length = 0`, on the assumption that 0
+# meant unlimited. Nothing specifies that: max_line_length is not a spec
+# property at all (see the top of this file), so 0 means whatever each tool
+# decides it means, which is the one thing a config file should never say.
+# `unset` is spec-defined and unambiguous.
 [COMMIT_EDITMSG]
 max_line_length = unset
 
