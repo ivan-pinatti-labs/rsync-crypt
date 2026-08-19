@@ -174,9 +174,11 @@ Minor, listed so it is a known set rather than a surprise.
 > `GOCRYPTFS_VERSION="2.5"` resolves to `2.5.4-r8` in Alpine 3.23 community
 > repo.
 
-It resolves to `2.5.4-r11` today, confirmed against `alpine:3.23`. The `~=2.5`
-constraint in the Dockerfile is unaffected and still correct; only the note is
-stale.
+As of 2026-08-19 it resolves to `2.5.4-r11`, confirmed by running
+`apk policy gocryptfs` in `alpine:3.23`; see the
+[Alpine package page](https://pkgs.alpinelinux.org/packages?name=gocryptfs&branch=v3.23)
+for the current revision. The `~=2.5` constraint in the Dockerfile is
+unaffected and still correct; only the note is stale.
 
 Worth deciding whether that line should name an exact revision at all, given
 it will drift again on the next Alpine rebuild. The useful part of the note is
@@ -197,11 +199,22 @@ hours passed with no review of the head and no indication anything was
 waiting. Recovery needs a manual `@coderabbitai review`.
 
 **Still open, and not fixable by config:** CodeRabbit's included-review quota
-(3 per hour on the current plan) **drops** a review rather than queueing it. A
-push that arrives while the quota is exhausted is declined and never retried.
-The published schema (`schema.v2.json`) has no retry, backoff, queue or poll
-setting anywhere in it, so there is nothing to configure. The only recovery is
-a manual `@coderabbitai review` once the quota frees.
+**drops** a review rather than queueing it. A push arriving while the quota is
+exhausted is declined and never retried.
+
+The quota is plan-specific and rolling rather than a documented constant, so
+take the figure from CodeRabbit itself rather than from here: on 2026-08-18 it
+reported "Your plan provides up to 3 included reviews per hour" on a **Pro
+Plus** plan, in the same comment that declined the review. Its own message
+names the remaining allowance and the reset time, which is the only
+authoritative source.
+
+No configuration helps. Checked
+[`schema.v2.json`](https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json)
+as fetched on 2026-08-19: no retry, backoff, queue or poll setting exists
+anywhere in it. The only recovery is a manual `@coderabbitai review`, or
+`@coderabbitai full review` when the incremental logic has already marked the
+commits as seen.
 
 Worth knowing when judging whether a pull request is really reviewed:
 
@@ -216,5 +229,8 @@ Worth knowing when judging whether a pull request is really reviewed:
 `drafts: false` is deliberate and stays. CodeRabbit is a GitHub App posting a
 check, not a workflow job, so it cannot be ordered after the pre-commit job
 with a `needs:` dependency. Skipping drafts is the lever instead: open as a
-draft, let pre-commit and the tests find the mechanical defects, then mark it
-ready so a review slot is spent on a diff those have already cleaned.
+draft, let the pre-commit and test jobs run and report, fix whatever they find
+and push, then mark the pull request ready once both pass. The checks
+themselves change nothing in CI; the author does. The point is that a review
+slot is spent on a diff that has already survived them, rather than on defects
+a linter would have named for free.
