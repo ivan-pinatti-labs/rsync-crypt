@@ -15,10 +15,25 @@ it:
 | [#15](https://github.com/ivan-pinatti/rsync-crypt/pull/15) | `style/shfmt-and-ruff-format`       | shfmt + ruff sweep, one real typo                                      | draft, no CI yet                      |
 | [#16](https://github.com/ivan-pinatti/rsync-crypt/pull/16) | `chore/adopt-pre-commit-checklists` | the swap itself, pinned `v2.2.0`                                       | draft, no CI yet                      |
 
-**The state to preserve:** on `#16` all 14 checklists pass, with nothing
-ignored or configured away. `pre-commit install` wires both the pre-commit and
+**The state to preserve:** on `#16` all 14 checklists pass, none of them
+disabled or skipped. `pre-commit install` wires both the pre-commit and
 commit-msg stages, and a real `git commit` with a non-conventional message was
 confirmed rejected.
+
+"Nothing ignored" would be the wrong claim, and was made in an earlier draft
+of this file. Five suppressions exist, each deliberate and each documented
+where it sits:
+
+| Suppression                                       | Where                     | Why                                                                                                                                                         |
+| ------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `superfluous-actions`                             | `.github/zizmor.yml`      | zizmor wants `gh release create` instead of a SHA-pinned action carrying `allowUpdates`, which has no equivalent. See item 3 below.                         |
+| `MD001 MD013 MD033 MD041` and `MD013 MD033 MD045` | two blocks in `README.md` | The centred badge header and the crypto QR table are raw HTML by necessity. Scoped `disable`/`enable` pairs naming specific rules, not a file-wide disable. |
+| `--ignore-checks QuoteCharacter`                  | the local dotenv hook     | `.env.example` quotes its values deliberately; 16 findings otherwise.                                                                                       |
+| 38 `ignoreWords`                                  | `.cspell.json`            | Identifiers and third-party names, kept separate from the 32 real dictionary `words`.                                                                       |
+| 8 `unset` properties                              | `.editorconfig`           | Each one is a place a tool reports something that cannot be fixed. See the file's own comments.                                                             |
+
+`.secrets.baseline` is not on that list: it currently allowlists **zero**
+findings, so it suppresses nothing today.
 
 ### Steps left
 
