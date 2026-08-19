@@ -3,13 +3,21 @@
     be wrapped without breaking them. MD041/MD001 fire because the h1
     sits inside that div rather than on line 1. -->
 <!-- markdownlint-disable MD001 MD013 MD033 MD041 -->
-<!-- The stars badge links to the repository, not to /stargazers. GitHub
-     answers 404 on /stargazers and /watchers for every client without a
-     logged-in browser session: plain curl, a browser user agent, full
-     Sec-Fetch-* headers and an authenticated Bearer token all get a
-     plain-text "Not Found", so no link checker or CI can ever verify it.
-     The count itself comes from the shields.io image URL above, which is
-     unaffected. Please do not point this back at /stargazers. -->
+<!-- The stars badge links to the repository, not to /stargazers, because
+     the link checker cannot resolve /stargazers.
+
+     What was actually observed, on 2026-08-19: requests to
+     https://github.com/ivan-pinatti/rsync-crypt/stargazers returned 404 with
+     a plain-text "Not Found" body, from plain curl, from curl with a browser
+     user agent, from curl with a full set of Sec-Fetch-* navigation headers,
+     and from curl with an authenticated Bearer token. /watchers behaved the
+     same way; /forks, /issues, /pulse and /network/members all returned 200.
+     Whether that generalises to every client or every repository was not
+     established, so no claim is made about it here.
+
+     The count itself comes from the shields.io image URL above and is
+     unaffected by the link target. If you point this back at /stargazers,
+     expect markdown-link-check to fail on it. -->
 <div align="center">
 
 # rsync-crypt
