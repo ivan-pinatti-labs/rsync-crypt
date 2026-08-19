@@ -1,6 +1,6 @@
 # no-fail was set here from the initial commit with no recorded reason, which
 # made every hadolint run advisory: findings were printed and the exit status
 # was always 0, so the Docker lint gate could never fail. Removed deliberately.
-# Suppress an individual rule with a `# hadolint ignore=DLxxxx` comment on the
-# instruction it applies to, so the exception is visible where it is taken.
+# Suppress an individual rule with a `# hadolint ignore=DL3018` style comment
+# on the instruction it applies to, so the exception is visible where taken.
 no-color: true

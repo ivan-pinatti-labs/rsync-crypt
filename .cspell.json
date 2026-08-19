@@ -6,6 +6,7 @@
     "aessiv",
     "ciphertext",
     "cspell",
+    "Dogecoin",
     "dotenv",
     "editmsg",
     "editorconfig",
@@ -15,8 +16,10 @@
     "headlessly",
     "kbytes",
     "keygen",
-    "masterkey",
+    "Litecoin",
     "markdownlint",
+    "masterkey",
+    "Monero",
     "plaintextnames",
     "prettier",
     "pycache",
@@ -34,7 +37,8 @@
     "unincluded",
     "venv",
     "xchacha",
-    "yamllint"
+    "yamllint",
+    "Zcash"
   ],
   "ignoreWords": [
     "addopts",
@@ -42,8 +46,10 @@
     "autouse",
     "bookmarkbackups",
     "bwlimit",
+    "coderabbitai",
     "conftest",
     "datareporting",
+    "dotenvlinter",
     "endef",
     "ENODATA",
     "errno",
@@ -72,6 +78,7 @@
     "Thunar",
     "torbrowser",
     "UKVC",
-    "youruser"
+    "youruser",
+    "zizmor"
   ]
 }
