@@ -1,6 +1,6 @@
 # TODO
 
-<!-- cspell:words checkmake coderabbit coderabbitai maxbodylength mbake minphony phonydeclared -->
+<!-- cspell:words checkmake coderabbit coderabbitai maxbodylength mbake minphony mktemp phonydeclared shutil zizmor -->
 
 ## Outstanding: finish the pre-commit-checklists adoption
 
@@ -213,6 +213,34 @@ unaffected and still correct; only the note is stale.
 Worth deciding whether that line should name an exact revision at all, given
 it will drift again on the next Alpine rebuild. The useful part of the note is
 the `-bs` flag warning underneath it, which is not version-specific.
+
+### 7. Restore and view sessions write to a predictable shared path
+
+**Status:** open. Raised by CodeRabbit on the formatting pull request, against
+pre-existing code.
+
+`scripts/restore.sh` and `scripts/view.sh` write their session files, including
+`sshd_config` and host keys, to a fixed location rather than a private
+directory. A `mktemp -d` per run, with every reference routed through it and an
+exit trap to remove it, would stop one session colliding with another and stop
+the material sitting somewhere predictable.
+
+Not folded into the rsync exit-status fix: that change is about a retry loop
+and carries a regression test aimed at it, and mixing a temp-directory rework
+into it would make both harder to review.
+
+### 8. `tests/conftest.py` invokes `docker` by bare name
+
+**Status:** open, low priority. Also raised on the formatting pull request.
+
+Every Docker call passes the literal string `docker` to `subprocess.run`, so
+resolution depends on whatever `PATH` the suite inherits. Resolving it once
+with `shutil.which` (the suite already imports `shutil` for its
+`require_docker` check) and reusing that path would remove the ambiguity.
+
+Low priority because the suite already refuses to run when `shutil.which`
+cannot find Docker, so the realistic failure is a surprising binary rather
+than a missing one.
 
 ## CodeRabbit: automatic reviews stop silently on a busy branch
 

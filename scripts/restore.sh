@@ -77,16 +77,36 @@ trap 'echo "Restore interrupted, cleaning up..."; fusermount -u ${__restore_decr
 # Pull encrypted data from remote
 #===============================================================
 
+__retry_delay=5
+__retry_delay_max=300
+
 while true; do
   # rsync remote encrypted copy of data to local copy:
-  if rsync --bwlimit="${__rsync_rate_limit}" -P -a -z --stats -h --delete --exclude-from="${__restore_exclude_pattern_file}" "${__restore_origin}"/ "${__restore_encrypted_folder}"; then
+  __rsync_exit=0
+  rsync --bwlimit="${__rsync_rate_limit}" -P -a -z --stats -h --delete --exclude-from="${__restore_exclude_pattern_file}" "${__restore_origin}"/ "${__restore_encrypted_folder}" || __rsync_exit=$?
+  if [ "${__rsync_exit}" -eq 0 ]; then
     echo "rsync succeeded -> encrypted data from ${__restore_origin} is ready in ${__restore_encrypted_folder}"
+    break
+  elif [ "${__rsync_exit}" -eq 23 ] || [ "${__rsync_exit}" -eq 24 ]; then
+    # 23 is a partial transfer, 24 is files that vanished mid transfer. Neither
+    # is retriable: the next attempt hits the same unreadable or already gone
+    # files and returns the same status, so looping on them never terminates.
+    # backup.sh has treated these as success-with-warning since they caused
+    # exactly that infinite loop there; restore.sh was missed at the time.
+    echo "rsync completed with warnings (exit ${__rsync_exit}): some files were skipped (locked, unreadable, or vanished during transfer)."
+    echo "The restore is otherwise complete."
     break
   else
     if ! ${__rsync_loop}; then
-      echo "rsync failed"
+      echo "rsync failed (exit ${__rsync_exit})"
       exit 1
     fi
+    # Back off between attempts. This loop previously had no delay at all, so
+    # a persistent failure spun as fast as rsync could return, hammering the
+    # remote. Mirrors backup.sh: 5s doubling to a 300s ceiling.
+    echo "rsync failed (exit ${__rsync_exit}), retrying in ${__retry_delay}s..."
+    sleep "${__retry_delay}"
+    __retry_delay=$((__retry_delay * 2 > __retry_delay_max ? __retry_delay_max : __retry_delay * 2))
   fi
 done
 
