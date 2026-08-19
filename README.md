@@ -3,6 +3,13 @@
     be wrapped without breaking them. MD041/MD001 fire because the h1
     sits inside that div rather than on line 1. -->
 <!-- markdownlint-disable MD001 MD013 MD033 MD041 -->
+<!-- The stars badge links to the repository, not to /stargazers. GitHub
+     answers 404 on /stargazers and /watchers for every client without a
+     logged-in browser session: plain curl, a browser user agent, full
+     Sec-Fetch-* headers and an authenticated Bearer token all get a
+     plain-text "Not Found", so no link checker or CI can ever verify it.
+     The count itself comes from the shields.io image URL above, which is
+     unaffected. Please do not point this back at /stargazers. -->
 <div align="center">
 
 # rsync-crypt
@@ -11,7 +18,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/stargazers)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
