@@ -105,11 +105,39 @@ Contributions, bug reports, and feature requests are welcome!
 1. [Open an issue](https://github.com/ivan-pinatti/rsync-crypt/issues/new) to report a bug or
    suggest a feature
 2. Fork the repository
-3. Create a feature branch (`git checkout -b feature/my-feature`)
-4. Commit your changes
-5. Open a pull request
+3. Install the hooks: `pre-commit install`. This wires up both the `pre-commit`
+   and `commit-msg` stages; without it the commit message check never runs
+   locally and fails in CI instead
+4. Create a feature branch (`git checkout -b fix/my-thing`). Branch names must
+   be lowercase slugs, optionally prefixed (`fix/`, `docs/`, `chore/`); commits
+   straight to `main` are blocked
+5. Commit your changes using
+   [Conventional Commits](https://www.conventionalcommits.org/): `feat: add x`,
+   `fix(scope): correct y`. Valid types are `feat`, `fix`, `docs`, `style`,
+   `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. **A message
+   that is not in this form is rejected at commit time**
+6. Open a pull request as a **draft** first, let the checks run, fix anything
+   they report, then mark it ready for review
+7. Address the review comments, and merge once everything is green
 
-Please make sure pre-commit hooks pass before submitting (`pre-commit run --all-files`).
+### What the hooks need installed
+
+Linting comes from
+[ivan-pinatti/pre-commit-checklists](https://github.com/ivan-pinatti/pre-commit-checklists),
+pinned in `.pre-commit-config.yaml`. Running `pre-commit run --all-files`
+locally needs more than the tool itself does:
+
+| Needed for | Why |
+| ---------- | --- |
+| Docker or Podman | `hadolint`, `actionlint` and `dotenv-linter` run in containers |
+| Node | Prettier, markdownlint, cspell and the link checker |
+| Python 3.10+ | `zizmor`, installed into its own hook environment |
+
+Everything else is fetched and cached by `pre-commit` on first run.
+
+CI never rewrites your branch. A hook that can fix something will fix it on
+your machine, but in CI the same finding fails the job and waits for you to
+push the fix.
 
 ---
 
