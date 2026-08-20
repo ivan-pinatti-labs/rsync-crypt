@@ -112,6 +112,27 @@ findings. `checklist-dev-dotenv` cannot be passed `--ignore-checks`: every
 its first argument, so an `args:` entry replaces that name instead of reaching
 the tool. The library documents the local-hook copy as the supported way out.
 
+### Parallel agents need separate worktrees
+
+More than one agent working in this repository at the same time must each get
+their own `git worktree`. They cannot share the checkout.
+
+This was learned the hard way: two agents were dispatched into
+`/home/ivan/wo/personal/rsync-crypt` at once to verify two different
+dependency pull requests. Each needed its own branch checked out, so they
+took turns swapping the shared working tree out from under each other. One of
+them noticed its branch had changed mid-task and moved itself into a
+worktree; the other never noticed, which is the worse outcome, because a
+verification run against the wrong branch still reports a result.
+
+Nothing was lost that time. The failure mode to avoid is a passing gate or a
+green test run that was measured against a branch nobody intended, which is
+indistinguishable from a real pass in the report that comes back.
+
+When dispatching with the Agent tool, pass `isolation: "worktree"` so each
+agent gets an isolated copy. A worktree costs a few hundred milliseconds and
+some disk, and is removed automatically if unchanged.
+
 ## User Preferences
 
 - No em-dashes (`—` or `--`) in prose; use commas or parentheses instead
