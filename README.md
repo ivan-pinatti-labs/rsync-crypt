@@ -252,8 +252,8 @@ Copy `.env.example` to `.env` and fill in the values:
 # Docker image
 DOCKER_IMAGE_TAG_NAME="local/gocryptfs"
 DOCKER_IMAGE_TAG_VERSION="1.0.0"
-ALPINE_VERSION="3.23"
-GOCRYPTFS_VERSION="2.5"
+ALPINE_VERSION="3.24"
+GOCRYPTFS_VERSION="2.6"
 
 # SSH credentials
 SSH_KEY_FILE="/home/youruser/.ssh/id_ed25519"

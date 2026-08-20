@@ -8,8 +8,8 @@ RUN apk update \
     && apk add --no-cache \
         bash~=5.3 \
         gocryptfs~=${GOCRYPTFS_VERSION} \
-        less~=685 \
-        openssh~=10.2 \
+        less~=702 \
+        openssh~=10.3 \
         rsync~=3.4 \
         sshfs~=3.7 \
         vim~=9.2 \
