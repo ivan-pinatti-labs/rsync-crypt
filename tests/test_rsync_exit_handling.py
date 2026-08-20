@@ -41,15 +41,24 @@ def test_partial_transfer_statuses_break_the_loop(name):
     )
 
     # The branch that matches 23/24 has to break out, not fall through to the
-    # retry path. Grab the elif block and assert it contains a break.
+    # retry path.
     branch = re.search(
         r"elif \[ \"\$\{__rsync_exit\}\" -eq 23 \].*?(?=\n  else\b)",
         body,
         re.DOTALL,
     )
     assert branch, f"{name}: could not locate the 23/24 branch"
-    assert "break" in branch.group(0), (
-        f"{name}: the 23/24 branch does not break, so it still retries"
+
+    # An executable `break`, not the word appearing in a comment or a string.
+    # `"break" in branch` passed against a branch whose only break was
+    # `# we should break here`, which is why this checks for the statement on
+    # its own line.
+    executable_break = any(
+        line.strip() == "break" for line in branch.group(0).splitlines()
+    )
+    assert executable_break, (
+        f"{name}: the 23/24 branch has no executable break statement, so it "
+        f"falls through to the retry path and loops"
     )
 
 
@@ -61,7 +70,17 @@ def test_retry_path_backs_off(name):
     assert re.search(r"sleep \"\$\{__retry_delay\}\"", body), (
         f"{name} defines a retry delay but never sleeps on it"
     )
-    assert "__retry_delay_max" in body, f"{name} has no ceiling on its backoff"
+
+    # The cap has to be used by the computation, not merely defined. Asserting
+    # only that the name appears in the file passed against a version where
+    # the assignment had been reduced to `__retry_delay * 2` with the ceiling
+    # left dangling, which is unbounded growth with a reassuring variable name.
+    assignment = re.search(r"__retry_delay=\$\(\(.*?\)\)", body, re.DOTALL)
+    assert assignment, f"{name}: no arithmetic update of __retry_delay found"
+    assert "__retry_delay_max" in assignment.group(0), (
+        f"{name}: the backoff grows without reference to __retry_delay_max, "
+        f"so the ceiling is never applied"
+    )
 
 
 @pytest.mark.parametrize("name", LOOPING_SCRIPTS)
