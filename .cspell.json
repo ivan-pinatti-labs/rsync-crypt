@@ -36,6 +36,8 @@
     "sshfs",
     "unincluded",
     "venv",
+    "worktree",
+    "worktrees",
     "xchacha",
     "yamllint",
     "Zcash"
