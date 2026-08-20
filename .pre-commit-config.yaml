@@ -15,7 +15,7 @@
 default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: https://github.com/ivan-pinatti/pre-commit-checklists
-    rev: v2.2.0
+    rev: v2.2.2
     hooks:
       # Large-file, merge-conflict and line-ending hygiene. No selector needed.
       - id: checklist-basic
