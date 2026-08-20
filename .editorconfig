@@ -1,0 +1,102 @@
+# EditorConfig is awesome: https://EditorConfig.org
+# Checked by checklist-dev-editorconfig (editorconfig-checker).
+#
+# `unset` rather than `off` wherever a property is switched off, for a reason
+# worth stating precisely.
+#
+# max_line_length is not an EditorConfig property. The specification at
+# https://spec.editorconfig.org/ lists indent_style, indent_size, tab_width,
+# end_of_line, charset, spelling_language, trim_trailing_whitespace,
+# insert_final_newline and root, and nothing else. max_line_length is a widely
+# supported extension, honoured by editorconfig-checker among others, but the
+# spec says nothing about it and therefore nothing about which values it takes.
+#
+# `unset` is in the spec, and applies to any pair: "a value of `unset` removes
+# the effect of that pair, even if it has been set before". So `unset` is
+# defined behaviour for a property the spec has never heard of, while `off` is
+# a convention that happens to work in the tools that implement the extension.
+# Confirmed empirically for editorconfig-checker: a 140 character Markdown line
+# is exempt under `off` and under `unset`, and still flagged when a number is
+# given instead. Both work here; only one is specified anywhere.
+#
+# This file also already used `unset` for indent_style and indent_size, so one
+# spelling is easier to read than two.
+#
+# Line length is deliberately not enforced here for Markdown. markdownlint
+# owns it instead (MD013 in .markdownlint.yaml), because it understands
+# what editorconfig-checker cannot: that a wrapped pipe table or fenced
+# code block is not a style violation. Two tools enforcing one rule with
+# different awareness only produces findings that cannot both be fixed.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 2
+indent_style = space
+insert_final_newline = true
+quote_type = double
+tab_width = 2
+trim_trailing_whitespace = true
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# indent_size is unset for the same reason max_line_length is: a continuation
+# line under an ordered list marker is three spaces ("1. " is three characters
+# wide), which is correct Markdown and not a multiple of 2. markdownlint owns
+# list indentation instead, via MD005/MD007/MD030, which understand markers.
+[*.md]
+indent_style = space
+indent_size = unset
+max_line_length = unset
+trim_trailing_whitespace = false
+
+# A Makefile legitimately mixes three kinds of leading whitespace and
+# editorconfig cannot express that, so indent_style is left unset rather than
+# asserted as tab: recipe lines must start with a tab, `.PHONY` continuation
+# lines and the `define ... endef` help block are spaces (the latter is literal
+# output text, not code), and recipe continuation lines are a tab followed by
+# alignment spaces. editorconfig-checker flags all three of the non-recipe
+# cases as "spaces instead of tabs"; every one of those findings is wrong.
+[Makefile]
+tab_width = 2
+indent_style = unset
+
+# Not 0. This used to read `max_line_length = 0`, on the assumption that 0
+# meant unlimited. Nothing specifies that: max_line_length is not a spec
+# property at all (see the top of this file), so 0 means whatever each tool
+# decides it means, which is the one thing a config file should never say.
+# `unset` is spec-defined and unambiguous.
+[COMMIT_EDITMSG]
+max_line_length = unset
+
+[*.py]
+max_line_length = 88
+
+[*.json]
+indent_size = 2
+max_line_length = 100
+
+[*.{bash,sh}]
+indent_size = 2
+quote_type = ignore
+
+# rsync filter rules and the llms.txt manifest are plain-text data files whose
+# alignment is meaningful to a human reader, not code. Indentation rules do not
+# apply.
+[*.txt]
+indent_style = unset
+indent_size = unset
+max_line_length = unset
+
+# The verbatim Apache License 2.0 text, centred with spaces exactly as
+# published. It is a legal document reproduced as-is, not something to
+# reformat to a house style.
+[LICENSE.md]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false

@@ -37,31 +37,31 @@ __BINARIES_LIST__+=" rsync"
 
 # check binaries before proceeding
 for binary in ${__BINARIES_LIST__}; do
-    if ! which "${binary}" > /dev/null; then
-        echo "Error! ${binary} is missing..."
-        exit 2
-    fi
+  if ! which "${binary}" >/dev/null; then
+    echo "Error! ${binary} is missing..."
+    exit 2
+  fi
 done
 
 # parameters
-__remote_server=${1:-"user@x.x.x.x"}              # replace x.x.x.x with the remote server's IP or host name
-__backup_remote_folder=${2:-"/restore/origin"}     # folder in the remote server
-__restore_encrypted_folder=${3:-"/restore/enc"}    # encrypted local copy
-__restore_decrypted_folder=${4:-"/restore/dec"}    # decrypted read-only virtual directory
-__restore_passkey_file=${5:-"/restore/passfile"}   # gocryptfs master key
+__remote_server=${1:-"user@x.x.x.x"}                                     # replace x.x.x.x with the remote server's IP or host name
+__backup_remote_folder=${2:-"/restore/origin"}                           # folder in the remote server
+__restore_encrypted_folder=${3:-"/restore/enc"}                          # encrypted local copy
+__restore_decrypted_folder=${4:-"/restore/dec"}                          # decrypted read-only virtual directory
+__restore_passkey_file=${5:-"/restore/passfile"}                         # gocryptfs master key
 __restore_exclude_pattern_file=${6:-"/restore/restore-exclude-list.txt"} # paths to exclude when pulling from remote
-__rsync_rate_limit=${7:-0}                         # maximum transfer rate (kbytes/s), 0 means no limit
-__rsync_loop=${8:-true}                            # rsync loop for unstable connections
-__restore_destination=${9:-"/restore/origin"}      # destination path for restored files
-__restore_paths_file=${10:-"/restore/restore-paths.txt"} # paths to selectively restore (empty = full restore)
+__rsync_rate_limit=${7:-0}                                               # maximum transfer rate (kbytes/s), 0 means no limit
+__rsync_loop=${8:-true}                                                  # rsync loop for unstable connections
+__restore_destination=${9:-"/restore/origin"}                            # destination path for restored files
+__restore_paths_file=${10:-"/restore/restore-paths.txt"}                 # paths to selectively restore (empty = full restore)
 
 # constants
 readonly __restore_origin="${__remote_server}:${__backup_remote_folder}" # rsync origin dir
 
 # RESTORE_PATHS env var override: if set, write to temp file and use instead of paths file
 if [ -n "${RESTORE_PATHS:-}" ]; then
-    printf '%s' "${RESTORE_PATHS}" | tr ' ' '\n' > /tmp/restore-paths-override.txt
-    __restore_paths_file="/tmp/restore-paths-override.txt"
+  printf '%s' "${RESTORE_PATHS}" | tr ' ' '\n' >/tmp/restore-paths-override.txt
+  __restore_paths_file="/tmp/restore-paths-override.txt"
 fi
 
 # display rsync rate
@@ -78,16 +78,16 @@ trap 'echo "Restore interrupted, cleaning up..."; fusermount -u ${__restore_decr
 #===============================================================
 
 while true; do
-    # rsync remote encrypted copy of data to local copy:
-    if rsync --bwlimit="${__rsync_rate_limit}" -P -a -z --stats -h --delete --exclude-from="${__restore_exclude_pattern_file}" "${__restore_origin}"/ "${__restore_encrypted_folder}"; then
-        echo "rsync succeeded -> encrypted data from ${__restore_origin} is ready in ${__restore_encrypted_folder}"
-        break
-    else
-        if ! ${__rsync_loop}; then
-            echo "rsync failed"
-            exit 1
-        fi
+  # rsync remote encrypted copy of data to local copy:
+  if rsync --bwlimit="${__rsync_rate_limit}" -P -a -z --stats -h --delete --exclude-from="${__restore_exclude_pattern_file}" "${__restore_origin}"/ "${__restore_encrypted_folder}"; then
+    echo "rsync succeeded -> encrypted data from ${__restore_origin} is ready in ${__restore_encrypted_folder}"
+    break
+  else
+    if ! ${__rsync_loop}; then
+      echo "rsync failed"
+      exit 1
     fi
+  fi
 done
 
 #===============================================================
@@ -95,27 +95,27 @@ done
 #===============================================================
 
 if ! test -f "${__restore_encrypted_folder}"/gocryptfs.conf; then
-    echo "Error: ${__restore_encrypted_folder}/gocryptfs.conf not found — cannot decrypt."
-    exit 1
+  echo "Error: ${__restore_encrypted_folder}/gocryptfs.conf not found — cannot decrypt."
+  exit 1
 fi
 
 if find "${__restore_decrypted_folder}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | read -r _; then
-    echo "Error: ${__restore_decrypted_folder} must be empty before mounting."
-    echo "If a previous session left it mounted, run: fusermount -u ${__restore_decrypted_folder}"
-    exit 1
+  echo "Error: ${__restore_decrypted_folder} must be empty before mounting."
+  echo "If a previous session left it mounted, run: fusermount -u ${__restore_decrypted_folder}"
+  exit 1
 fi
 
 if [ "${__paranoid_mode}" = "true" ]; then
-    echo "PARANOID MODE: passphrase will be entered interactively."
-    __gocryptfs_passfile_args=""
+  echo "PARANOID MODE: passphrase will be entered interactively."
+  __gocryptfs_passfile_args=""
 else
-    __gocryptfs_passfile_args="-passfile ${__restore_passkey_file}"
+  __gocryptfs_passfile_args="-passfile ${__restore_passkey_file}"
 fi
 
 # shellcheck disable=SC2086
 if ! gocryptfs -ro -nosyslog ${__gocryptfs_passfile_args} "${__restore_encrypted_folder}" "${__restore_decrypted_folder}"; then
-    echo "gocryptfs failed"
-    exit 1
+  echo "gocryptfs failed"
+  exit 1
 fi
 
 echo "Decrypted read-only view mounted at ${__restore_decrypted_folder}"
@@ -128,16 +128,16 @@ echo "Decrypted read-only view mounted at ${__restore_decrypted_folder}"
 _active_paths=$(grep -v '^\s*#' "${__restore_paths_file}" 2>/dev/null | grep -v '^\s*$' || true)
 
 if [ -n "${_active_paths}" ]; then
-    echo "Selective restore: restoring listed paths to ${__restore_destination}"
-    rsync -a --bwlimit="${__rsync_rate_limit}" \
-          --files-from=<(echo "${_active_paths}") \
-          "${__restore_decrypted_folder}/" \
-          "${__restore_destination}/"
+  echo "Selective restore: restoring listed paths to ${__restore_destination}"
+  rsync -a --bwlimit="${__rsync_rate_limit}" \
+    --files-from=<(echo "${_active_paths}") \
+    "${__restore_decrypted_folder}/" \
+    "${__restore_destination}/"
 else
-    echo "Full restore: restoring everything to ${__restore_destination}"
-    rsync -a --bwlimit="${__rsync_rate_limit}" \
-          "${__restore_decrypted_folder}/" \
-          "${__restore_destination}/"
+  echo "Full restore: restoring everything to ${__restore_destination}"
+  rsync -a --bwlimit="${__rsync_rate_limit}" \
+    "${__restore_decrypted_folder}/" \
+    "${__restore_destination}/"
 fi
 
 fusermount -u "${__restore_decrypted_folder}"

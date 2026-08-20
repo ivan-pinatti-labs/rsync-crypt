@@ -8,7 +8,6 @@ and decrypts it. Everything else in the suite is a cheaper sanity check.
 from __future__ import annotations
 
 import pytest
-
 from conftest import (
     MAKE_CONTAINER,
     docker_rm,
