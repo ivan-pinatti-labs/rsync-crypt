@@ -318,8 +318,11 @@ Worth knowing when judging whether a pull request is really reviewed:
 - A **resolved** thread does not mean a fix was verified. CodeRabbit
   auto-resolves threads whose lines a later commit changed, which means the
   code moved, not that it was re-read.
-- The reliable signal is comparing CodeRabbit's latest review timestamp
-  against the head commit's timestamp.
+- **Timestamps cannot answer this**, which this file used to claim they could.
+  CodeRabbit edits its verdict comment in place, so `created_at` stays at the
+  first review while `updated_at` moves for unrelated edits. See "Knowing
+  whether CodeRabbit has actually reviewed a branch" in `CLAUDE.md` for the
+  test that does work.
 
 `drafts: false` is deliberate and stays. CodeRabbit is a GitHub App posting a
 check, not a workflow job, so it cannot be ordered after the pre-commit job
