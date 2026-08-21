@@ -64,11 +64,18 @@ def _cipher_assignment():
     return match.group(0)
 
 
-def _run_case(value):
+_OMITTED = object()
+
+
+def _run_case(value=_OMITTED):
     """Run the real pipeline: ninth positional argument, then the case block.
 
     `value` is passed as `$9` exactly as the Makefile would pass it, so the
-    default substitution is exercised rather than bypassed.
+    default substitution is exercised rather than bypassed. Pass nothing to omit
+    the ninth argument entirely, which is a different path through
+    `${9:-"..."}` than passing an empty string, and the one the Makefile
+    actually produces: it expands these variables unquoted, so a blank value
+    does not arrive as empty, it disappears and the argument count drops.
     """
     script = (
         "set -o errexit -o pipefail -o nounset\n"
@@ -78,7 +85,9 @@ def _run_case(value):
         'printf "FLAG:%s\\n" "${__cipher_flag[*]-}"\n'
     )
     # $0 then eight placeholders, so `value` lands in $9.
-    argv = ["bash", "-c", script, "backup.sh", *(["_"] * 8), value]
+    argv = ["bash", "-c", script, "backup.sh", *(["_"] * 8)]
+    if value is not _OMITTED:
+        argv.append(value)
     # check=False on purpose: the exit status is what these tests assert on.
     return subprocess.run(argv, capture_output=True, text=True, timeout=30, check=False)
 
@@ -141,6 +150,24 @@ def test_empty_argument_falls_back_to_the_default():
     result = _run_case("")
     assert result.returncode == 0, (
         f"an empty cipher aborted, but the default should apply: "
+        f"{result.stdout}{result.stderr}"
+    )
+    assert "FLAG:-aessiv" in result.stdout, (
+        f"the default did not resolve to -aessiv; got {result.stdout!r}"
+    )
+
+
+def test_missing_argument_falls_back_to_the_default():
+    """An absent ninth argument must take the default too.
+
+    Distinct from the empty case above: `${9:-"..."}` covers unset and empty
+    alike, but only the unset path is what a blank Makefile variable produces,
+    because the recipes expand them unquoted so a blank one vanishes rather than
+    passing as empty. See item 10 in docs/TODO.md.
+    """
+    result = _run_case()
+    assert result.returncode == 0, (
+        f"omitting the cipher argument aborted, but the default should apply: "
         f"{result.stdout}{result.stderr}"
     )
     assert "FLAG:-aessiv" in result.stdout, (
