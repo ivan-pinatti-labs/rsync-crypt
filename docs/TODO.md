@@ -357,7 +357,9 @@ waiting. Recovery needs a manual `@coderabbitai review`.
 
 **Still open, and not fixable by config:** CodeRabbit's included-review quota
 **drops** a review rather than queueing it. A push arriving while the quota is
-exhausted is declined and never retried.
+exhausted is declined, and CodeRabbit does not retry it automatically; its
+decline comment does name when the quota resets and invites a manual
+re-request, so recovery is a deliberate step rather than a wait.
 
 The quota is plan-specific and rolling rather than a documented constant, so
 take the figure from CodeRabbit itself rather than from here: on 2026-08-18 it
