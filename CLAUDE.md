@@ -113,6 +113,56 @@ becomes an ancestor again, then push normally. `renovate/alpine-3.x` was
 recovered exactly that way in #8. When neither is possible, push a new branch
 and supersede the old pull request.
 
+### Knowing whether CodeRabbit has actually reviewed a branch
+
+Three separate signals look like "reviewed" and are not. Each of these cost
+real time before being pinned down, so check the combination, not any one:
+
+- **A green CodeRabbit check is not a review.** It is green on a skipped draft
+  and on a rate-limited decline. While a review is running the check reads
+  `Review in progress`, which is `pending`, not a conclusion.
+- **Comment timestamps do not move with the review.** CodeRabbit edits its
+  verdict comment in place, so `created_at` stays at the first review forever
+  while `updated_at` moves for unrelated edits. Every timestamp comparison
+  built on this reported fresh reviews as stale.
+- **A SHA appearing in a CodeRabbit comment is not a finished review of that
+  SHA.** The walkthrough comment names the head commit as soon as the review
+  starts, so matching the head against comment bodies reports completion
+  immediately, before anything has been read.
+
+The reliable test is both halves together: the CodeRabbit **check has
+concluded** (not `pending`), *and* the head SHA is named in its comments, which
+is what proves the conclusion refers to the current head rather than an earlier
+one. Then count unresolved review threads.
+
+Also: a **resolved** thread does not mean a fix was verified. CodeRabbit
+auto-resolves threads whose lines a later commit changed, which means the code
+moved, not that it was re-read.
+
+### Dependency-bot pull requests are not reviewed automatically
+
+CodeRabbit does not auto-review pull requests authored by a bot, and posts no
+check on them at all. That is fine while the pull request is only the bot's
+one-line version bump. It stops being fine the moment work is added on top:
+Renovate's Alpine 3.24 bump grew three re-resolved apk pins and a format
+compatibility investigation, and none of it would have been reviewed. Ask for
+it explicitly with an `@coderabbitai review` comment.
+
+Two related traps on a long-open bot pull request:
+
+- **CodeRabbit reviews incrementally** and will not re-review a commit it has
+  already seen, so a review request after a push covers only what is new.
+- **GitHub can leave the base pinned where the bot opened it.** #8 sat 18
+  commits behind and GitHub compared against that old base, showing 31 files
+  instead of 7, so CodeRabbit reviewed code already merged to `main`. Merging
+  `main` into the branch corrected the base and the diff. Worth checking with
+  `gh pr diff <n> --name-only` before trusting a review: if files appear that
+  the branch never touched, the base is stale.
+
+That accident was useful once, because reviewing already-merged code surfaced
+five real defects in it, including the passkey quoting bug fixed in #23. It is
+not a review strategy: nothing guarantees the stale range covers anything.
+
 ### Selectors match the library's templates
 
 Both selectors that once deviated no longer do, as of `rev: v2.2.0`.
