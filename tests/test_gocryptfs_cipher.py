@@ -45,23 +45,42 @@ def _cipher_case_block():
     return match.group(0)
 
 
+def _cipher_assignment():
+    """backup.sh's own `__gocryptfs_cipher=${9:-"..."}` line, comment stripped.
+
+    Taken from the script so the default cannot drift, and so the test runs the
+    same normalisation the script does. That matters: an empty ninth argument
+    never reaches the case block as an empty string, because `${9:-...}`
+    substitutes the default for an empty value as well as a missing one.
+    """
+    body = BACKUP_SH.read_text()
+    # Deliberately permissive about what is inside the braces. The assertions
+    # below decide whether the expansion is correct; if this pattern insisted on
+    # `:-` with a non-empty default it would fail to match a changed line and
+    # every test in the file would error on extraction instead of reporting
+    # which behaviour broke.
+    match = re.search(r"^__gocryptfs_cipher=\$\{9[^}]*\}", body, re.MULTILINE)
+    assert match, "the __gocryptfs_cipher assignment was not found in backup.sh"
+    return match.group(0)
+
+
 def _run_case(value):
-    """Run the block with __gocryptfs_cipher set, reporting flag and status."""
+    """Run the real pipeline: ninth positional argument, then the case block.
+
+    `value` is passed as `$9` exactly as the Makefile would pass it, so the
+    default substitution is exercised rather than bypassed.
+    """
     script = (
         "set -o errexit -o pipefail -o nounset\n"
-        f"__gocryptfs_cipher={value!r}\n"
+        f"{_cipher_assignment()}\n"
         "__cipher_flag=()\n"
         f"{_cipher_case_block()}\n"
         'printf "FLAG:%s\\n" "${__cipher_flag[*]-}"\n'
     )
+    # $0 then eight placeholders, so `value` lands in $9.
+    argv = ["bash", "-c", script, "backup.sh", *(["_"] * 8), value]
     # check=False on purpose: the exit status is what these tests assert on.
-    return subprocess.run(
-        ["bash", "-c", script],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    return subprocess.run(argv, capture_output=True, text=True, timeout=30, check=False)
 
 
 @pytest.mark.parametrize("value", ["aes-gcm", "aes-siv"])
@@ -110,7 +129,26 @@ def test_xchacha_is_refused_with_the_reason():
         )
 
 
-@pytest.mark.parametrize("value", ["aes_siv", "AES-SIV", "16", ""])
+def test_empty_argument_falls_back_to_the_default():
+    """An empty ninth argument must take the default, not abort.
+
+    `${9:-"aes-gcm"}` substitutes the default for an empty value as well as a
+    missing one, so an unset GOCRYPTFS_CIPHER stays working. An earlier version
+    of this file asserted that empty aborts, which was a contract the script
+    never had: it only looked true because the harness set the variable directly
+    and skipped the substitution.
+    """
+    result = _run_case("")
+    assert result.returncode == 0, (
+        f"an empty cipher aborted, but the default should apply: "
+        f"{result.stdout}{result.stderr}"
+    )
+    assert "FLAG:-aessiv" in result.stdout, (
+        f"the default did not resolve to -aessiv; got {result.stdout!r}"
+    )
+
+
+@pytest.mark.parametrize("value", ["aes_siv", "AES-SIV", "16", "xchacha20"])
 def test_unrecognised_values_abort(value):
     """Silent fallback is what let a shifted argument look like a cipher.
 
