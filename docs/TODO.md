@@ -246,10 +246,16 @@ Low priority because the suite already refuses to run when `shutil.which`
 cannot find Docker, so the realistic failure is a surprising binary rather
 than a missing one.
 
-### 9. `GOCRYPTFS_CIPHER` has one value that does nothing and one that cannot work
+### 9. `GOCRYPTFS_CIPHER` had one value that did nothing and one that could not work
 
-Found while re-resolving pins for the Alpine 3.24 bump. `backup.sh` accepts
-three values and maps them to gocryptfs flags:
+**Status:** fixed. `aes-gcm` and `aes-siv` are now accepted as equivalent
+spellings and both pass `-aessiv` explicitly, `xchacha` is refused with a
+message explaining that reverse mode implies AES-SIV, and anything else
+aborts rather than silently falling back. `tests/test_gocryptfs_cipher.py`
+executes the real `case` block to check each path.
+
+Found while re-resolving pins for the Alpine 3.24 bump. `backup.sh` accepted
+three values and mapped them to gocryptfs flags:
 
 | Value     | Flag       | What actually happens                                  |
 | --------- | ---------- | ------------------------------------------------------ |
@@ -278,6 +284,50 @@ that breaks. Options: drop `GOCRYPTFS_CIPHER` and document that reverse mode
 implies AES-SIV; or keep it, reject `xchacha` up front with a clear message,
 and say in `.env.example` that the other two are equivalent. Either is a
 behaviour change to a documented option, so it wants its own pull request.
+
+### 10. The Makefile expands env variables unquoted into positional arguments
+
+Found while fixing item 9, and more dangerous than item 9 was.
+
+`backup.sh` and its siblings take their configuration as positional arguments,
+and the Makefile passes them like this:
+
+```make
+        /app/backup.sh \
+            "/backup/src" \
+            "/backup/enc" \
+            ${REMOTE_SERVER_BACKUP_FOLDER} \
+            "/backup/passfile" \
+            ${REMOTE_SERVER} \
+            ...
+            ${GOCRYPTFS_CIPHER} \
+            ${GOCRYPTFS_SCRYPT_N} \
+            ${GOCRYPTFS_ENCRYPT_NAMES}
+```
+
+None of the variable expansions are quoted, so a blank value does not arrive as
+an empty argument, it **disappears**, and every argument after it shifts down
+one position. Blanking `GOCRYPTFS_CIPHER` in the env file therefore lands
+`GOCRYPTFS_SCRYPT_N` in the cipher slot, `GOCRYPTFS_ENCRYPT_NAMES` in the
+scrypt slot, and nothing in the eleventh, so `__gocryptfs_encrypt_names` takes
+its `true` default.
+
+That last part is the damaging one. `CLAUDE.md` records that
+`GOCRYPTFS_ENCRYPT_NAMES` must be `false` for the rsync filter rules to match
+anything, so a single blank line in the env file can silently flip filename
+encryption on and defeat every exclude rule, on a run that otherwise looks
+fine. `REMOTE_SERVER_BACKUP_FOLDER` and `REMOTE_SERVER` are unquoted too, so a
+value containing a space splits instead of shifting.
+
+Item 9's strict `*)` branch now catches the cipher slot specifically: a shifted
+`16` is not a recognised cipher and aborts with a message that names this cause.
+That is a backstop for one argument, not a fix.
+
+The fix is to quote each expansion in the recipes, across every target that
+invokes a script this way. Quoted and empty is correct: the scripts use
+`${N:-default}`, which substitutes the default for an empty argument as well as
+a missing one. Left for its own pull request because it touches several targets
+and deserves a test that a blank env variable cannot shift anything.
 
 ## CodeRabbit: automatic reviews stop silently on a busy branch
 

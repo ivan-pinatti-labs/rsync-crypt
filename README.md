@@ -284,7 +284,7 @@ RSYNC_LOOP=true             # retry on failure
 
 # gocryptfs encryption (applied only on first init, stored in config afterwards)
 GOCRYPTFS_ENCRYPT_NAMES=false # false = plaintext names (default), true = scramble filenames (see Known Issues)
-GOCRYPTFS_CIPHER="aes-gcm"   # aes-gcm | aes-siv | xchacha
+GOCRYPTFS_CIPHER="aes-siv"   # aes-siv, or aes-gcm as an equivalent spelling
 GOCRYPTFS_SCRYPT_N=16         # key derivation cost: 2^N iterations
 
 # Passphrase mode
@@ -293,23 +293,23 @@ PARANOID_MODE=false # true = never store passphrase on disk, gocryptfs prompts i
 
 **Variable reference:**
 
-| Variable                      | Description                                                                                                                                                                                  |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SSH_KEY_FILE`                | SSH private key used to authenticate to the remote server                                                                                                                                    |
-| `SSH_KNOWN_HOSTS_FILE`        | Known hosts file to verify the remote server fingerprint                                                                                                                                     |
-| `GOCRYPTFS_PASSKEY_FILE`      | File containing the gocryptfs passphrase. Created interactively if it does not exist                                                                                                         |
-| `BACKUP_SOURCE_FOLDER`        | Directory to back up (user backup)                                                                                                                                                           |
-| `BACKUP_FILTER_RULES`         | rsync filter rules file, controls what is included/excluded                                                                                                                                  |
-| `BACKUP_ENCRYPTION_CONF`      | Path where the gocryptfs reverse config is preserved (root backup)                                                                                                                           |
-| `REMOTE_SERVER`               | `user@host` for the SSH backup destination                                                                                                                                                   |
-| `REMOTE_SERVER_BACKUP_FOLDER` | Path on the remote server where the encrypted backup is stored                                                                                                                               |
-| `RESTORE_DESTINATION`         | Local staging directory for restored files                                                                                                                                                   |
-| `RSYNC_RATE_LIMIT`            | Bandwidth cap in kbytes/s (`0` = no limit)                                                                                                                                                   |
-| `RSYNC_LOOP`                  | `true` to retry rsync automatically on transient errors                                                                                                                                      |
-| `GOCRYPTFS_ENCRYPT_NAMES`     | `false` to keep filenames as plaintext on the remote server (default, required for filter rules to work). `true` scrambles filenames (see [Known Issues](#known-issues-and-limitations))     |
-| `GOCRYPTFS_CIPHER`            | Encryption cipher used at first init: `aes-gcm` (default), `aes-siv`, `xchacha`                                                                                                              |
-| `GOCRYPTFS_SCRYPT_N`          | scrypt key derivation cost exponent (default `16`, meaning 2^16 iterations)                                                                                                                  |
-| `PARANOID_MODE`               | `false` (default). When `true`, the passphrase is never written to disk; gocryptfs prompts interactively on each run. `GOCRYPTFS_PASSKEY_FILE` is ignored. Requires an interactive terminal. |
+| Variable                      | Description                                                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SSH_KEY_FILE`                | SSH private key used to authenticate to the remote server                                                                                                                                       |
+| `SSH_KNOWN_HOSTS_FILE`        | Known hosts file to verify the remote server fingerprint                                                                                                                                        |
+| `GOCRYPTFS_PASSKEY_FILE`      | File containing the gocryptfs passphrase. Created interactively if it does not exist                                                                                                            |
+| `BACKUP_SOURCE_FOLDER`        | Directory to back up (user backup)                                                                                                                                                              |
+| `BACKUP_FILTER_RULES`         | rsync filter rules file, controls what is included/excluded                                                                                                                                     |
+| `BACKUP_ENCRYPTION_CONF`      | Path where the gocryptfs reverse config is preserved (root backup)                                                                                                                              |
+| `REMOTE_SERVER`               | `user@host` for the SSH backup destination                                                                                                                                                      |
+| `REMOTE_SERVER_BACKUP_FOLDER` | Path on the remote server where the encrypted backup is stored                                                                                                                                  |
+| `RESTORE_DESTINATION`         | Local staging directory for restored files                                                                                                                                                      |
+| `RSYNC_RATE_LIMIT`            | Bandwidth cap in kbytes/s (`0` = no limit)                                                                                                                                                      |
+| `RSYNC_LOOP`                  | `true` to retry rsync automatically on transient errors                                                                                                                                         |
+| `GOCRYPTFS_ENCRYPT_NAMES`     | `false` to keep filenames as plaintext on the remote server (default, required for filter rules to work). `true` scrambles filenames (see [Known Issues](#known-issues-and-limitations))        |
+| `GOCRYPTFS_CIPHER`            | Cipher at first init. Reverse mode implies AES-SIV, so `aes-siv` and `aes-gcm` are equivalent and `xchacha` is rejected with an explanation (see [Known Issues](#known-issues-and-limitations)) |
+| `GOCRYPTFS_SCRYPT_N`          | scrypt key derivation cost exponent (default `16`, meaning 2^16 iterations)                                                                                                                     |
+| `PARANOID_MODE`               | `false` (default). When `true`, the passphrase is never written to disk; gocryptfs prompts interactively on each run. `GOCRYPTFS_PASSKEY_FILE` is ignored. Requires an interactive terminal.    |
 
 ### Multiple Configurations
 
