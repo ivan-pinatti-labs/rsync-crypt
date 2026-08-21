@@ -130,10 +130,21 @@ real time before being pinned down, so check the combination, not any one:
   starts, so matching the head against comment bodies reports completion
   immediately, before anything has been read.
 
-The reliable test is both halves together: the CodeRabbit **check has
-concluded** (not `pending`), *and* the head SHA is named in its comments, which
-is what proves the conclusion refers to the current head rather than an earlier
-one. Then count unresolved review threads.
+The reliable test is both halves together, and the first half has to name the
+conclusion rather than merely require one. `gh pr checks <n> --json
+name,bucket,description` reports `bucket: pass` for a completed review *and*
+for a skipped draft, so the bucket alone cannot tell them apart. The
+`description` is what distinguishes them:
+
+| `bucket`  | `description`                        | Reviewed?         |
+| --------- | ------------------------------------ | ----------------- |
+| `pending` | `Review in progress`                 | no, still running |
+| `pass`    | `Review skipped: draft pull request` | no, never started |
+| `pass`    | `Review completed`                   | yes               |
+
+So: `description` is `Review completed`, *and* the head SHA is named in
+CodeRabbit's comments, which is what proves that completion refers to the
+current head rather than an earlier one. Then count unresolved review threads.
 
 Also: a **resolved** thread does not mean a fix was verified. CodeRabbit
 auto-resolves threads whose lines a later commit changed, which means the code
@@ -151,7 +162,9 @@ it explicitly with an `@coderabbitai review` comment.
 Two related traps on a long-open bot pull request:
 
 - **CodeRabbit reviews incrementally** and will not re-review a commit it has
-  already seen, so a review request after a push covers only what is new.
+  already seen, so a plain `@coderabbitai review` after a push covers only what
+  is new. Use `@coderabbitai full review` to force the whole diff to be read
+  again, which is what a stale base or a rewritten branch needs.
 - **GitHub can leave the base pinned where the bot opened it.** #8 sat 18
   commits behind and GitHub compared against that old base, showing 31 files
   instead of 7, so CodeRabbit reviewed code already merged to `main`. Merging
