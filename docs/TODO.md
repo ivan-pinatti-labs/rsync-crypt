@@ -205,20 +205,16 @@ Minor, listed so it is a known set rather than a surprise.
 
 ### 6. `CLAUDE.md` records a stale gocryptfs revision
 
-`CLAUDE.md` says:
+**Status:** fixed by the Alpine 3.24 bump. The note now names `2.6.1-r5` on
+Alpine 3.24, dated and with the command used to resolve it.
 
-> `GOCRYPTFS_VERSION="2.5"` resolves to `2.5.4-r8` in Alpine 3.23 community
-> repo.
-
-As of 2026-08-19 it resolves to `2.5.4-r11`, confirmed by running
-`apk policy gocryptfs` in `alpine:3.23`; see the
-[Alpine package page](https://pkgs.alpinelinux.org/packages?name=gocryptfs&branch=v3.23)
-for the current revision. The `~=2.5` constraint in the Dockerfile is
-unaffected and still correct; only the note is stale.
-
-Worth deciding whether that line should name an exact revision at all, given
-it will drift again on the next Alpine rebuild. The useful part of the note is
-the `-bs` flag warning underneath it, which is not version-specific.
+The open part of this item stands: the line names an exact revision, and it
+will drift again on the next Alpine rebuild, because Alpine bumps the `-rN`
+suffix without changing the upstream version. The `~=` constraint does not
+care about `-rN`, so the note is the only thing that goes stale. Worth
+deciding whether it should name a revision at all, or only the major and minor
+that the constraint actually pins. The `-bs` flag warning underneath it is not
+version-specific and was re-verified against 2.6.1.
 
 ### 7. Restore and view sessions write to a predictable shared path
 
@@ -247,6 +243,39 @@ with `shutil.which` (the suite already imports `shutil` for its
 Low priority because the suite already refuses to run when `shutil.which`
 cannot find Docker, so the realistic failure is a surprising binary rather
 than a missing one.
+
+### 9. `GOCRYPTFS_CIPHER` has one value that does nothing and one that cannot work
+
+Found while re-resolving pins for the Alpine 3.24 bump. `backup.sh` accepts
+three values and maps them to gocryptfs flags:
+
+| Value     | Flag       | What actually happens                                  |
+| --------- | ---------- | ------------------------------------------------------ |
+| `aes-gcm` | none       | reverse mode sets `AESSIV` anyway                      |
+| `aes-siv` | `-aessiv`  | identical to the above, flag for flag                  |
+| `xchacha` | `-xchacha` | `gocryptfs -reverse -init` exits 24, no config written |
+
+Reverse mode needs deterministic encryption, so it enables the `AESSIV`
+feature flag unconditionally. Verified on 2026-08-20 by initialising a reverse
+config each way in `alpine:3.24` and reading `.FeatureFlags` out of
+`.gocryptfs.reverse.conf`:
+
+```text
+aes-gcm (no flag)  ["HKDF","GCMIV128","DirIV","EMENames","LongNames","Raw64","AESSIV"]
+aes-siv (-aessiv)  ["HKDF","GCMIV128","DirIV","EMENames","LongNames","Raw64","AESSIV"]
+forward mode       ["HKDF","GCMIV128","DirIV","EMENames","LongNames","Raw64"]
+```
+
+`-xchacha` fails with "can't have both XChaCha20Poly1305 and AESSIV feature
+flags" on both gocryptfs 2.5.4 (Alpine 3.23) and 2.6.1 (Alpine 3.24), so this
+is long-standing and not a regression. The failure is at init only: a backup
+that already has a config is unaffected.
+
+So the setting offers a choice between two spellings of the same thing and one
+that breaks. Options: drop `GOCRYPTFS_CIPHER` and document that reverse mode
+implies AES-SIV; or keep it, reject `xchacha` up front with a clear message,
+and say in `.env.example` that the other two are equivalent. Either is a
+behaviour change to a documented option, so it wants its own pull request.
 
 ## CodeRabbit: automatic reviews stop silently on a busy branch
 

@@ -39,8 +39,15 @@ rsync-style first-match-wins semantics.
 
 ### Alpine gocryptfs version
 
-`GOCRYPTFS_VERSION="2.5"` resolves to `2.5.4-r8` in Alpine 3.23 community repo.
+`GOCRYPTFS_VERSION="2.6"` resolves to `2.6.1-r5` in the Alpine 3.24 community
+repo, verified 2026-08-20 with `apk policy gocryptfs` in `alpine:3.24`.
 The `-bs` (block size) flag is NOT supported by this build. Do not add it back.
+
+An `ALPINE_VERSION` bump can invalidate this and the `~=` pins in the
+Dockerfile, which is what those pins are for: the build fails loudly instead
+of silently installing a different major version. Re-resolve every pin against
+the new base image before merging such a bump. Alpine 3.24 moved `gocryptfs`
+2.5 to 2.6, `less` 685 to 702, and `openssh` 10.2 to 10.3.
 
 ### rsync exit codes 23 and 24
 

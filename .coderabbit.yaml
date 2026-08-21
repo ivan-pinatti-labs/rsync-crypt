@@ -30,7 +30,7 @@ reviews:
     # with a needs: dependency the way a workflow job can. Skipping drafts is
     # the lever instead: open as a draft, let pre-commit and the tests find
     # the mechanical defects first, then mark it ready so CodeRabbit reviews
-    # a diff those have already cleaned rather than spending a review slot on
+    # a diff they have already cleaned rather than spending a review slot on
     # something a linter would have caught.
     #
     # This is the default. Stated explicitly because the review order depends
