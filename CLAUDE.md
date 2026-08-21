@@ -163,14 +163,20 @@ Two related traps on a long-open bot pull request:
 
 - **CodeRabbit reviews incrementally** and will not re-review a commit it has
   already seen, so a plain `@coderabbitai review` after a push covers only what
-  is new. Use `@coderabbitai full review` to force the whole diff to be read
-  again, which is what a stale base or a rewritten branch needs.
+  is new. `@coderabbitai full review` re-reads the whole current diff, which is
+  what previously reviewed commits or a rewritten history need.
 - **GitHub can leave the base pinned where the bot opened it.** #8 sat 18
   commits behind and GitHub compared against that old base, showing 31 files
-  instead of 7, so CodeRabbit reviewed code already merged to `main`. Merging
-  `main` into the branch corrected the base and the diff. Worth checking with
+  instead of 7, so CodeRabbit reviewed code already merged to `main`. Check with
   `gh pr diff <n> --name-only` before trusting a review: if files appear that
   the branch never touched, the base is stale.
+
+  `full review` does **not** fix that. It re-reads the current diff, and a stale
+  base is what makes the current diff wrong, so a full review of a bad range is
+  still a review of the wrong code. Correct the range first by merging the
+  intended base branch into the pull request branch, confirm with
+  `gh pr diff <n> --name-only` that only the expected files remain, and only
+  then ask for a review. That is the order #8 was recovered in.
 
 That accident was useful once, because reviewing already-merged code surfaced
 five real defects in it, including the passkey quoting bug fixed in #23. It is
