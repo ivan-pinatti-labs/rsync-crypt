@@ -287,6 +287,14 @@ behaviour change to a documented option, so it wants its own pull request.
 
 ### 10. The Makefile expands env variables unquoted into positional arguments
 
+**Status:** fixed. Every `${VAR}` expansion is now quoted at all eight call
+sites that pass positional arguments to `backup.sh`, `restore.sh` and
+`view.sh` (two, four and two respectively). `tests/test_makefile.py` blanks
+`REMOTE_SERVER` and `GOCRYPTFS_CIPHER` in turn and drives `make --dry-run`
+against each script, asserting both the argument count and the value in
+every slot, so a blank value can no longer shift the arguments; the tests
+were confirmed to fail against the unquoted Makefile before the fix.
+
 Found while fixing item 9, and more dangerous than item 9 was.
 
 `backup.sh` and its siblings take their configuration as positional arguments,
