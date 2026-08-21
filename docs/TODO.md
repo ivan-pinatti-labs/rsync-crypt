@@ -235,12 +235,16 @@ into it would make both harder to review.
 
 ### 8. `tests/conftest.py` invokes `docker` by bare name
 
-**Status:** open, low priority. Also raised on the formatting pull request.
+**Status:** fixed. A module-level `DOCKER = shutil.which("docker")` is
+resolved once at import time, and every call site (`docker_rm`,
+`require_docker`, and each `subprocess`/`run` invocation building or
+inspecting a container) reuses that resolved path instead of the literal
+string `docker`.
 
-Every Docker call passes the literal string `docker` to `subprocess.run`, so
-resolution depends on whatever `PATH` the suite inherits. Resolving it once
+Every Docker call passed the literal string `docker` to `subprocess.run`, so
+resolution depended on whatever `PATH` the suite inherited. Resolving it once
 with `shutil.which` (the suite already imports `shutil` for its
-`require_docker` check) and reusing that path would remove the ambiguity.
+`require_docker` check) and reusing that path removes the ambiguity.
 
 Low priority because the suite already refuses to run when `shutil.which`
 cannot find Docker, so the realistic failure is a surprising binary rather

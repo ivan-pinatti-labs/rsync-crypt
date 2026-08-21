@@ -40,6 +40,13 @@ PASSPHRASE = "integration-test-passphrase"
 # mount and the tests mount repeatedly. It does not change what is exercised.
 SCRYPT_N = 10
 
+# Resolved once at import time and reused at every call site, so every Docker
+# invocation in the suite runs the same binary instead of each one resolving
+# the bare name "docker" against PATH separately. None (rather than falling
+# back to the string "docker") is deliberate: it is what lets require_docker
+# below actually detect a missing binary instead of masking it.
+DOCKER = shutil.which("docker")
+
 
 def run(cmd, **kwargs):
     """Run a command and return the CompletedProcess, capturing output."""
@@ -79,16 +86,16 @@ def run_make(target, env_file, timeout=900, extra_args=()):
 
 def docker_rm(name):
     """Remove a container if it exists, without relying on error suppression."""
-    exists = run(["docker", "inspect", "--type", "container", name])
+    exists = run([DOCKER, "inspect", "--type", "container", name])
     if exists.returncode == 0:
-        run(["docker", "rm", "--force", name])
+        run([DOCKER, "rm", "--force", name])
 
 
 @pytest.fixture(scope="session", autouse=True)
 def require_docker():
-    if shutil.which("docker") is None:
+    if DOCKER is None:
         pytest.skip("docker is not installed")
-    info = run(["docker", "info"])
+    info = run([DOCKER, "info"])
     if info.returncode != 0:
         pytest.skip("docker daemon is not reachable")
 
@@ -209,7 +216,7 @@ exec /usr/sbin/sshd -D -e -o PermitRootLogin=yes
 """
     started = run(
         [
-            "docker",
+            DOCKER,
             "run",
             "--detach",
             "--name",
@@ -238,7 +245,7 @@ exec /usr/sbin/sshd -D -e -o PermitRootLogin=yes
 def _wait_for_ip(attempts=30):
     fmt = "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}"
     for _ in range(attempts):
-        result = run(["docker", "inspect", "-f", fmt, REMOTE_CONTAINER])
+        result = run([DOCKER, "inspect", "-f", fmt, REMOTE_CONTAINER])
         address = result.stdout.strip()
         if address:
             return address
@@ -251,7 +258,7 @@ def _wait_for_sshd(address, known_hosts, attempts=30):
     for _ in range(attempts):
         scan = run(
             [
-                "docker",
+                DOCKER,
                 "run",
                 "--rm",
                 "--entrypoint",
@@ -303,7 +310,7 @@ def initialised_source(image, workspace):
         )
         result = run(
             [
-                "docker",
+                DOCKER,
                 "run",
                 "--rm",
                 "--user",
@@ -337,7 +344,7 @@ def _chown_to_container_root(paths):
         volumes += ["--volume", f"{path}:/chown/{index}"]
     result = run(
         [
-            "docker",
+            DOCKER,
             "run",
             "--rm",
             "--user",
@@ -405,7 +412,7 @@ def remote_listing():
     """
     result = run(
         [
-            "docker",
+            DOCKER,
             "exec",
             REMOTE_CONTAINER,
             "find",
@@ -431,7 +438,7 @@ def remote_manifest():
     """
     result = run(
         [
-            "docker",
+            DOCKER,
             "exec",
             REMOTE_CONTAINER,
             "sh",
@@ -452,7 +459,7 @@ def remote_bytes(relative_path):
     """Raw bytes of a file on the remote, as stored (encrypted)."""
     result = subprocess.run(
         [
-            "docker",
+            DOCKER,
             "exec",
             REMOTE_CONTAINER,
             "cat",
