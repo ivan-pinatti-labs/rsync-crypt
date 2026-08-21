@@ -52,7 +52,7 @@ __remote_server=${5:-"user@x.x.x.x"}                              # replace x.x.
 __backup_filter_rules_file=${6:-"/backup/brave-filter-rules.txt"} # filter rules file (include + exclude patterns)
 __rsync_rate_limit=${7:-0}                                        # maximum transfer rate (kbytes/s), 0 means no limit
 __rsync_loop=${8:-true}                                           # rsync loop, helpful with not stable internet connections, it can be true or false
-__gocryptfs_cipher=${9:-"aes-gcm"}                                # encryption cipher: aes-gcm (default), aes-siv, xchacha (only applied on first init)
+__gocryptfs_cipher=${9:-"aes-gcm"}                                # cipher: aes-gcm or aes-siv, equivalent here (reverse mode implies AES-SIV); only applied on first init
 __gocryptfs_scrypt_n=${10:-16}                                    # scrypt key derivation cost exponent: 2^N iterations (only applied on first init)
 __gocryptfs_encrypt_names=${11:-true}                             # encrypt filenames: true (default, names scrambled), false (plaintext names)
 
@@ -119,10 +119,40 @@ if [ ! -s "${__backup_source}/.gocryptfs.reverse.conf.original" ]; then
       echo "Initializing encrypted view of ${__backup_source} (filenames visible on remote)."
       __plaintextnames_flag=(-plaintextnames)
     fi
+    # Reverse mode needs deterministic nonces, so that a file whose contents
+    # have not changed encrypts to the same bytes and rsync transfers only what
+    # actually moved. The gocryptfs manual states that -reverse "Implies
+    # -aessiv", because AES-SIV is the mode that stays secure when nonces
+    # repeat. AES-SIV is therefore the only cipher available here whatever
+    # GOCRYPTFS_CIPHER asks for, so aes-gcm and aes-siv are the same thing.
+    # -aessiv is passed explicitly rather than left implied, so the flag that
+    # produced the config is visible in the command. Verified identical: both
+    # spellings yield the same FeatureFlags in .gocryptfs.reverse.conf.
     case "${__gocryptfs_cipher}" in
-    "aes-siv") __cipher_flag=(-aessiv) ;;
-    "xchacha") __cipher_flag=(-xchacha) ;;
-    *) __cipher_flag=() ;;
+    "aes-gcm" | "aes-siv")
+      __cipher_flag=(-aessiv)
+      ;;
+    "xchacha")
+      echo "ERROR! GOCRYPTFS_CIPHER=xchacha cannot work, aborting..."
+      echo "  Reverse mode implies AES-SIV, and XChaCha20-Poly1305 is unsafe"
+      echo "  with the repeated nonces reverse mode relies on, so gocryptfs"
+      echo "  refuses the pair: \"can't have both XChaCha20Poly1305 and AESSIV"
+      echo "  feature flags\". This is not a limitation of this tool and no"
+      echo "  version of it can offer xchacha for a backup."
+      echo "  Set GOCRYPTFS_CIPHER=aes-siv. Nothing is lost: aes-gcm and"
+      echo "  aes-siv both give AES-SIV here."
+      exit 1
+      ;;
+    *)
+      echo "ERROR! Unknown GOCRYPTFS_CIPHER '${__gocryptfs_cipher}', aborting..."
+      echo "  Valid values are aes-siv and aes-gcm, which are equivalent in"
+      echo "  reverse mode: both give AES-SIV."
+      echo "  If that value looks like a different setting entirely, an empty"
+      echo "  variable in the env file has shifted the arguments: the Makefile"
+      echo "  expands them unquoted, so a blank one disappears instead of"
+      echo "  passing as empty."
+      exit 1
+      ;;
     esac
     gocryptfs -reverse -init \
       "${__plaintextnames_flag[@]}" \
