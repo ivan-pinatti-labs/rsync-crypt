@@ -1,4 +1,4 @@
-# rsync-crypt — Claude Project Memory
+# rsync-crypt (Claude Project Memory)
 
 ## What This Project Is
 
@@ -75,10 +75,16 @@ Changing them after init requires deleting the conf and re-encrypting the full b
 ### CI never autofixes
 
 Settled decision, do not revisit. Formatting hooks auto-fix locally (ruff
---fix, ruff-format, shfmt --write, prettier --write, markdownlint `fix: true`,
-end-of-file-fixer, trailing-whitespace). In CI they run identically, rewrite
-files inside the runner's checkout, and pre-commit exits non-zero so the job
-fails. Nothing is ever committed or pushed back to a branch by CI.
+--fix, ruff-format, shfmt --write, prettier --write, end-of-file-fixer,
+trailing-whitespace). In CI they run identically, rewrite files inside the
+runner's checkout, and pre-commit exits non-zero so the job fails. Nothing is
+ever committed or pushed back to a branch by CI.
+
+markdownlint is deliberately not in that list. `fix` is a markdownlint-cli2
+runner option and is inert in `.markdownlint.yaml`, which is rule
+configuration; there is no `.markdownlint-cli2.yaml` here, so nothing enables
+fixing. Markdown findings are reported and fixed by hand. The file's own
+comments say so.
 
 - No `ci:` block in `.pre-commit-config.yaml`. That block configures
   pre-commit.ci, whose `autofix_prs` is the only mechanism that would push.

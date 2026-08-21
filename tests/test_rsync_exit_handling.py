@@ -31,35 +31,59 @@ def _script(name):
     return (REPO_ROOT / "scripts" / name).read_text()
 
 
+BRANCH_HEADER = re.compile(r"^(?P<indent>\s*)(?P<kw>if|elif|else)\b(?P<rest>.*)$")
+
+
+def _branches(body):
+    """Yield (condition, body_lines) for each branch of every if/elif chain.
+
+    A branch's body stops at the next branch header sharing its indentation,
+    so a `break` in one branch is never credited to another. That mattered:
+    the earlier version of this test matched from `-eq 23` to the closing
+    `else` with a DOTALL `.*?`, which spans any number of intervening
+    branches, so a script that broke on 23 and fell through on 24 passed it.
+    """
+    lines = body.splitlines()
+    headers = []
+    for i, line in enumerate(lines):
+        m = BRANCH_HEADER.match(line)
+        if m:
+            headers.append((i, len(m.group("indent")), m.group("rest")))
+    for pos, (start, indent, cond) in enumerate(headers):
+        end = len(lines)
+        for nxt_start, nxt_indent, _ in headers[pos + 1 :]:
+            if nxt_indent <= indent:
+                end = nxt_start
+                break
+        yield cond, lines[start + 1 : end]
+
+
 @pytest.mark.parametrize("name", LOOPING_SCRIPTS)
-def test_partial_transfer_statuses_break_the_loop(name):
-    """23 and 24 must be handled, and must break rather than retry."""
+@pytest.mark.parametrize("status", [23, 24])
+def test_partial_transfer_status_breaks_the_loop(name, status):
+    """Each of 23 and 24 must be handled by a branch that actually breaks."""
     body = _script(name)
-    assert "-eq 23" in body and "-eq 24" in body, (
-        f"{name} does not special-case rsync exit 23/24, so a partial "
+    token = f"-eq {status}"
+    assert token in body, (
+        f"{name} does not special-case rsync exit {status}, so a partial "
         f"transfer is treated as a retriable failure and loops forever"
     )
 
-    # The branch that matches 23/24 has to break out, not fall through to the
-    # retry path.
-    branch = re.search(
-        r"elif \[ \"\$\{__rsync_exit\}\" -eq 23 \].*?(?=\n  else\b)",
-        body,
-        re.DOTALL,
+    handling = [(cond, lines) for cond, lines in _branches(body) if token in cond]
+    assert handling, (
+        f"{name}: `{token}` appears but not as a branch condition, so nothing "
+        f"acts on it"
     )
-    assert branch, f"{name}: could not locate the 23/24 branch"
 
-    # An executable `break`, not the word appearing in a comment or a string.
-    # `"break" in branch` passed against a branch whose only break was
-    # `# we should break here`, which is why this checks for the statement on
-    # its own line.
-    executable_break = any(
-        line.strip() == "break" for line in branch.group(0).splitlines()
-    )
-    assert executable_break, (
-        f"{name}: the 23/24 branch has no executable break statement, so it "
-        f"falls through to the retry path and loops"
-    )
+    # Every branch that claims this status has to break. An executable
+    # `break` on its own line, not the word inside a comment or a string:
+    # `"break" in branch` once passed against a branch whose only break was
+    # the comment `# we should break here`.
+    for cond, lines in handling:
+        assert any(line.strip() == "break" for line in lines), (
+            f"{name}: the branch matching `{token}` ({cond.strip()}) has no "
+            f"executable break, so it falls through to the retry path and loops"
+        )
 
 
 @pytest.mark.parametrize("name", LOOPING_SCRIPTS)

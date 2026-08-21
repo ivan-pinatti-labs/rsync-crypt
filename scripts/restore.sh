@@ -115,7 +115,7 @@ done
 #===============================================================
 
 if ! test -f "${__restore_encrypted_folder}"/gocryptfs.conf; then
-  echo "Error: ${__restore_encrypted_folder}/gocryptfs.conf not found — cannot decrypt."
+  echo "Error: ${__restore_encrypted_folder}/gocryptfs.conf not found, cannot decrypt."
   exit 1
 fi
 
@@ -127,13 +127,13 @@ fi
 
 if [ "${__paranoid_mode}" = "true" ]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
-  __gocryptfs_passfile_args=""
+  __gocryptfs_passfile_args=()
 else
-  __gocryptfs_passfile_args="-passfile ${__restore_passkey_file}"
+  __gocryptfs_passfile_args=(-passfile "${__restore_passkey_file}")
 fi
 
-# shellcheck disable=SC2086
-if ! gocryptfs -ro -nosyslog ${__gocryptfs_passfile_args} "${__restore_encrypted_folder}" "${__restore_decrypted_folder}"; then
+if ! gocryptfs -ro -nosyslog "${__gocryptfs_passfile_args[@]}" \
+  "${__restore_encrypted_folder}" "${__restore_decrypted_folder}"; then
   echo "gocryptfs failed"
   exit 1
 fi

@@ -85,7 +85,7 @@ if ! sshfs "${__remote_server}:${__remote_backup_folder}" "${__view_enc_folder}"
 fi
 
 if ! test -f "${__view_enc_folder}/gocryptfs.conf"; then
-  echo "Error: ${__view_enc_folder}/gocryptfs.conf not found — cannot decrypt."
+  echo "Error: ${__view_enc_folder}/gocryptfs.conf not found, cannot decrypt."
   fusermount -u "${__view_enc_folder}" 2>/dev/null || true
   exit 1
 fi
@@ -96,13 +96,12 @@ fi
 
 if [ "${__paranoid_mode}" = "true" ]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
-  __gocryptfs_passfile_args=""
+  __gocryptfs_passfile_args=()
 else
-  __gocryptfs_passfile_args="-passfile ${__passkey_file}"
+  __gocryptfs_passfile_args=(-passfile "${__passkey_file}")
 fi
 
-# shellcheck disable=SC2086
-if ! gocryptfs -ro -nosyslog ${__gocryptfs_passfile_args} \
+if ! gocryptfs -ro -nosyslog "${__gocryptfs_passfile_args[@]}" \
   "${__view_enc_folder}" "${__view_dec_folder}"; then
   echo "gocryptfs failed"
   fusermount -u "${__view_enc_folder}" 2>/dev/null || true
@@ -134,7 +133,7 @@ EOF
 /usr/sbin/sshd -f /tmp/sshd_config
 
 echo ""
-echo "VIEWER MODE — decrypted backup accessible via SFTP:"
+echo "VIEWER MODE: decrypted backup accessible via SFTP:"
 echo "  sftp://root@localhost:2222/gocrypt-view/decrypted"
 echo ""
 echo "File manager access (open your file manager and connect to server):"

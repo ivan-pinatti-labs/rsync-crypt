@@ -227,7 +227,7 @@ backup_as_root:
 			${GOCRYPTFS_SCRYPT_N} \
 			${GOCRYPTFS_ENCRYPT_NAMES}
 
-# Restore user backup to a staging directory (safe — review before moving)
+# Restore user backup to a staging directory (safe, review before moving)
 restore:
 	@$(call _passkey_check,/restore/passfile); \
 	docker run \
@@ -291,7 +291,7 @@ restore_to_origin:
 			"/restore/origin" \
 			"/restore/restore-paths.txt"
 
-# Restore root backup to a staging directory (safe — review before moving)
+# Restore root backup to a staging directory (safe, review before moving)
 restore_as_root:
 	@$(call _passkey_check,/restore/passfile); \
 	docker run \
