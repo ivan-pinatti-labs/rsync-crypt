@@ -155,7 +155,7 @@
 - .mozilla/**
 
 # =============================================================================
-# Tor Browser — include profile data, exclude binary, cache, and startup cache
+# Tor Browser: include profile data, exclude binary, cache, and startup cache
 # Assumes torbrowser-launcher managed install on x86_64 Linux.
 # For ARM or manual installs, adjust the traversal path accordingly.
 # =============================================================================
@@ -238,7 +238,7 @@
 - .config/Lens/**
 
 # =============================================================================
-# Spotify — include user preferences, exclude cache and downloaded tracks
+# Spotify: include user preferences, exclude cache and downloaded tracks
 # Note: ~/.cache/spotify/ is already excluded by the global **/.cache rule above.
 # =============================================================================
 

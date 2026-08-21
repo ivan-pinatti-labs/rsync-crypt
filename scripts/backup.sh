@@ -82,10 +82,10 @@ fi
 
 if [ "${__paranoid_mode}" = "true" ]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
-  __gocryptfs_passfile_args=""
+  __gocryptfs_passfile_args=()
 elif test -f "${__backup_passkey_file}"; then
   echo "Gocryptfs passfile found, proceeding..."
-  __gocryptfs_passfile_args="-passfile ${__backup_passkey_file}"
+  __gocryptfs_passfile_args=(-passfile "${__backup_passkey_file}")
 else
   echo "ERROR! Gocryptfs passfile NOT found, aborting..."
   exit 1
@@ -114,22 +114,21 @@ if [ ! -s "${__backup_source}/.gocryptfs.reverse.conf.original" ]; then
     echo "================================================================"
     if [ "${__gocryptfs_encrypt_names}" = "true" ]; then
       echo "Initializing encrypted view of ${__backup_source} (filenames will be scrambled on remote)."
-      __plaintextnames_flag=""
+      __plaintextnames_flag=()
     else
       echo "Initializing encrypted view of ${__backup_source} (filenames visible on remote)."
-      __plaintextnames_flag="-plaintextnames"
+      __plaintextnames_flag=(-plaintextnames)
     fi
     case "${__gocryptfs_cipher}" in
-    "aes-siv") __cipher_flag="-aessiv" ;;
-    "xchacha") __cipher_flag="-xchacha" ;;
-    *) __cipher_flag="" ;;
+    "aes-siv") __cipher_flag=(-aessiv) ;;
+    "xchacha") __cipher_flag=(-xchacha) ;;
+    *) __cipher_flag=() ;;
     esac
-    # shellcheck disable=SC2086
     gocryptfs -reverse -init \
-      ${__plaintextnames_flag} \
-      ${__cipher_flag} \
+      "${__plaintextnames_flag[@]}" \
+      "${__cipher_flag[@]}" \
       -scryptn "${__gocryptfs_scrypt_n}" \
-      "${__backup_source}" ${__gocryptfs_passfile_args}
+      "${__backup_source}" "${__gocryptfs_passfile_args[@]}"
     cp "${__backup_source}/.gocryptfs.reverse.conf" "${__backup_source}/.gocryptfs.reverse.conf.original"
     chmod 600 "${__backup_source}/.gocryptfs.reverse.conf" \
       "${__backup_source}/.gocryptfs.reverse.conf.original"
@@ -151,8 +150,8 @@ else
 fi
 
 # mount read-only encrypted virtual copy of unencrypted local data:
-# shellcheck disable=SC2086
-if gocryptfs -ro -nosyslog ${__gocryptfs_passfile_args} -reverse "${__backup_source}" "${__backup_encrypted_folder}"; then
+if gocryptfs -ro -nosyslog "${__gocryptfs_passfile_args[@]}" -reverse \
+  "${__backup_source}" "${__backup_encrypted_folder}"; then
   echo "gocryptfs succeeded -> the decrypted dir ${__backup_source} is virtually encrypted in ${__backup_encrypted_folder}"
 else
   echo "gocryptfs failed"
