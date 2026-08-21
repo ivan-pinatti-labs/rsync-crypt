@@ -22,8 +22,8 @@ commit-msg stages, and a real `git commit` with a non-conventional message was
 confirmed rejected.
 
 "Nothing ignored" would be the wrong claim, and was made in an earlier draft
-of this file. Five suppressions exist, each deliberate and each documented
-where it sits:
+of this file. Suppressions exist. Each is deliberate and documented where it
+sits:
 
 | Suppression                                       | Where                     | Why                                                                                                                                                         |
 | ------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -36,10 +36,12 @@ where it sits:
 `.secrets.baseline` is not on that list: it currently allowlists **zero**
 findings, so it suppresses nothing today.
 
-The rows deliberately do not carry counts. An earlier version said "38
-`ignoreWords`" and "8 `unset` properties", and both were wrong within a few
-commits, because every edit to those files moves the number and nothing checks
-it. What matters is which suppressions exist and why, and that does not drift.
+Neither the rows nor the sentence above them carry a count. An earlier version
+said "Five suppressions", "38 `ignoreWords`" and "8 `unset` properties", and
+every one of them was wrong within a few commits: each edit to those files
+moves the number and nothing checks it. "Five" was ambiguous as well, since
+the `README.md` row covers two separate blocks. What matters is which
+suppressions exist and why, and that does not drift.
 
 ### Steps left
 
