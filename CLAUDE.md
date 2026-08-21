@@ -94,6 +94,19 @@ Branch out, commit, push, open a draft PR, mark it ready, wait for the gates
 and CodeRabbit, address the comments, and merge once green. Branch names are
 lowercase slugs (`fix/flaky-test`); commit messages are Conventional Commits.
 
+Never force-push. Not `--force`, not `--force-with-lease`, not on a branch
+nobody else is reading, not to tidy up a history. A force-push destroys commits
+on the remote that nobody agreed to lose, and on a dependency bot's branch it
+also rewrites work this account did not author.
+
+That rules out rebasing a pushed branch, because a rebase is what makes the
+force necessary. To bring a stale branch up to date, merge the base branch into
+it and the push stays a fast-forward. If a branch has already been rebased and
+diverged from its remote, merge the remote ref back into it so the remote tip
+becomes an ancestor again, then push normally. `renovate/alpine-3.x` was
+recovered exactly that way in #8. When neither is possible, push a new branch
+and supersede the old pull request.
+
 ### Selectors match the library's templates
 
 Both selectors that once deviated no longer do, as of `rev: v2.2.0`.
