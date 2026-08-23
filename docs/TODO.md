@@ -339,8 +339,45 @@ and deserves a test that a blank env variable cannot shift anything.
 
 ### 11. Quoting cannot protect a value whose env-file entry carries its own quotes
 
-**Status:** open, low priority. Found while verifying item 10's fix. It is the
-half of item 10 that quoting does not reach.
+**Status:** fixed. The seven `${VAR}` expansions that actually vary across the
+eight positional-argument call sites (`REMOTE_SERVER_BACKUP_FOLDER`,
+`REMOTE_SERVER`, `RSYNC_RATE_LIMIT`, `RSYNC_LOOP`, `GOCRYPTFS_CIPHER`,
+`GOCRYPTFS_SCRYPT_N`, `GOCRYPTFS_ENCRYPT_NAMES`) are now wrapped as
+`"$(subst ",,${VAR})"` instead of `"${VAR}"`. The recipe strips any literal
+quote characters the env file supplied before the Makefile's own quotes are
+added, so the two pairs no longer fight. `tests/test_makefile.py` adds a
+quoted-value-with-a-space case, run against `backup.sh`, `restore.sh` and
+`view.sh`, plus a quoted-empty-value case for `GOCRYPTFS_CIPHER`. Only the
+space case failed against the pre-fix Makefile, which is the bug this item
+describes; the empty case passed before and after, because item 10 already
+guaranteed it, and it is here to keep that guarantee from regressing.
+
+Deliberately not the ingest-time normalisation this item's own note below
+considered as the preferred shape. `include $(ENV_FILE)` also populates
+variables such as `BACKUP_SOURCE_FOLDER`, `SSH_KEY_FILE` and
+`DOCKER_IMAGE_TAG_NAME`, which are used raw at `--volume`, `--tag`,
+`--build-arg`, `docker rmi` and `rm -f` call sites that item 10 never
+quoted. Under the quoted convention `.env.example` uses, those call sites are
+accidentally already safe: the env file's own quote characters are the only
+quoting the shell sees there, so a value with a space parses as one word
+today, confirmed with `make --dry-run backup` against
+`BACKUP_SOURCE_FOLDER="/home/my user"`, which emits `--volume "/home/my
+user":/backup/src` and parses as a single argument. Stripping those quotes
+at ingest without also adding real quotes at every one of those call sites
+would have regressed that case. None of the seven variables this bug
+actually affects appear at any `--volume` or `--tag` site, so the
+per-call-site fix reaches exactly what needs it without touching the rest of
+the Makefile's quoting at all.
+
+`RESTORE_PATHS` was left alone for a different reason. It reaches
+`docker run` as `--env RESTORE_PATHS='${RESTORE_PATHS}'`, already
+single-quote protected at the Makefile level, so the quote-nesting bug this
+item describes does not apply to it. It is also not one of `.env.example`'s
+documented variables; its supported path is
+`make restore RESTORE_PATHS="Documents/ .config/Code/User/"` on the command
+line, where the shell strips the quotes before `make` ever sees the value.
+
+The original finding, left for the record:
 
 `.env.example` quotes every value deliberately. `CLAUDE.md` records that
 convention as the reason `dotenv-linter` runs as a local hook: its 16

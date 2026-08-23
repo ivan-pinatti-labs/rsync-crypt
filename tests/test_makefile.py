@@ -261,3 +261,61 @@ def test_value_with_a_space_does_not_split_into_two_arguments(tmp_path):
     expected = [_expected_value(item, overrides, example_text) for item in _VIEW_ARGS]
     assert args == expected
     assert args[1] == "/mnt/backups/a user"
+
+
+@pytest.mark.parametrize(
+    ("target", "script_name", "arg_spec"),
+    [
+        ("backup", "backup.sh", _BACKUP_ARGS),
+        ("restore", "restore.sh", _RESTORE_ARGS),
+        ("view", "view.sh", _VIEW_ARGS),
+    ],
+)
+def test_quoted_env_value_with_a_space_arrives_as_one_argument(
+    tmp_path, target, script_name, arg_spec
+):
+    """docs/TODO.md item 11: .env.example quotes every value deliberately, so
+    'include $(ENV_FILE)' hands the make variable those literal quote
+    characters as part of its value, e.g.
+    REMOTE_SERVER_BACKUP_FOLDER="/mnt/my backups" sets the variable to
+    '"/mnt/my backups"', quotes included. Item 10 wrapped each expansion in a
+    second pair of Makefile-level quotes, but the two pairs do not nest: the
+    recipe used to emit '"/mnt/my backups"' with the quote characters still
+    embedded, and the shell split it into two words on the space exactly as
+    before item 10. This is the case that fails today (before the item 11
+    fix strips the embedded quotes with $(subst)) and is the one item 10
+    left open. REMOTE_SERVER_BACKUP_FOLDER is used because it appears in all
+    three scripts' argument lists, so one override covers backup.sh,
+    restore.sh and view.sh.
+    """
+    example_text = (REPO_ROOT / ".env.example").read_text()
+    overrides = {"REMOTE_SERVER_BACKUP_FOLDER": '"/mnt/backups/a user"'}
+    env_file = _env_file_with_overrides(tmp_path, overrides)
+
+    args = _dry_run_positional_args(target, env_file, script_name)
+    expected = [_expected_value(item, overrides, example_text) for item in arg_spec]
+    assert args == expected
+    assert "/mnt/backups/a user" in args
+
+
+def test_quoted_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_path):
+    """The item 10 shifting guarantee re-checked under the quoted convention.
+
+    test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default already
+    covers an unquoted blank (GOCRYPTFS_CIPHER=). This is the same scenario
+    with GOCRYPTFS_CIPHER="" instead, which is how .env.example's own
+    convention would spell an empty value. docs/TODO.md item 11 records this
+    as one of the three cases $(subst ",,$(VAR)) was verified against: a
+    value with a space, a value without one, and an empty value.
+    """
+    example_text = (REPO_ROOT / ".env.example").read_text()
+    overrides = {"GOCRYPTFS_CIPHER": '""'}
+    env_file = _env_file_with_overrides(tmp_path, overrides)
+
+    args = _dry_run_positional_args("backup", env_file, "backup.sh")
+    expected = [_expected_value(item, overrides, example_text) for item in _BACKUP_ARGS]
+    assert args == expected
+
+    assert args[8] == ""  # GOCRYPTFS_CIPHER: quoted-and-empty, not vanished
+    assert args[9] == _read_var(example_text, "GOCRYPTFS_SCRYPT_N")
+    assert args[10] == _read_var(example_text, "GOCRYPTFS_ENCRYPT_NAMES")
