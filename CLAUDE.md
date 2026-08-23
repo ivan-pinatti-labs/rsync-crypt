@@ -234,3 +234,7 @@ some disk, and is removed automatically if unchanged.
 - No `|| true` in Makefile; use `docker inspect` conditionals instead
 - `make clean` uses `docker inspect` pre-checks before `rm` to avoid false failures
 - Do not add `|| true` as a general error suppressor; fail explicitly with a clear message
+- Never add `Co-Authored-By: Claude`, "Generated with Claude Code", or any
+  other AI attribution to a commit message, a pull request body, or a
+  changelog entry. This is a hard prohibition, not a preference: it applies
+  to every commit and every pull request, with no exception.

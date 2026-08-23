@@ -182,15 +182,15 @@ backup:
 		/app/backup.sh \
 			"/backup/src" \
 			"/backup/enc" \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/backup/passfile" \
-			${REMOTE_SERVER} \
+			"${REMOTE_SERVER}" \
 			"/backup/brave-filter-rules.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
-			${GOCRYPTFS_CIPHER} \
-			${GOCRYPTFS_SCRYPT_N} \
-			${GOCRYPTFS_ENCRYPT_NAMES}
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
+			"${GOCRYPTFS_CIPHER}" \
+			"${GOCRYPTFS_SCRYPT_N}" \
+			"${GOCRYPTFS_ENCRYPT_NAMES}"
 
 backup_as_root:
 	@$(call _passkey_check,/backup/passfile); \
@@ -217,15 +217,15 @@ backup_as_root:
 		/app/backup.sh \
 			"/backup/src" \
 			"/backup/enc" \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/backup/passfile" \
-			${REMOTE_SERVER} \
+			"${REMOTE_SERVER}" \
 			"/backup/brave-filter-rules.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
-			${GOCRYPTFS_CIPHER} \
-			${GOCRYPTFS_SCRYPT_N} \
-			${GOCRYPTFS_ENCRYPT_NAMES}
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
+			"${GOCRYPTFS_CIPHER}" \
+			"${GOCRYPTFS_SCRYPT_N}" \
+			"${GOCRYPTFS_ENCRYPT_NAMES}"
 
 # Restore user backup to a staging directory (safe, review before moving)
 restore:
@@ -248,14 +248,14 @@ restore:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/restore.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/restore/enc" \
 			"/restore/dec" \
 			"/restore/passfile" \
 			"/restore/restore-exclude-list.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
 			"/restore/origin" \
 			"/restore/restore-paths.txt"
 
@@ -280,14 +280,14 @@ restore_to_origin:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/restore.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/restore/enc" \
 			"/restore/dec" \
 			"/restore/passfile" \
 			"/restore/restore-exclude-list.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
 			"/restore/origin" \
 			"/restore/restore-paths.txt"
 
@@ -312,14 +312,14 @@ restore_as_root:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/restore.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/restore/enc" \
 			"/restore/dec" \
 			"/restore/passfile" \
 			"/restore/restore-exclude-list.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
 			"/restore/origin" \
 			"/restore/restore-paths.txt"
 
@@ -348,14 +348,14 @@ restore_as_root_to_origin:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/restore.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/restore/enc" \
 			"/restore/dec" \
 			"/restore/passfile" \
 			"/restore/restore-exclude-list.txt" \
-			${RSYNC_RATE_LIMIT} \
-			${RSYNC_LOOP} \
+			"${RSYNC_RATE_LIMIT}" \
+			"${RSYNC_LOOP}" \
 			"/restore/origin" \
 			"/restore/restore-paths.txt"
 
@@ -379,8 +379,8 @@ view:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/view.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/gocrypt-view/passfile" \
 			"/gocrypt-view/encrypted" \
 			"/gocrypt-view/decrypted"
@@ -405,8 +405,8 @@ view_as_root:
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/view.sh \
-			${REMOTE_SERVER} \
-			${REMOTE_SERVER_BACKUP_FOLDER} \
+			"${REMOTE_SERVER}" \
+			"${REMOTE_SERVER_BACKUP_FOLDER}" \
 			"/gocrypt-view/passfile" \
 			"/gocrypt-view/encrypted" \
 			"/gocrypt-view/decrypted"

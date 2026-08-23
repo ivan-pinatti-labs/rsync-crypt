@@ -235,12 +235,16 @@ into it would make both harder to review.
 
 ### 8. `tests/conftest.py` invokes `docker` by bare name
 
-**Status:** open, low priority. Also raised on the formatting pull request.
+**Status:** fixed. A module-level `DOCKER = shutil.which("docker")` is
+resolved once at import time, and every call site (`docker_rm`,
+`require_docker`, and each `subprocess`/`run` invocation building or
+inspecting a container) reuses that resolved path instead of the literal
+string `docker`.
 
-Every Docker call passes the literal string `docker` to `subprocess.run`, so
-resolution depends on whatever `PATH` the suite inherits. Resolving it once
+Every Docker call passed the literal string `docker` to `subprocess.run`, so
+resolution depended on whatever `PATH` the suite inherited. Resolving it once
 with `shutil.which` (the suite already imports `shutil` for its
-`require_docker` check) and reusing that path would remove the ambiguity.
+`require_docker` check) and reusing that path removes the ambiguity.
 
 Low priority because the suite already refuses to run when `shutil.which`
 cannot find Docker, so the realistic failure is a surprising binary rather
@@ -286,6 +290,14 @@ and say in `.env.example` that the other two are equivalent. Either is a
 behaviour change to a documented option, so it wants its own pull request.
 
 ### 10. The Makefile expands env variables unquoted into positional arguments
+
+**Status:** fixed. Every `${VAR}` expansion is now quoted at all eight call
+sites that pass positional arguments to `backup.sh`, `restore.sh` and
+`view.sh` (two, four and two respectively). `tests/test_makefile.py` blanks
+`REMOTE_SERVER` and `GOCRYPTFS_CIPHER` in turn and drives `make --dry-run`
+against each script, asserting both the argument count and the value in
+every slot, so a blank value can no longer shift the arguments; the tests
+were confirmed to fail against the unquoted Makefile before the fix.
 
 Found while fixing item 9, and more dangerous than item 9 was.
 
@@ -345,7 +357,9 @@ waiting. Recovery needs a manual `@coderabbitai review`.
 
 **Still open, and not fixable by config:** CodeRabbit's included-review quota
 **drops** a review rather than queueing it. A push arriving while the quota is
-exhausted is declined and never retried.
+exhausted is declined, and CodeRabbit does not retry it automatically; its
+decline comment does name when the quota resets and invites a manual
+re-request, so recovery is a deliberate step rather than a wait.
 
 The quota is plan-specific and rolling rather than a documented constant, so
 take the figure from CodeRabbit itself rather than from here: on 2026-08-18 it
