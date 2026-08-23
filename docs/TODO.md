@@ -341,6 +341,54 @@ invokes a script this way. Quoted and empty is correct: the scripts use
 a missing one. Left for its own pull request because it touches several targets
 and deserves a test that a blank env variable cannot shift anything.
 
+### 11. Quoting cannot protect a value whose env-file entry carries its own quotes
+
+**Status:** open, low priority. Found while verifying item 10's fix. It is the
+half of item 10 that quoting does not reach.
+
+`.env.example` quotes every value deliberately. `CLAUDE.md` records that
+convention as the reason `dotenv-linter` runs as a local hook: its 16
+`QuoteCharacter` findings are expected and suppressed. `include $(ENV_FILE)`
+hands the make variable those quote characters as part of its value, so
+`REMOTE_SERVER_BACKUP_FOLDER="/mnt/my backups"` sets the variable to
+`"/mnt/my backups"`, quotes included.
+
+Item 10 wrapped every expansion in a second pair, which produces
+`""/mnt/my backups""`. The two pairs do not nest. The shell concatenates an
+empty string, the bare word, and another empty string, then splits on the
+space exactly as before. Verified against the merged fix with
+`make --dry-run backup` and an env file holding a path with a space:
+
+```text
+/app/backup.sh \
+        "/backup/src" \
+        "/backup/enc" \
+        ""/mnt/my backups"" \
+```
+
+What item 10 did close, under both conventions, is the shifting. A blank
+`GOCRYPTFS_CIPHER` now emits `""""`, which is one empty argument, so
+`GOCRYPTFS_ENCRYPT_NAMES` keeps the eleventh slot and its `false` value. That
+was the dangerous half. What remains is the space case alone, and only for
+values the env file quotes, which is every value in `.env.example`.
+
+`tests/test_makefile.py` asserts the space case with an unquoted override
+rather than the quoted convention. That is deliberate: it tests what is
+actually guaranteed today rather than what would be nice.
+
+Two candidate fixes, neither started:
+
+- Strip the surrounding quotes in the Makefile. `$(patsubst "%",%,$(VAR))` does
+  **not** work: make's text functions split on whitespace, so a value with a
+  space is two words and neither matches the pattern. `$(subst ",,$(VAR))` does
+  work, verified on a value with a space, a value without one, and an empty
+  value, but it removes every double quote in the value rather than only a
+  surrounding pair.
+- Drop the quoting convention from `.env.example` and let `dotenv-linter`'s
+  `QuoteCharacter` check enforce it, which would retire the local-hook
+  workaround as a side effect. This changes a documented contract and every
+  existing `.env` file, so it is the larger of the two.
+
 ## CodeRabbit: automatic reviews stop silently on a busy branch
 
 `.coderabbit.yaml` now sets `reviews.auto_review.auto_pause_after_reviewed_commits: 0`.

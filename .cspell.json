@@ -77,6 +77,7 @@
     "nosyslog",
     "nounset",
     "passfile",
+    "patsubst",
     "Pinatti",
     "pipefail",
     "rootdir",
