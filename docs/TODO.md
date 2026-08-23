@@ -379,11 +379,12 @@ actually guaranteed today rather than what would be nice.
 Two candidate fixes, neither started:
 
 - Strip the surrounding quotes in the Makefile. `$(patsubst "%",%,$(VAR))` does
-  **not** work: make's text functions split on whitespace, so a value with a
-  space is two words and neither matches the pattern. `$(subst ",,$(VAR))` does
-  work, verified on a value with a space, a value without one, and an empty
-  value, but it removes every double quote in the value rather than only a
-  surrounding pair.
+  **not** work: `patsubst` operates on whitespace-separated words, so a value
+  with a space arrives as two words, neither of which matches the pattern.
+  `$(subst ",,$(VAR))` does work, because it is a literal text replacement and
+  does not tokenise its input at all. Verified on a value with a space, a value
+  without one, and an empty value. Its cost is that it removes every double
+  quote in the value rather than only a surrounding pair.
 - Drop the quoting convention from `.env.example` and let `dotenv-linter`'s
   `QuoteCharacter` check enforce it, which would retire the local-hook
   workaround as a side effect. This changes a documented contract and every
