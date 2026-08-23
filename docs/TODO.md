@@ -63,7 +63,7 @@ Both cost a round trip; worth knowing before the next stacked change.
   plan's included-review allowance, which **drops** a review rather than
   queueing it, so a push arriving during exhaustion is declined; CodeRabbit
   does not retry it automatically, though its decline comment names when the
-  quota resets and invites a manual re-request. That one has no setting at
+  quota refills and invites a manual re-request. That one has no setting at
   all. Either way a review has to be re-requested by hand, with
   `@coderabbitai review`, or
   `@coderabbitai full review` when the incremental logic has already marked
@@ -80,7 +80,7 @@ Both cost a round trip; worth knowing before the next stacked change.
   "Knowing whether CodeRabbit has actually reviewed a branch" in `CLAUDE.md`
   for the test that actually works.
 
-### Once `pre-commit-checklists` ships its own TODO items
+### Upstream `pre-commit-checklists` TODO items
 
 Tracked in that repo's `docs/TODO.md`; two of them affect this repo, one
 still open upstream and one already landed.
@@ -403,8 +403,10 @@ waiting. Recovery needs a manual `@coderabbitai review`.
 **Still open, and not fixable by config:** CodeRabbit's included-review quota
 **drops** a review rather than queueing it. A push arriving while the quota is
 exhausted is declined, and CodeRabbit does not retry it automatically; its
-decline comment does name when the quota resets and invites a manual
-re-request, so recovery is a deliberate step rather than a wait.
+decline comment does name when the quota refills and invites a manual
+re-request, so recovery is a deliberate step rather than a wait. The standard
+allowance is a rolling window, so capacity returns incrementally as earlier
+reviews age out rather than all at once on a reset.
 
 The quota is plan-specific and rolling rather than a documented constant, so
 take the figure from CodeRabbit itself rather than from here: on 2026-08-18 it

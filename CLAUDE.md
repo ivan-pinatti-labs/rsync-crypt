@@ -146,6 +146,13 @@ So: `description` is `Review completed`, *and* the head SHA is named in
 CodeRabbit's comments, which is what proves that completion refers to the
 current head rather than an earlier one. Then count unresolved review threads.
 
+Look for that SHA in both places. A clean review puts the range in the
+walkthrough issue comment (`issues/<n>/comments`), but a review that posts
+findings puts it in the review body (`pulls/<n>/reviews`) instead, and
+searching only the issue comments then finds nothing and reads as "not
+reviewed". Both #28 and #29 were misjudged that way before the review bodies
+were checked.
+
 Also: a **resolved** thread does not mean a fix was verified. CodeRabbit
 auto-resolves threads whose lines a later commit changed, which means the code
 moved, not that it was re-read.
