@@ -351,8 +351,10 @@ eight positional-argument call sites (`REMOTE_SERVER_BACKUP_FOLDER`,
 quote characters the env file supplied before the Makefile's own quotes are
 added, so the two pairs no longer fight. `tests/test_makefile.py` adds a
 quoted-value-with-a-space case, run against `backup.sh`, `restore.sh` and
-`view.sh`, plus a quoted-empty-value case for `GOCRYPTFS_CIPHER`; both were
-confirmed to fail against the pre-fix Makefile and pass after.
+`view.sh`, plus a quoted-empty-value case for `GOCRYPTFS_CIPHER`. Only the
+space case failed against the pre-fix Makefile, which is the bug this item
+describes; the empty case passed before and after, because item 10 already
+guaranteed it, and it is here to keep that guarantee from regressing.
 
 Deliberately not the ingest-time normalisation this item's own note below
 considered as the preferred shape. `include $(ENV_FILE)` also populates
