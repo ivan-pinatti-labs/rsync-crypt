@@ -3,18 +3,16 @@
 <!-- cspell:words checkmake coderabbit maxbodylength mbake -->
 <!-- cspell:words minphony mktemp phonydeclared shutil -->
 
-## Outstanding: finish the pre-commit-checklists adoption
+## The pre-commit-checklists adoption
 
-The adoption is built and verified but not yet merged. It is a stack of four
-pull requests that must land in order, because each is based on the one below
-it:
-
-| PR                                                         | Branch                              | Contents                                                               | State                                 |
-| ---------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| [#12](https://github.com/ivan-pinatti/rsync-crypt/pull/12) | `chore/add-lint-configs`            | `.editorconfig`, `.cspell.json`, `.yamllint.yml`, `.markdownlint.yaml` | ready, checks green, review requested |
-| [#13](https://github.com/ivan-pinatti/rsync-crypt/pull/13) | `docs/readme-lint-clean`            | 144 markdownlint findings to 0                                         | draft, no CI yet                      |
-| [#15](https://github.com/ivan-pinatti/rsync-crypt/pull/15) | `style/shfmt-and-ruff-format`       | shfmt + ruff sweep, one real typo                                      | draft, no CI yet                      |
-| [#16](https://github.com/ivan-pinatti/rsync-crypt/pull/16) | `chore/adopt-pre-commit-checklists` | the swap itself, pinned `v2.2.0`                                       | draft, no CI yet                      |
+The adoption landed as a stack of four pull requests, merged in order because
+each was based on the one below it:
+[#12](https://github.com/ivan-pinatti/rsync-crypt/pull/12) (lint configs:
+`.editorconfig`, `.cspell.json`, `.yamllint.yml`, `.markdownlint.yaml`),
+[#13](https://github.com/ivan-pinatti/rsync-crypt/pull/13) (144 markdownlint
+findings to 0), [#15](https://github.com/ivan-pinatti/rsync-crypt/pull/15)
+(shfmt + ruff sweep, one real typo), and
+[#16](https://github.com/ivan-pinatti/rsync-crypt/pull/16) (the swap itself).
 
 **The state to preserve:** on `#16` all 14 checklists pass, none of them
 disabled or skipped. `pre-commit install` wires both the pre-commit and
@@ -43,22 +41,13 @@ moves the number and nothing checks it. "Five" was ambiguous as well, since
 the `README.md` row covers two separate blocks. What matters is which
 suppressions exist and why, and that does not drift.
 
-### Steps left
-
-1. Merge `#12`, once its current head has been reviewed clean.
-2. `#13` auto-retargets to `main`. **Wait for CI to run and pass first**,
-   which only happens now that its base is `main`, fix anything it reports,
-   and only then mark it ready so CodeRabbit reviews a diff the mechanical
-   checks have already been through. Merge, then repeat for `#15`, then
-   `#16`. Marking it ready before CI finishes inverts the whole point of
-   `drafts: false`.
-3. After `#16`, delete the `ci:` block's replacement worry: it is already gone
-   from `.pre-commit-config.yaml`, but confirm pre-commit.ci is still not
-   installed on the repository.
-4. Remaining docs pass: `README.md` still describes the old hook set and does
-   not mention that local `pre-commit` runs now need Docker (for
-   `hadolint-docker`, `actionlint-docker` and the dotenv image). `CLAUDE.md` is
-   already updated.
+Confirmed after all four merged: `.pre-commit-config.yaml` carries no `ci:`
+block, and no pre-commit.ci check appears on any pull request opened since
+(checked `gh pr checks` on `#12` through `#27`), so pre-commit.ci remains not
+installed on the repository. `README.md`'s "What the hooks need installed"
+section documents the checklists repo, the Docker requirement for
+`hadolint`, `actionlint` and `dotenv-linter`, and the no-autofix policy;
+`CLAUDE.md` was updated at the same time.
 
 ### Two process traps found the hard way
 
@@ -72,9 +61,11 @@ Both cost a round trip; worth knowing before the next stacked change.
   pauses automatic reviews on a branch once five commits have been reviewed;
   that is config-fixable and is now set to 0. The other is running out of the
   plan's included-review allowance, which **drops** a review rather than
-  queueing it, so a push arriving during exhaustion is declined and never
-  retried; that one has no setting at all. Either way a review has to be
-  re-requested by hand, with `@coderabbitai review`, or
+  queueing it, so a push arriving during exhaustion is declined; CodeRabbit
+  does not retry it automatically, though its decline comment names when the
+  quota refills and invites a manual re-request. That one has no setting at
+  all. Either way a review has to be re-requested by hand, with
+  `@coderabbitai review`, or
   `@coderabbitai full review` when the incremental logic has already marked
   the commits as seen.
 - **Every CodeRabbit signal is time-independent unless you check it
@@ -83,21 +74,26 @@ Both cost a round trip; worth knowing before the next stacked change.
   those lines, not that the fix was read. A _clean verdict comment_ can
   predate the current head by hours. And a clean review creates no review
   object at all, only a comment, so "no review object" does not mean "not
-  reviewed". The only reliable test is comparing the verdict's timestamp
-  against the head commit's.
+  reviewed". Timestamps cannot fix this either, which this file used to
+  claim: CodeRabbit edits its verdict comment in place, so `created_at` stays
+  at the first review while `updated_at` moves for unrelated edits. See
+  "Knowing whether CodeRabbit has actually reviewed a branch" in `CLAUDE.md`
+  for the test that actually works.
 
-### Once `pre-commit-checklists` ships its own TODO items
+### Upstream `pre-commit-checklists` TODO items
 
-Tracked in that repo's `docs/TODO.md`; two of them change things here.
+Tracked in that repo's `docs/TODO.md`; two of them affect this repo, one
+still open upstream and one already landed.
 
 - When `templates/.yamllint.yml` stops fighting the Prettier hook inside
   `checklist-yaml`, the 14 permanent `too few spaces before comment` warnings
   on this repo's YAML go away. They are warnings only, since the upstream
   yamllint hook does not pass `--strict`.
-- When `.markdown-link-check.json` support lands
+- `.markdown-link-check.json` support landed in `v2.2.1`
   ([#12 there](https://github.com/ivan-pinatti/pre-commit-checklists/pull/12)),
-  no change is needed here. The stars badge was repointed at the repository
-  rather than ignored, so this repo needs no ignore file at all.
+  before this repo's current `v2.2.2` pin, so it already applies. No change
+  was needed here: the stars badge was repointed at the repository rather
+  than ignored, so this repo needs no ignore file at all.
 
 ## Deferred items from the adoption
 
@@ -407,8 +403,10 @@ waiting. Recovery needs a manual `@coderabbitai review`.
 **Still open, and not fixable by config:** CodeRabbit's included-review quota
 **drops** a review rather than queueing it. A push arriving while the quota is
 exhausted is declined, and CodeRabbit does not retry it automatically; its
-decline comment does name when the quota resets and invites a manual
-re-request, so recovery is a deliberate step rather than a wait.
+decline comment does name when the quota refills and invites a manual
+re-request, so recovery is a deliberate step rather than a wait. The standard
+allowance is a rolling window, so capacity returns incrementally as earlier
+reviews age out rather than all at once on a reset.
 
 The quota is plan-specific and rolling rather than a documented constant, so
 take the figure from CodeRabbit itself rather than from here: on 2026-08-18 it
