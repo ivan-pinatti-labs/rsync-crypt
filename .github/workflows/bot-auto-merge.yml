@@ -2,27 +2,26 @@
 name: Bot Auto Merge
 
 # Supplies the approving review that lets a dependency bump merge unattended.
-# Ported from docker-torrent-box-with-vpn ahead of need: branch protection is
-# not enabled on this repository yet (that is a later step the owner
-# performs), so this workflow has nothing to supply an approval for right now
-# and every job below is inert until it is. It is added now anyway so the
-# transfer to an organization, when it happens, tests only the transfer
-# rather than newly written workflow code at the same time.
+# Ported from docker-torrent-box-with-vpn ahead of need, at a time when branch
+# protection was not yet enabled on this repository and every job below was
+# inert. It is not inert any more: branch protection now requires one
+# approval on `main`, and without this workflow a pin-only bot pull request
+# has no approving review and cannot merge.
 #
 # Nothing else happens here: the tests are proven by the `Tests` job in
 # pull-request-validation.yml, and the merge itself is GitHub's, armed either
 # by Renovate (platformAutomerge) or by the last step here on the Dependabot
 # path, because Dependabot cannot arm it.
 #
-# Why an approval will have to be supplied at all, once branch protection
-# requires one: no CODEOWNERS file exists here and none should be added for
-# this reason alone, since CODEOWNERS accepts only users and teams and no bot
-# can ever satisfy a code owner rule. With a plain "require an approving
-# review" rule instead, a dependency bump could not merge without a person or
-# a stored credential belonging to one, because an approving review only
-# counts from an account with write access and this repository has exactly
-# one. If a second write collaborator is ever added, that stops being true and
-# this arrangement has to be revisited.
+# Why an approval has to be supplied at all: no CODEOWNERS file exists here
+# and none should be added for this reason alone, since CODEOWNERS accepts
+# only users and teams and no bot can ever satisfy a code owner rule. With
+# the plain "require an approving review" rule actually in effect, a
+# dependency bump could not merge without a person or a stored credential
+# belonging to one, because an approving review only counts from an account
+# with write access and this repository has exactly one. If a second write
+# collaborator is ever added, that stops being true and this arrangement has
+# to be revisited.
 #
 # pull_request_target, not pull_request, and the difference is the whole
 # defense. Under `pull_request` this file would be read from the pull request's
