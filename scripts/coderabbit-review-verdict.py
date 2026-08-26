@@ -119,6 +119,15 @@ def decide(data: dict) -> tuple[str, str]:
         # graded exactly like a human one, below.
 
     description = data.get("coderabbit_description", "")
+    # `in IN_FLIGHT_DESCRIPTIONS` raises TypeError for an unhashable value (a
+    # list or an object survives JSON decoding as one), which main() does not
+    # catch, so a malformed payload would crash this script instead of
+    # reaching its own fail-closed return below. Every string comparison
+    # above this point is safe against any type on its own, but checking the
+    # type once here, before either of the checks below, is what keeps a
+    # malformed `coderabbit_description` failing closed instead of crashing.
+    if not isinstance(description, str):
+        return "failure", "coderabbit_description was not a string"
     if description == "":
         return "pending", "waiting for a CodeRabbit review"
     if description == "Review completed":

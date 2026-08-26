@@ -29,7 +29,7 @@ name: CodeRabbit Gate
 #                         the pull_request_target run already published
 #                         `pending` would sit there until something else woke
 #                         this workflow.
-#   schedule              the self healing path, in principle: an hourly
+#   schedule              the self-healing path, in principle: an hourly
 #                         re-grade is meant to recover a missed or failed run
 #                         without a person noticing first. In practice GitHub
 #                         deprioritises scheduled runs on public repositories,
@@ -132,6 +132,19 @@ jobs:
           # Every `$name` inside a single-quoted jq program in this script is
           # a jq variable bound by --arg, not a shell expansion, and is meant
           # to stay literal.
+
+          # Shared by `schedule` and `workflow_dispatch` with no `pr_number`,
+          # both of which mean "grade every open pull request." `gh pr list`
+          # caps at a `--limit`, and a fixed 100 would silently drop the rest
+          # once this repository ever has more than that many open at once;
+          # `gh api --paginate` walks every page of the REST list endpoint
+          # instead, so there is no count above which this starts missing
+          # pull requests.
+          grade_all_open() {
+            gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+              | jq -sc '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]'
+          }
+
           case "$EVENT_NAME" in
             pull_request_target)
               # shellcheck disable=SC2016
@@ -155,9 +168,7 @@ jobs:
               ;;
 
             schedule)
-              matrix=$(gh pr list --repo "$REPO" --state open --limit 100 \
-                --json number,headRefOid \
-                --jq '[.[] | {pr_number: .number, head_sha: .headRefOid, target_sha: .headRefOid}]')
+              matrix=$(grade_all_open)
               ;;
 
             workflow_dispatch)
@@ -165,10 +176,7 @@ jobs:
               # `schedule`, which is the useful default for recovering from a
               # missed slot rather than a single diagnosed pull request.
               if [ -z "$DISPATCH_PR_NUMBER" ]; then
-                matrix=$(gh pr list --repo "$REPO" --state open --limit 100 \
-                  --json number,headRefOid \
-                  --jq '[.[] | {pr_number: .number, head_sha: .headRefOid,
-                                target_sha: .headRefOid}]')
+                matrix=$(grade_all_open)
               else
                 # Read fresh from the API rather than trusted from the input,
                 # the same reasoning as the merge_group case below: the only

@@ -112,26 +112,29 @@ for `Review Verified` to read.
 ## Recovering a stuck `Review Verified`, honestly
 
 `coderabbit-gate.yml`'s hourly schedule (`47 * * * *`) is described in its own
-header comment as "the self healing path," and that claim needs a caveat: it
+header comment as "the self-healing path," and that claim needs a caveat: it
 is a real mitigation, not a guarantee. GitHub's own documentation says
 scheduled workflows on public repositories are deprioritized under load and
 can be skipped outright rather than merely delayed, and this repository has
 already seen it happen twice in a row: both the `18:47` and `19:47` slots on
 2026-08-26 passed with no run recorded against either, confirmed against the
 Actions API rather than assumed, and PR #31 sat ungraded through both. An
-hourly tick that can silently not happen, repeatedly, is not something a
-required check should be staked on being self-healing.
+hourly tick that cannot be relied on, repeatedly, is not something a required
+check should be staked on being self-healing.
 
-The lever that actually recovers a stuck pull request is `workflow_dispatch`
-on `coderabbit-gate.yml`, run by anyone with write access, either against a
-single `pr_number` or, left blank, against every open pull request at once.
-It does not depend on GitHub's scheduler, and it does not need to: a stuck
-`Review Verified` blocks the merge branch protection requires, which means
-someone is already looking at the pull request by the time it matters, unlike
-the schedule's up-to-an-hour wait for a tick that might not come. Treat the
-hourly schedule as a convenience that clears most missed runs without anyone
-having to notice, and `workflow_dispatch` as the actual guarantee behind the
-claim that a bot pull request can never block forever.
+`workflow_dispatch` on `coderabbit-gate.yml` is the manual recovery path for
+a bot pull request that remains blocked, run by anyone with write access,
+either against a single `pr_number` or, left blank, against every open pull
+request at once. It does not depend on GitHub's scheduler, but it is not a
+guarantee either: it still needs a person to notice the stuck pull request
+and start it, and that run still has to succeed. What makes it a workable
+recovery path rather than merely a different kind of hope is that a stuck
+`Review Verified` blocks the merge branch protection requires, so someone is
+already looking at the pull request by the time it matters, unlike the
+schedule's up-to-an-hour wait for a tick that might not come at all. Treat
+the hourly schedule as a convenience that clears most missed runs without
+anyone having to notice, and `workflow_dispatch` as what an actual person
+reaches for when it does not.
 
 ## Branch protection: what is live and what is not
 

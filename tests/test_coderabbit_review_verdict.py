@@ -336,3 +336,20 @@ def test_refuses_a_json_value_that_is_not_an_object():
 def test_missing_keys_fail_closed_to_pending_not_success():
     result = _run({})
     assert _outputs(result)["state"] == "pending"
+
+
+def test_a_non_string_description_fails_closed_instead_of_crashing():
+    # `in IN_FLIGHT_DESCRIPTIONS` raises TypeError for an unhashable value, a
+    # list surviving JSON decoding among them, and main() does not catch it.
+    # A malformed payload has to fail closed, not crash with no verdict
+    # published at all.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": ["Review completed"],
+        }
+    )
+    assert result.returncode == 0
+    assert _outputs(result)["state"] == "failure"
