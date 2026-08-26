@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+  # Required checks are evaluated against the merge queue's own temporary
+  # commit, not a pull request's head, once the queue is enabled. Every
+  # workflow that supplies a required check needs this trigger or the queue
+  # stalls forever waiting for a context that never gets republished on its
+  # commit; ported ahead of need, alongside coderabbit-gate.yml, so that gap
+  # cannot reopen later.
+  merge_group:
 
 permissions:
   contents: read
@@ -52,3 +59,68 @@ jobs:
 
       - name: Run tests
         run: pytest tests --verbose
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Not a required check yet, see docs/MERGE_PIPELINE.md. The `tests` job
+    # above already builds this exact image, through `make build`, as part of
+    # covering test_build.py's `image` fixture, so this job is not closing a
+    # gap in what gets exercised. It exists for two separate reasons instead:
+    #
+    #   - The Dockerfile has never had a build attempted outside of a test
+    #     run, with a stand-alone Docker Hub login in front of it, which
+    #     means nothing in this repository has ever proven that the pull it
+    #     depends on (`FROM alpine:${ALPINE_VERSION}`) survives whatever rate
+    #     limiting a login is meant to avoid.
+    #   - It is the instrument for a question the transfer itself cannot
+    #     answer in advance: whether repository secrets survive a transfer to
+    #     an organization. GitHub's own transfer documentation does not say,
+    #     so this job is what will be watched, before and after that
+    #     transfer, once DOCKERHUB_USERNAME and DOCKERHUB_TOKEN exist.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Log in to Docker Hub
+        # These two secrets do not exist on this repository yet; the owner
+        # adds them separately. Until then this step has nothing to log in
+        # with and has to say so and move on rather than fail the job, the
+        # same way integration-tests.yml handles a fork's missing credentials
+        # in docker-torrent-box-with-vpn: an absent secret is not a build
+        # failure, it is just an anonymous pull, and Docker Hub allows those,
+        # rate limited rather than refused.
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_USERNAME" ] && [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "No Docker Hub credentials configured; pulling anonymously."
+            exit 0
+          fi
+          # Only one of the two set is a misconfiguration, not "close enough
+          # to log in": `docker login --password-stdin` rejects an empty
+          # password outright rather than falling back to anonymous, so
+          # this has to be caught here instead of surfacing as a login
+          # failure with no explanation.
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Only one of the two Docker Hub secrets is set; both are required."
+            exit 1
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" \
+            | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+
+      - name: Build the image
+        # .env.example already carries every build argument `make build`
+        # reads (ALPINE_VERSION, GOCRYPTFS_VERSION, DOCKER_IMAGE_TAG_NAME,
+        # DOCKER_IMAGE_TAG_VERSION) and nothing else the target touches, so it
+        # is used directly as ENV_FILE rather than assembling a throwaway one
+        # the way tests/conftest.py's build_env_file fixture does for the
+        # pytest suite, which additionally needs a session scoped image tag
+        # that this job has no reason to share.
+        run: make build ENV_FILE=.env.example
