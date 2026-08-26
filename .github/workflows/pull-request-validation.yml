@@ -99,9 +99,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$DOCKERHUB_USERNAME" ]; then
+          if [ -z "$DOCKERHUB_USERNAME" ] && [ -z "$DOCKERHUB_TOKEN" ]; then
             echo "No Docker Hub credentials configured; pulling anonymously."
             exit 0
+          fi
+          # Only one of the two set is a misconfiguration, not "close enough
+          # to log in": `docker login --password-stdin` rejects an empty
+          # password outright rather than falling back to anonymous, so
+          # this has to be caught here instead of surfacing as a login
+          # failure with no explanation.
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::Only one of the two Docker Hub secrets is set; both are required."
+            exit 1
           fi
           printf '%s' "$DOCKERHUB_TOKEN" \
             | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin

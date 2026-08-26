@@ -129,9 +129,16 @@ jobs:
         run: |
           set -euo pipefail
           for _ in $(seq 1 24); do
+            # `first // empty` rather than a bare `first`: on an empty array
+            # `first` is `null`, and `null | {state, description}` is
+            # `{"state": null, "description": null}`, not nothing at all.
+            # `@json` then stringifies that into a non-empty string, so the
+            # `-n "$result"` check below reads an absent status as a settled
+            # one, with state "null", and exits failed immediately instead of
+            # continuing to poll for the status this job depends on.
             result=$(gh api "repos/$REPO/commits/$HEAD_SHA/status" \
               --jq '[.statuses[] | select(.context == "Pin Only")]
-                    | first | {state, description} | @json' \
+                    | (first // empty) | {state, description} | @json' \
               || echo "")
             if [ -n "$result" ]; then
               state=$(printf '%s' "$result" | jq -r '.state')

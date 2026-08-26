@@ -122,7 +122,7 @@ not an oversight in this pull request. Until it is:
   repository.
 - Nothing stops a direct push to `main` today except the pre-commit hook
   `checklist-git-protected-branches` on a contributor's own machine, which is
-  not a substitute for a server side rule and was never meant to be one.
+  not a substitute for a server-side rule and was never meant to be one.
 
 This repository is intentionally being used to test the whole shape of the
 pipeline while personal-owned, so that the eventual transfer to an

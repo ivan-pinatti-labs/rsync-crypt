@@ -10,6 +10,7 @@ No containers and no stack state, so these run anywhere:
 """
 
 import subprocess
+import sys
 
 import pytest
 from conftest import REPO_ROOT
@@ -25,7 +26,7 @@ OTHER_SHA = "b" * 40
 
 def _check(diff: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(SCRIPT)],
+        [sys.executable, str(SCRIPT)],
         input=diff,
         capture_output=True,
         text=True,
@@ -278,3 +279,58 @@ def test_refuses_a_prefix_that_changes_shape():
         )
     )
     assert result.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# A pin token has to be a real, immutable release, not any tag-shaped word
+# ---------------------------------------------------------------------------
+
+
+def test_refuses_a_pre_commit_rev_trading_a_release_for_a_floating_branch():
+    # `main` moves. Waving this through would let a compromised bot swap an
+    # immutable pin for a ref that can point anywhere after the diff is
+    # already merged, with nothing left in the diff itself to catch it.
+    result = _check(
+        _diff(
+            ".pre-commit-config.yaml",
+            "-    rev: v2.2.2\n+    rev: main\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
+def test_refuses_a_tool_versions_entry_trading_a_release_for_main():
+    result = _check(
+        _diff(
+            ".tool-versions",
+            "-pre-commit 4.6.2\n+pre-commit main\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
+def test_refuses_a_github_action_sha_trading_for_a_floating_tag():
+    # Every action in this repository is pinned to a full commit SHA, never a
+    # tag; accepting one here would be accepting the shape a compromised
+    # dependabot run would take to stop being pinned at all.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@{SHA}\n"
+            "+        uses: actions/checkout@main\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
+def test_refuses_a_non_version_payload_in_an_annotated_env_line():
+    # ALPINE_VERSION is annotated and eligible for a bump, but the quoted
+    # value still has to be a release on its own; a script that substituted
+    # on any quoted content, version-shaped or not, would wave this through.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="$(payload)"\n',
+        )
+    )
+    assert result.returncode == 1, result.stdout

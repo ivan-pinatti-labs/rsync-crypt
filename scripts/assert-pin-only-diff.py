@@ -54,34 +54,44 @@ ALLOWED_PATHS = (
     ".tool-versions",
 )
 
+# A released version, always starting with a digit (an optional single
+# leading `v` aside): `2.2.2`, `v2.2.2`, `4.6.2`. Anchors both `rev:` in
+# `.pre-commit-config.yaml` and every value in `.tool-versions`, and is
+# deliberately narrower than "any tag-shaped token": a floating ref like
+# `main` or `latest` is made entirely of characters this would otherwise
+# accept, and normalizing it the same as a real release would let a
+# compromised bot trade an immutable pin for something that can move under it
+# after the diff is already merged, with nothing left in the diff to catch
+# it.
+RELEASE = r"v?[0-9][0-9A-Za-z.+_-]*"
+
 # `.tool-versions` writes `<tool> <version>`, one per line, with nothing to
 # anchor on but the space. That cannot go in the prefix set below, because a
 # lookbehind of variable width is not allowed and "the word after a space"
 # would match most of a workflow file. It is matched whole-line instead, and
-# only for that file, which is why normalize() takes the path.
-TOOL_VERSION_LINE = re.compile(r"^(?P<prefix>[A-Za-z0-9_.-]+[ \t]+)\S+[ \t]*$")
+# only for that file, which is why normalize() takes the path. The value
+# after the space has to be a real release, not merely non-blank: `pre-commit
+# main` would otherwise normalize identically to `pre-commit 4.6.2`.
+TOOL_VERSION_LINE = re.compile(
+    r"^(?P<prefix>[A-Za-z0-9_.-]+[ \t]+)" + RELEASE + r"[ \t]*$"
+)
 
-# A version-shaped token that sits where a pin sits, and nowhere else. The
-# prefix is what makes this narrow: matching any number on the line would
-# accept `RSYNC_RATE_LIMIT=0` becoming `RSYNC_RATE_LIMIT=999999999`, or a
-# `timeout-minutes:` changing, since both sides would normalize alike.
+# A pre-commit hook `rev:`. The prefix is captured and put back, so that a
+# pin changing shape rather than value still reads as a difference.
 #
-#   @v1.2.3              a GitHub Actions ref, or what is left after a SHA
-#   rev: v1.2.3           a pre-commit hook revision
-#
-# The prefix is captured and put back, so that a pin changing shape rather
-# than value, `@v7` becoming `@main`, still reads as a difference (`main` does
-# not match the token shape required after it, since the token has to start
-# with an alphanumeric and the comparison is line for line either way).
-#
-# `.env.example` is handled separately below rather than through this prefix
-# set, because a bare `VAR=value` prefix would also match GOCRYPTFS_VERSION
-# and DOCKER_IMAGE_TAG_VERSION, and CLAUDE.md and .env.example's own comments
-# both say those two are bumped by hand and are deliberately not tracked by
-# Renovate. Widening this regex to reach them would let a compromised
-# Renovate touch a value it has no business touching and still read as
-# pin-only.
-VERSION = re.compile(r"(?P<prefix>@|\brev:[ \t]+)[0-9A-Za-z][0-9A-Za-z.+_-]*")
+# GitHub Actions pins are handled separately below rather than through this
+# same released-version grammar: this repository, like the one it was ported
+# from, pins every action to a full commit SHA rather than a tag (see any
+# `uses:` line in .github/workflows/), so the immutable shape to require
+# there is a SHA, not a release number.
+REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
+
+# A GitHub Actions pin, always a full 40 character commit SHA in this
+# repository (dependabot updates it that way; a trailing `# v7` comment is
+# left as ordinary text and not touched here). The negative lookahead stops a
+# 40 character prefix of a longer hex run from matching and silently
+# swallowing the character that would have made the shapes differ.
+ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")
 
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 
@@ -96,6 +106,12 @@ FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 # copy of the file, not by the diff being graded.
 ANNOTATION = re.compile(r"^#\s*renovate:")
 ENV_VAR_LINE = re.compile(r"^(?P<name>[A-Z0-9_]+)=")
+# The full quoted value has to be a real release on its own, anchored end to
+# end, not merely contain one: substituting on a partial match would let
+# `ALPINE_VERSION="3.24"` becoming `ALPINE_VERSION="$(payload)3.24"` read as a
+# clean version bump, since the trailing digits alone would satisfy an
+# unanchored search.
+ENV_VALUE = re.compile(r'="(?P<value>[^"]*)"')
 
 
 def annotated_env_vars(path: Path = REPO_ROOT / ".env.example") -> frozenset[str]:
@@ -127,12 +143,16 @@ def normalize(line: str, path: str = "") -> str:
     if path.endswith(".env.example"):
         var = ENV_VAR_LINE.match(line)
         if var and var.group("name") in ANNOTATED_ENV_VARS:
-            return re.sub(r'="[^"]*"', '="<version>"', line)
-        # Not an annotated variable: returned unchanged, so any edit to it,
-        # version-shaped or not, shows up as a structural mismatch instead of
-        # being waved through.
+            value = ENV_VALUE.search(line)
+            if value and re.fullmatch(RELEASE, value.group("value")):
+                return ENV_VALUE.sub('="<version>"', line)
+        # Not an annotated variable, or the quoted value is not a release on
+        # its own: returned unchanged either way, so any such edit shows up
+        # as a structural mismatch instead of being waved through.
         return line
-    return VERSION.sub(r"\g<prefix><version>", line)
+    line = ACTION_SHA.sub(r"\g<prefix><version>", line)
+    line = REV_PIN.sub(r"\g<prefix><version>", line)
+    return line
 
 
 def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:

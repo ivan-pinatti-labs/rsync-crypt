@@ -10,6 +10,7 @@ review. No containers and no stack state, so these run anywhere:
 
 import json
 import subprocess
+import sys
 
 import pytest
 from conftest import REPO_ROOT
@@ -21,7 +22,7 @@ SCRIPT = REPO_ROOT / "scripts" / "coderabbit-review-verdict.py"
 
 def _run(data: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(SCRIPT)],
+        [sys.executable, str(SCRIPT)],
         input=json.dumps(data),
         capture_output=True,
         text=True,
@@ -171,6 +172,24 @@ def test_a_forked_bot_login_does_not_reach_the_unattended_lane():
     assert _outputs(result)["state"] == "pending"
 
 
+def test_a_malformed_is_fork_value_reads_as_a_fork_not_false():
+    # bool(None) is False, "not a fork", which would have opened the
+    # unattended bot lane on a value that is not the explicit `false` this
+    # is supposed to require. None is a realistic shape here: it is what a
+    # missing JSON field or a null the workflow forgot to guard against
+    # would decode to, not just a hypothetical adversarial input.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "renovate[bot]",
+            "is_fork": None,
+            "pin_only_state": "success",
+            "coderabbit_description": "",
+        }
+    )
+    assert _outputs(result)["state"] == "pending"
+
+
 # ---------------------------------------------------------------------------
 # Lane 3: everything else is graded on the actual CodeRabbit description
 # ---------------------------------------------------------------------------
@@ -261,7 +280,7 @@ def test_a_fork_pull_request_is_graded_like_a_human():
 
 def test_refuses_malformed_json():
     result = subprocess.run(
-        ["python3", str(SCRIPT)],
+        [sys.executable, str(SCRIPT)],
         input="not json",
         capture_output=True,
         text=True,
@@ -274,7 +293,7 @@ def test_refuses_malformed_json():
 
 def test_refuses_a_json_value_that_is_not_an_object():
     result = subprocess.run(
-        ["python3", str(SCRIPT)],
+        [sys.executable, str(SCRIPT)],
         input="[1, 2, 3]",
         capture_output=True,
         text=True,

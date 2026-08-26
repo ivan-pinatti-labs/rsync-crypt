@@ -85,7 +85,11 @@ def decide(data: dict) -> tuple[str, str]:
     author = data.get("author", "")
     # Fail closed: an unset or malformed is_fork reads as "is a fork", which
     # is the direction that cannot mistakenly grant the unattended bot lane.
-    is_fork = bool(data.get("is_fork", True))
+    # `bool(...)` does not do that: `None`, `0`, `""` and `[]` all coerce to
+    # `False`, "not a fork", for exactly the values this is meant to treat as
+    # unrecognized. Only the literal `False` may open the bot lane, so the
+    # comparison is against that value rather than through a cast.
+    is_fork = data.get("is_fork", True) is not False
     pin_only_state = data.get("pin_only_state", "")
 
     if author in BOTS and not is_fork:
