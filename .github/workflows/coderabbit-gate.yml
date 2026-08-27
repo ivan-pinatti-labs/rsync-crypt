@@ -130,6 +130,7 @@ jobs:
           # for why exceeding it would break the sweep outright rather than
           # merely truncate it.
           MATRIX_CAP: "200"
+          RUN_NUMBER: ${{ github.run_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -152,28 +153,44 @@ jobs:
           # start a run that would exceed it: not the 257th job, the whole
           # run. So an uncapped matrix breaks this sweep precisely when there
           # is a backlog to recover, which is the one moment it exists for.
-          # Capped, a backlog degrades to "the oldest MATRIX_CAP are graded
-          # this run and the rest on the next one" instead of "nothing is
-          # graded, ever, until somebody closes pull requests by hand."
+          # Capped, a backlog degrades to "a bounded slice is graded this run
+          # and the rest on later runs" instead of "nothing is graded, ever,
+          # until somebody closes pull requests by hand."
           #
-          # Oldest first, so a long lived pull request cannot be starved by
-          # newer ones arriving ahead of it every run. The cap sits below 256
-          # to leave room for the sweep's own non matrix jobs.
+          # The slice rotates, and that is load bearing too. A fixed `.[:cap]`
+          # over a stably sorted list returns the same prefix every run, so
+          # anything past the cap would never be graded at all until an
+          # earlier pull request closed: a starvation bug wearing the costume
+          # of a safety limit. The window is therefore advanced by the run
+          # number, so ceil(total / cap) consecutive runs cover every open
+          # pull request, with no cursor to persist and nothing to go stale.
+          #
+          # Sorted by number so the partition is stable between runs; an
+          # unstable order would let a pull request fall through the gap
+          # between one window and the next. The cap sits below 256 to leave
+          # room for the sweep's own non matrix jobs.
           grade_all_open() {
             gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-              | jq -sc --argjson cap "$MATRIX_CAP" \
+              | jq -sc --argjson cap "$MATRIX_CAP" --argjson run "$RUN_NUMBER" \
                 '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]
                 | sort_by(.pr_number)
-                | .[:$cap]'
+                | . as $all
+                | (($all | length) + $cap - 1) / $cap | floor | if . < 1 then 1 else . end
+                | ($run % .) * $cap
+                | $all[.:(. + $cap)]'
           }
 
           warn_if_capped() {
-            local total
+            local total windows window
             total=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
               | jq -s '[.[][]] | length')
             if [ "$total" -gt "$MATRIX_CAP" ]; then
-              echo "::warning::$total open pull requests. Grading the oldest" \
-                "$MATRIX_CAP this run; the rest are graded on a later run."
+              windows=$(( (total + MATRIX_CAP - 1) / MATRIX_CAP ))
+              window=$(( RUN_NUMBER % windows ))
+              echo "::warning::$total open pull requests, more than the" \
+                "$MATRIX_CAP job cap. Grading window $window of $windows this" \
+                "run; the window advances each run, so every open pull request" \
+                "is covered within $windows runs."
             fi
           }
 
