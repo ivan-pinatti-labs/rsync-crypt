@@ -122,10 +122,14 @@ def decide(data: dict) -> tuple[str, str]:
     # `in IN_FLIGHT_DESCRIPTIONS` raises TypeError for an unhashable value (a
     # list or an object survives JSON decoding as one), which main() does not
     # catch, so a malformed payload would crash this script instead of
-    # reaching its own fail-closed return below. Every string comparison
-    # above this point is safe against any type on its own, but checking the
-    # type once here, before either of the checks below, is what keeps a
-    # malformed `coderabbit_description` failing closed instead of crashing.
+    # reaching its own fail-closed return below.
+    #
+    # Worth being honest about the reach of this guard: coderabbit-gate.yml
+    # cannot produce a non-string here, since it builds the payload with jq
+    # `--arg`, which always yields a JSON string, over a value already
+    # coerced with `// ""`. So this is defence in depth for that caller, not
+    # a bug it can hit. It is load bearing for any other caller, this
+    # repository's own tests included, which feed the script stdin directly.
     if not isinstance(description, str):
         return "failure", "coderabbit_description was not a string"
     if description == "":
