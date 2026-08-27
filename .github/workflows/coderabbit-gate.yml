@@ -125,6 +125,11 @@ jobs:
           MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
           DISPATCH_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          # Below GitHub's hard ceiling of 256 jobs per workflow run, with room
+          # for this workflow's own non matrix jobs. See grade_all_open below
+          # for why exceeding it would break the sweep outright rather than
+          # merely truncate it.
+          MATRIX_CAP: "200"
         shell: bash
         run: |
           set -euo pipefail
@@ -140,9 +145,36 @@ jobs:
           # `gh api --paginate` walks every page of the REST list endpoint
           # instead, so there is no count above which this starts missing
           # pull requests.
+          #
+          # The result is then capped anyway, and the cap is the load bearing
+          # part rather than a tidiness measure. A workflow run may contain at
+          # most 256 jobs, matrix expansion included, and GitHub refuses to
+          # start a run that would exceed it: not the 257th job, the whole
+          # run. So an uncapped matrix breaks this sweep precisely when there
+          # is a backlog to recover, which is the one moment it exists for.
+          # Capped, a backlog degrades to "the oldest MATRIX_CAP are graded
+          # this run and the rest on the next one" instead of "nothing is
+          # graded, ever, until somebody closes pull requests by hand."
+          #
+          # Oldest first, so a long lived pull request cannot be starved by
+          # newer ones arriving ahead of it every run. The cap sits below 256
+          # to leave room for the sweep's own non matrix jobs.
           grade_all_open() {
             gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-              | jq -sc '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]'
+              | jq -sc --argjson cap "$MATRIX_CAP" \
+                '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]
+                | sort_by(.pr_number)
+                | .[:$cap]'
+          }
+
+          warn_if_capped() {
+            local total
+            total=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+              | jq -s '[.[][]] | length')
+            if [ "$total" -gt "$MATRIX_CAP" ]; then
+              echo "::warning::$total open pull requests. Grading the oldest" \
+                "$MATRIX_CAP this run; the rest are graded on a later run."
+            fi
           }
 
           case "$EVENT_NAME" in
@@ -168,6 +200,7 @@ jobs:
               ;;
 
             schedule)
+              warn_if_capped
               matrix=$(grade_all_open)
               ;;
 
@@ -176,6 +209,7 @@ jobs:
               # `schedule`, which is the useful default for recovering from a
               # missed slot rather than a single diagnosed pull request.
               if [ -z "$DISPATCH_PR_NUMBER" ]; then
+                warn_if_capped
                 matrix=$(grade_all_open)
               else
                 # Read fresh from the API rather than trusted from the input,
