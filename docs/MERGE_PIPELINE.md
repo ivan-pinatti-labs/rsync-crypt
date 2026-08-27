@@ -24,10 +24,13 @@ linters have not finished cleaning up yet.
 what starts CodeRabbit. Address what it raises, pushing fixes as needed; each
 push re-runs both jobs and gets a fresh review.
 
-Once every required check reads green and a maintainer has approved it,
-GitHub adds the pull request to the merge queue on its own (see "The merge
-queue is live" below), and it merges once the queue's own run of the same
-check set passes on the commit the queue actually builds.
+Once every required check reads green and a maintainer has approved it, the
+pull request is eligible for the merge queue, but entering it still needs
+someone to select **Merge when ready** (or enable auto-merge), the same as
+any GitHub pull request with a merge queue in front of it; nothing here
+enqueues it on its own. Once it is enqueued, it merges when the queue's own
+run of the same check set passes on the commit the queue actually builds;
+see "The merge queue is live" below.
 
 ## The repository owner's own pull request
 
@@ -53,6 +56,13 @@ than for `Pin Only` alone. `Review Verified` is what actually carries "a
 review happened," and nothing else in this pipeline does. A contributor or a
 fork gets no approval from this job and still needs a genuine human review,
 same as always.
+
+`Review Verified` is realistically the slowest of the four contexts to
+settle, since it waits on CodeRabbit's own review, which is why this job
+also reacts to a `status` event on that context landing, not only to
+`pull_request_target`: a pull request whose review finishes well after it
+was opened still gets approved without needing a push it otherwise has no
+reason to make.
 
 ## A dependency bot pull request
 
