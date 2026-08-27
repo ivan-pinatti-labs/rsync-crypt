@@ -130,7 +130,6 @@ jobs:
           # for why exceeding it would break the sweep outright rather than
           # merely truncate it.
           MATRIX_CAP: "200"
-          RUN_NUMBER: ${{ github.run_number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -138,6 +137,17 @@ jobs:
           # Every `$name` inside a single-quoted jq program in this script is
           # a jq variable bound by --arg, not a shell expansion, and is meant
           # to stay literal.
+
+          # Which slice of a capped sweep this run takes. Derived from the
+          # clock rather than from `github.run_number`, and the difference is
+          # not cosmetic: run_number counts every run of this workflow, sweeps
+          # and pull request events alike. If sweeps happen to be separated by
+          # a constant number of other runs, run_number advances by a fixed
+          # stride between them, and a stride that shares a factor with the
+          # window count pins the sweep to the same window forever. Whole
+          # hours advance by exactly one per hourly sweep no matter what else
+          # ran in between, so the window always moves.
+          WINDOW_SEED=$(( $(date -u +%s) / 3600 ))
 
           # Shared by `schedule` and `workflow_dispatch` with no `pr_number`,
           # both of which mean "grade every open pull request." `gh pr list`
@@ -171,7 +181,7 @@ jobs:
           # room for the sweep's own non matrix jobs.
           grade_all_open() {
             gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-              | jq -sc --argjson cap "$MATRIX_CAP" --argjson run "$RUN_NUMBER" \
+              | jq -sc --argjson cap "$MATRIX_CAP" --argjson run "$WINDOW_SEED" \
                 '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]
                 | sort_by(.pr_number)
                 | . as $all
@@ -186,7 +196,7 @@ jobs:
               | jq -s '[.[][]] | length')
             if [ "$total" -gt "$MATRIX_CAP" ]; then
               windows=$(( (total + MATRIX_CAP - 1) / MATRIX_CAP ))
-              window=$(( RUN_NUMBER % windows ))
+              window=$(( WINDOW_SEED % windows ))
               echo "::warning::$total open pull requests, more than the" \
                 "$MATRIX_CAP job cap. Grading window $window of $windows this" \
                 "run; the window advances each run, so every open pull request" \
