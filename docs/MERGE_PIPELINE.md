@@ -22,12 +22,12 @@ linters have not finished cleaning up yet.
 what starts CodeRabbit. Address what it raises, pushing fixes as needed; each
 push re-runs both jobs and gets a fresh review.
 
-Once every required check reads green, and once branch protection requires a
-merge queue (not yet: see "Not yet enabled" below), GitHub would add the pull
-request to the queue on its own and merge it once the queue's own run of the
-same check set passes on the commit the queue actually builds. Today, with no
-branch protection at all, a green set of checks is a maintainer's own signal
-to merge by hand.
+Once every required check reads green and a maintainer has approved it,
+branch protection allows the merge. There is no merge queue on this
+repository (see "Branch protection: what is live and what is not" below), so
+`strict: true` does that job instead: GitHub requires the pull request to be
+up to date with `main` first, which a stale pull request clears by merging
+`main` into it rather than by anything this pipeline runs.
 
 ## A dependency bot pull request
 
@@ -41,13 +41,11 @@ pin only:
    `Pin Only` status. A number that is not a pin does not count as one.
 2. **The approval is supplied, conditionally.** `bot-auto-merge.yml` waits
    for `Pin Only` to read `success` and then supplies the approving review
-   branch protection will require, once it exists. A diff that is not
-   pin-only gets no approval and waits for a person, same as a major bump
-   does. See that workflow's own header comment for why it does nothing
-   observable yet.
+   branch protection requires. A diff that is not pin-only gets no approval
+   and waits for a person, same as a major bump does.
 3. **GitHub merges it** once every required check, including `Review
-   Verified`, is green. This step, too, needs branch protection to require an
-   approval before it does anything.
+   Verified`, is green, the approval is in place, and the pull request is up
+   to date with `main` (`strict: true`; see below).
 
 ## Every required status context
 
@@ -96,9 +94,14 @@ review having actually happened on 2026-08-19 as a direct result (its #114).
    pin-only falls through to lane 3 and is graded exactly like a human pull
    request from there.
 3. **Everything else** is `success` only for the literal description
-   `Review completed`. Absent is `pending`. Anything else, including a
-   description this script has never seen before, is `failure`. No
-   exceptions.
+   `Review completed`. Absent, `Review queued`, or `Review in progress` is
+   `pending`: a review that is queued or actively running has not declined
+   anything, and reading it as `failure` turns every ordinary review's
+   opening minutes into a spurious red required check, which is exactly what
+   happened on this repository's own #32, the first pull request this gate
+   ever ran against, before that bug was found and fixed here. Anything else,
+   including a description this script has never seen before, is `failure`.
+   No exceptions.
 
 `coderabbit-review-queue.yml`'s hourly nudge exists for the same reason as in
 the sibling repository: CodeRabbit never reviews a bot's pull request on its
@@ -106,27 +109,55 @@ own, so once `Pin Only` fails and a pull request falls into lane 3, nothing
 but an explicit `@coderabbitai review` comment will ever put a status there
 for `Review Verified` to read.
 
-## Not yet enabled
+## Recovering a stuck `Review Verified`, honestly
 
-Branch protection is not turned on for this repository, and no ruleset
-exists yet. That is a deliberate, separate step the owner performs by hand,
-not an oversight in this pull request. Until it is:
+`coderabbit-gate.yml`'s hourly schedule (`47 * * * *`) is described in its own
+header comment as "the self-healing path," and that claim needs a caveat: it
+is a real mitigation, not a guarantee. GitHub's own documentation says
+scheduled workflows on public repositories are deprioritized under load and
+can be skipped outright rather than merely delayed, and this repository has
+already seen it happen twice in a row: both the `18:47` and `19:47` slots on
+2026-08-26 passed with no run recorded against either, confirmed against the
+Actions API rather than assumed, and PR #31 sat ungraded through both. An
+hourly tick that cannot be relied on, repeatedly, is not something a required
+check should be staked on being self-healing.
 
-- `bot-auto-merge.yml`'s approval has nothing to satisfy and is a no-op in
-  effect, even though it runs.
-- There is no merge queue, so `merge_group` triggers on
-  `pull-request-validation.yml` and `coderabbit-gate.yml` never fire; they
-  exist now so that enabling the queue later does not also require writing
-  new workflow code at the same time, which is the entire point of
-  rehearsing this pipeline here before touching the more important
-  repository.
-- Nothing stops a direct push to `main` today except the pre-commit hook
-  `checklist-git-protected-branches` on a contributor's own machine, which is
-  not a substitute for a server-side rule and was never meant to be one.
+`workflow_dispatch` on `coderabbit-gate.yml` is the manual recovery path for
+a bot pull request that remains blocked, run by anyone with write access,
+either against a single `pr_number` or, left blank, against every open pull
+request at once. It does not depend on GitHub's scheduler, but it is not a
+guarantee either: it still needs a person to notice the stuck pull request
+and start it, and that run still has to succeed. What makes it a workable
+recovery path rather than merely a different kind of hope is that a stuck
+`Review Verified` blocks the merge branch protection requires, so someone is
+already looking at the pull request by the time it matters, unlike the
+schedule's up-to-an-hour wait for a tick that might not come at all. Treat
+the hourly schedule as a convenience that clears most missed runs without
+anyone having to notice, and `workflow_dispatch` as what an actual person
+reaches for when it does not.
 
-This repository is intentionally being used to test the whole shape of the
-pipeline while personal-owned, so that the eventual transfer to an
-organization tests only the transfer itself.
+## Branch protection: what is live and what is not
+
+Classic branch protection on `main` requires `Pre-commit`, `Tests`,
+`Pin Only` and `Review Verified`, with `strict: true` (a pull request must be
+up to date with `main` before it merges), one approval, dismissal of stale
+reviews, approval of the last push, conversation resolution and a linear
+history. That means `bot-auto-merge.yml`'s approval now does something real:
+without it, a pin-only bot pull request has no approving review and cannot
+merge, which is the gap that workflow existed to close ahead of need.
+
+Not live: a merge queue. This repository is personal-owned, and GitHub
+refuses a `merge_queue` ruleset rule on a personal account, which is the
+entire reason `docker-torrent-box-with-vpn` is transferring to an
+organization in the first place. `strict: true` here is doing the job a
+queue would otherwise do, at the older cost that made the sibling repository
+move away from it: a pull request has to be rebased or merged up to date with
+`main` itself, and one merge can invalidate every other open pull request's
+checks. `merge_group` triggers on `pull-request-validation.yml` and
+`coderabbit-gate.yml` exist anyway, and stay inert, so that enabling a queue
+after a future transfer does not also require writing new workflow code at
+the same time, which is the entire point of rehearsing this pipeline here
+first.
 
 ---
 

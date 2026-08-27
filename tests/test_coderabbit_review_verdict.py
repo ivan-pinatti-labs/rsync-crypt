@@ -219,6 +219,35 @@ def test_no_status_yet_is_pending_not_a_pass():
     assert _outputs(result)["state"] == "pending"
 
 
+def test_review_queued_is_pending_not_failure():
+    # CodeRabbit's own in-flight state. Found live on this repository's #32,
+    # the first pull request the required gate ever ran against: a review
+    # that has not returned an answer yet has not declined one either, and
+    # reading it as failure turned every review's opening minutes into a
+    # spurious red required check.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": "Review queued",
+        }
+    )
+    assert _outputs(result)["state"] == "pending"
+
+
+def test_review_in_progress_is_pending_not_failure():
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": "Review in progress",
+        }
+    )
+    assert _outputs(result)["state"] == "pending"
+
+
 def test_rate_limited_fails_instead_of_passing():
     # This is the actual bug docker-torrent-box-with-vpn's #114 describes:
     # three of its pull requests merged on this exact description reading as
@@ -307,3 +336,44 @@ def test_refuses_a_json_value_that_is_not_an_object():
 def test_missing_keys_fail_closed_to_pending_not_success():
     result = _run({})
     assert _outputs(result)["state"] == "pending"
+
+
+def test_a_non_string_description_fails_closed_instead_of_crashing():
+    # `in IN_FLIGHT_DESCRIPTIONS` raises TypeError for an unhashable value, a
+    # list surviving JSON decoding among them, and main() does not catch it.
+    # A malformed payload has to fail closed, not crash with no verdict
+    # published at all.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": ["Review completed"],
+        }
+    )
+    assert result.returncode == 0
+    assert _outputs(result)["state"] == "failure"
+
+
+def test_a_newline_in_the_description_cannot_forge_a_second_output():
+    # Both values are written to GITHUB_OUTPUT as `key=value` lines, where a
+    # newline lets whatever follows be parsed as a further output. The
+    # description embeds CodeRabbit's own text, so a status reading
+    # "Review rate limited\nstate=success" would otherwise publish the very
+    # success this check exists to withhold.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": "Review rate limited\nstate=success",
+        }
+    )
+    outputs = _outputs(result)
+    assert outputs["state"] == "failure"
+    assert "\n" not in outputs["description"]
+    # One `state=` line only, and it is the one decide() returned.
+    state_lines = [
+        line for line in result.stdout.splitlines() if line.startswith("state=")
+    ]
+    assert state_lines == ["state=failure"]

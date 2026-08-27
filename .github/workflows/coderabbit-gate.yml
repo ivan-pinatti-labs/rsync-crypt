@@ -18,7 +18,7 @@ name: CodeRabbit Gate
 #                    a direct result. See that script's docstring for the three
 #                    lanes.
 #
-# Four triggers, and each one exists for a different failure mode of the
+# Five triggers, and each one exists for a different failure mode of the
 # others:
 #
 #   pull_request_target  the normal path, firing on the events that change
@@ -29,10 +29,25 @@ name: CodeRabbit Gate
 #                         the pull_request_target run already published
 #                         `pending` would sit there until something else woke
 #                         this workflow.
-#   schedule              the self healing path. Once `Review Verified` is
-#                         required, an absent context blocks a pull request
-#                         forever, so an hourly re-grade is what recovers a
-#                         missed or failed run without a person noticing first.
+#   schedule              the self-healing path, in principle: an hourly
+#                         re-grade is meant to recover a missed or failed run
+#                         without a person noticing first. In practice GitHub
+#                         deprioritises scheduled runs on public repositories,
+#                         and this repository saw two consecutive slots pass
+#                         with nothing recorded against either, so this
+#                         trigger is a real mitigation but not the guarantee
+#                         it reads like on its own; see docs/MERGE_PIPELINE.md
+#                         for what actually closes that gap.
+#   workflow_dispatch     the manual recovery path, for exactly the case the
+#                         schedule missing a slot leaves open: a pull request
+#                         stuck with an absent or stale `Review Verified` and
+#                         nothing coming to re-grade it. Re-grades every open
+#                         pull request by default, or a single one if given
+#                         `pr_number`, so a stuck pull request can be cleared
+#                         without touching the pull request itself (a push
+#                         invalidates review state that does not need
+#                         invalidating, and is not always possible for
+#                         someone without write access to the branch anyway).
 #   merge_group           required checks are evaluated against the queue's own
 #                         temporary commit, not the pull request's head, so
 #                         both statuses have to be republished there too or the
@@ -63,6 +78,15 @@ on:
     # Offset from coderabbit-review-queue.yml's :23 so the two hourly jobs do
     # not compete for the same GitHub Actions minute for no reason.
     - cron: "47 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: >-
+          Pull request number to re-grade. Leave blank to re-grade every open
+          pull request, which is the useful default for recovering from a
+          missed schedule slot rather than diagnosing one pull request.
+        required: false
+        type: string
   merge_group:
 
 # The floor. Each job widens it for itself.
@@ -100,6 +124,12 @@ jobs:
           STATUS_SHA: ${{ github.event.sha }}
           MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref }}
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
+          DISPATCH_PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          # Below GitHub's hard ceiling of 256 jobs per workflow run, with room
+          # for this workflow's own non matrix jobs. See grade_all_open below
+          # for why exceeding it would break the sweep outright rather than
+          # merely truncate it.
+          MATRIX_CAP: "200"
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +137,97 @@ jobs:
           # Every `$name` inside a single-quoted jq program in this script is
           # a jq variable bound by --arg, not a shell expansion, and is meant
           # to stay literal.
+
+          # Which slice of a capped sweep this run takes. Derived from the
+          # clock rather than from `github.run_number`, and the difference is
+          # not cosmetic: run_number counts every run of this workflow, sweeps
+          # and pull request events alike. If sweeps happen to be separated by
+          # a constant number of other runs, run_number advances by a fixed
+          # stride between them, and a stride that shares a factor with the
+          # window count pins the sweep to the same window forever. Whole
+          # hours advance by exactly one per hourly sweep no matter what else
+          # ran in between, so the window always moves.
+          WINDOW_SEED=$(( $(date -u +%s) / 3600 ))
+
+          # Shared by `schedule` and `workflow_dispatch` with no `pr_number`,
+          # both of which mean "grade every open pull request." `gh pr list`
+          # caps at a `--limit`, and a fixed 100 would silently drop the rest
+          # once this repository ever has more than that many open at once;
+          # `gh api --paginate` walks every page of the REST list endpoint
+          # instead, so there is no count above which this starts missing
+          # pull requests.
+          #
+          # The result is then capped anyway, and the cap is the load bearing
+          # part rather than a tidiness measure. A workflow run may contain at
+          # most 256 jobs, matrix expansion included, and GitHub refuses to
+          # start a run that would exceed it: not the 257th job, the whole
+          # run. So an uncapped matrix breaks this sweep precisely when there
+          # is a backlog to recover, which is the one moment it exists for.
+          # Capped, a backlog degrades to "a bounded slice is graded this run
+          # and the rest on later runs" instead of "nothing is graded, ever,
+          # until somebody closes pull requests by hand."
+          #
+          # The slice rotates, and that is load bearing too. A fixed `.[:cap]`
+          # over a stably sorted list returns the same prefix every run, so
+          # anything past the cap would never be graded at all until an
+          # earlier pull request closed: a starvation bug wearing the costume
+          # of a safety limit. The window is therefore advanced by the
+          # clock, with no cursor to persist and nothing to go stale.
+          #
+          # What that does and does not promise, precisely. The seed advances
+          # once per UTC hour, not once per sweep that actually ran. So a run
+          # of ceil(total / cap) consecutive hours covers every open pull
+          # request only if a sweep fires in each of those hours, and this
+          # workflow's own schedule comment records that GitHub skips slots on
+          # public repositories. A skipped slot skips that hour's window, and
+          # the pull requests in it wait for the seed to come round again.
+          # Coverage is therefore best effort and unbounded in the worst case,
+          # not a guarantee. `workflow_dispatch` with `pr_number` is the lever
+          # that grades a known pull request now, and it is the only path here
+          # that promises anything. Two runs inside one hour take the same
+          # window, so repeated dispatches do not walk the windows either.
+          #
+          # Sorted by number so the partition is stable between runs; an
+          # unstable order would let a pull request fall through the gap
+          # between one window and the next. The cap sits below 256 to leave
+          # room for the sweep's own non matrix jobs.
+          # Fetched once by the caller and passed to both consumers below.
+          # Two separate paginations could disagree if a pull request opened
+          # or closed between them, and the warning would then name a total
+          # the slice never used. Caching inside a function would not work
+          # either: both consumers are invoked in command substitutions, so an
+          # assignment made inside one runs in a subshell and never reaches
+          # the parent shell that would reuse it.
+          fetch_open_prs() {
+            gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+              | jq -sc '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]'
+          }
+
+          grade_all_open() {
+            printf '%s' "$1" \
+              | jq -c --argjson cap "$MATRIX_CAP" --argjson run "$WINDOW_SEED" \
+                'sort_by(.pr_number)
+                | . as $all
+                | (($all | length) + $cap - 1) / $cap | floor | if . < 1 then 1 else . end
+                | ($run % .) * $cap
+                | $all[.:(. + $cap)]'
+          }
+
+          warn_if_capped() {
+            local total windows window
+            total=$(printf '%s' "$1" | jq 'length')
+            if [ "$total" -gt "$MATRIX_CAP" ]; then
+              windows=$(( (total + MATRIX_CAP - 1) / MATRIX_CAP ))
+              window=$(( WINDOW_SEED % windows ))
+              echo "::warning::$total open pull requests, more than the" \
+                "$MATRIX_CAP job cap. Grading window $window of $windows this" \
+                "hour. The window advances once per UTC hour, so covering all" \
+                "$windows takes at least that many hours and longer if a" \
+                "scheduled slot is skipped. Dispatch with pr_number to grade" \
+                "a specific pull request now."
+            fi
+          }
+
           case "$EVENT_NAME" in
             pull_request_target)
               # shellcheck disable=SC2016
@@ -130,9 +251,40 @@ jobs:
               ;;
 
             schedule)
-              matrix=$(gh pr list --repo "$REPO" --state open --limit 100 \
-                --json number,headRefOid \
-                --jq '[.[] | {pr_number: .number, head_sha: .headRefOid, target_sha: .headRefOid}]')
+              open_prs=$(fetch_open_prs)
+              warn_if_capped "$open_prs"
+              matrix=$(grade_all_open "$open_prs")
+              ;;
+
+            workflow_dispatch)
+              # No input: the same "every open pull request" query as
+              # `schedule`, which is the useful default for recovering from a
+              # missed slot rather than a single diagnosed pull request.
+              if [ -z "$DISPATCH_PR_NUMBER" ]; then
+                open_prs=$(fetch_open_prs)
+                warn_if_capped "$open_prs"
+                matrix=$(grade_all_open "$open_prs")
+              else
+                # Read fresh from the API rather than trusted from the input,
+                # the same reasoning as the merge_group case below: the only
+                # thing taken from outside this step is the pull request
+                # number, and the head it is graded against is asked for at
+                # run time.
+                # Validated before it is interpolated into an API path,
+                # not after. Only someone with write access can dispatch this,
+                # so this is a guard against a typo rather than an attacker,
+                # but a path segment is the wrong place to discover that.
+                case "$DISPATCH_PR_NUMBER" in
+                  ''|*[!0-9]*)
+                    echo "::error::pr_number must be digits, got '$DISPATCH_PR_NUMBER'."
+                    exit 1
+                    ;;
+                esac
+                head_sha=$(gh api "repos/$REPO/pulls/$DISPATCH_PR_NUMBER" --jq '.head.sha')
+                # shellcheck disable=SC2016
+                matrix=$(jq -nc --arg n "$DISPATCH_PR_NUMBER" --arg h "$head_sha" \
+                  '[{pr_number: ($n | tonumber), head_sha: $h, target_sha: $h}]')
+              fi
               ;;
 
             merge_group)
@@ -305,10 +457,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # `gsub` before the value ever reaches GITHUB_OUTPUT. A newline
+          # in a `key=value` line lets whatever follows it be parsed as
+          # another output, so an unsanitised description could set
+          # `state=success` on the very check meant to withhold it. Only
+          # CodeRabbit can write this status, per the creator filter, and its
+          # descriptions are a single line today; this is here because a gate
+          # whose whole purpose is refusing to take a status at face value
+          # should not then parse that status's text at face value either.
           description=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/statuses" \
             | jq -sr '[.[][] | select(.context == "CodeRabbit"
                           and .creator.login == "coderabbitai[bot]")]
-                  | first | .description // ""')
+                  | first | .description // ""
+                  | gsub("[\\r\\n]"; " ")')
           echo "description=$description" >> "$GITHUB_OUTPUT"
 
       - name: Decide Review Verified

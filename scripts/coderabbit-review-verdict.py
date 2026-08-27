@@ -48,15 +48,21 @@ asking for a real review alongside that cannot stall the happy path.
 
 3. Everything else, human authored or a bot pull request whose diff already
 failed the pin-only assertion, is `success` only when the latest `CodeRabbit`
-status description is exactly `Review completed`. Absent is `pending`,
-meaning a review has been asked for and not yet returned. Anything else
-present, `Review rate limited`, any `Review skipped: ...` description reaching
-this lane (a non-bot pull request is never a draft by the time this runs,
-since lane 1 already caught that), an error state, or a description this has
-never seen before, is `failure`. No exceptions here: this lane is where the
-sibling repository's unreviewed merges happened, and a status this script
-does not recognize is exactly the shape a future change to CodeRabbit's
-wording would take.
+status description is exactly `Review completed`. Absent, `Review queued`, or
+`Review in progress` is `pending`: a review that has been asked for and not
+yet returned, or is actively running, has not declined anything, and reading
+it as a failure would turn every ordinary review's opening minutes into a red
+required check for no reason. This is not hypothetical: docker-torrent-box-with-vpn
+found and fixed the identical bug in its own copy of this script, and this
+copy carried it forward unfixed since it was ported before that fix landed.
+Anything else present, `Review rate limited`, any `Review skipped: ...`
+description reaching this lane (a non-bot pull request is never a draft by
+the time this runs, since lane 1 already caught that), an error state, or a
+description this has never seen before, is `failure`. No exceptions there:
+this lane is where the sibling repository's unreviewed merges happened, and
+a status this script does not recognize is exactly the shape a future change
+to CodeRabbit's wording would take, so only the two known in-flight strings
+above move to `pending`; nothing else gets the benefit of the doubt.
 
 Fails closed throughout. An unset or unrecognized `pin_only_state` for a bot
 pull request is treated as "not yet known" rather than "assume clean", which
@@ -75,6 +81,15 @@ import sys
 # been applied correctly is how the ambiguity this script fixes went
 # unnoticed for as long as it did.
 BOTS = frozenset({"renovate[bot]", "dependabot[bot]"})
+
+# CodeRabbit's own in-flight states, observed live on real pull requests.
+# Neither is a decline: a review that is queued or actively running has not
+# read the diff and returned an answer yet, which is exactly what `pending`
+# is for. Treating either as `failure` was the bug found on this
+# repository's #32, the first pull request this gate ever ran against:
+# `Review Verified` read red for the several minutes CodeRabbit was still
+# working, with no decline behind it at all.
+IN_FLIGHT_DESCRIPTIONS = frozenset({"Review queued", "Review in progress"})
 
 
 def decide(data: dict) -> tuple[str, str]:
@@ -104,10 +119,25 @@ def decide(data: dict) -> tuple[str, str]:
         # graded exactly like a human one, below.
 
     description = data.get("coderabbit_description", "")
+    # `in IN_FLIGHT_DESCRIPTIONS` raises TypeError for an unhashable value (a
+    # list or an object survives JSON decoding as one), which main() does not
+    # catch, so a malformed payload would crash this script instead of
+    # reaching its own fail-closed return below.
+    #
+    # Worth being honest about the reach of this guard: coderabbit-gate.yml
+    # cannot produce a non-string here, since it builds the payload with jq
+    # `--arg`, which always yields a JSON string, over a value already
+    # coerced with `// ""`. So this is defence in depth for that caller, not
+    # a bug it can hit. It is load bearing for any other caller, this
+    # repository's own tests included, which feed the script stdin directly.
+    if not isinstance(description, str):
+        return "failure", "coderabbit_description was not a string"
     if description == "":
         return "pending", "waiting for a CodeRabbit review"
     if description == "Review completed":
         return "success", 'CodeRabbit reports "Review completed"'
+    if description in IN_FLIGHT_DESCRIPTIONS:
+        return "pending", f'CodeRabbit reports "{description}"'
     return "failure", f'CodeRabbit reports "{description}", which is not a review'
 
 
@@ -124,6 +154,12 @@ def main() -> int:
         return 1
 
     state, description = decide(data)
+    # Both values are written to GITHUB_OUTPUT as `key=value` lines by the
+    # caller, where a newline would let the rest of the value be parsed as a
+    # further output: an unsanitised description could set `state=success` on
+    # the very check meant to withhold it. The description embeds CodeRabbit's
+    # own text, so it is flattened here rather than trusted to be one line.
+    description = " ".join(description.split())
     print(f"state={state}")
     print(f"description={description}")
     return 0

@@ -28,6 +28,7 @@
 [![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
 [![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti%2Frsync-crypt&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
 
