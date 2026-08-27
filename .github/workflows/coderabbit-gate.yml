@@ -172,11 +172,20 @@ jobs:
           # anything past the cap would never be graded at all until an
           # earlier pull request closed: a starvation bug wearing the costume
           # of a safety limit. The window is therefore advanced by the
-          # clock, so ceil(total / cap) consecutive hourly sweeps cover every
-          # open pull request, with no cursor to persist and nothing to go
-          # stale. Two runs inside the same hour take the same window, which
-          # is why the manual lever takes a `pr_number` rather than relying on
-          # repeated dispatches to walk the windows.
+          # clock, with no cursor to persist and nothing to go stale.
+          #
+          # What that does and does not promise, precisely. The seed advances
+          # once per UTC hour, not once per sweep that actually ran. So a run
+          # of ceil(total / cap) consecutive hours covers every open pull
+          # request only if a sweep fires in each of those hours, and this
+          # workflow's own schedule comment records that GitHub skips slots on
+          # public repositories. A skipped slot skips that hour's window, and
+          # the pull requests in it wait for the seed to come round again.
+          # Coverage is therefore best effort and unbounded in the worst case,
+          # not a guarantee. `workflow_dispatch` with `pr_number` is the lever
+          # that grades a known pull request now, and it is the only path here
+          # that promises anything. Two runs inside one hour take the same
+          # window, so repeated dispatches do not walk the windows either.
           #
           # Sorted by number so the partition is stable between runs; an
           # unstable order would let a pull request fall through the gap
@@ -212,8 +221,10 @@ jobs:
               window=$(( WINDOW_SEED % windows ))
               echo "::warning::$total open pull requests, more than the" \
                 "$MATRIX_CAP job cap. Grading window $window of $windows this" \
-                "hour; the window advances hourly, so every open pull request" \
-                "is covered within $windows hourly sweeps."
+                "hour. The window advances once per UTC hour, so covering all" \
+                "$windows takes at least that many hours and longer if a" \
+                "scheduled slot is skipped. Dispatch with pr_number to grade" \
+                "a specific pull request now."
             fi
           }
 
