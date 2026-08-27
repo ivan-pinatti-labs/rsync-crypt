@@ -171,19 +171,33 @@ jobs:
           # over a stably sorted list returns the same prefix every run, so
           # anything past the cap would never be graded at all until an
           # earlier pull request closed: a starvation bug wearing the costume
-          # of a safety limit. The window is therefore advanced by the run
-          # number, so ceil(total / cap) consecutive runs cover every open
-          # pull request, with no cursor to persist and nothing to go stale.
+          # of a safety limit. The window is therefore advanced by the
+          # clock, so ceil(total / cap) consecutive hourly sweeps cover every
+          # open pull request, with no cursor to persist and nothing to go
+          # stale. Two runs inside the same hour take the same window, which
+          # is why the manual lever takes a `pr_number` rather than relying on
+          # repeated dispatches to walk the windows.
           #
           # Sorted by number so the partition is stable between runs; an
           # unstable order would let a pull request fall through the gap
           # between one window and the next. The cap sits below 256 to leave
           # room for the sweep's own non matrix jobs.
-          grade_all_open() {
+          # Fetched once by the caller and passed to both consumers below.
+          # Two separate paginations could disagree if a pull request opened
+          # or closed between them, and the warning would then name a total
+          # the slice never used. Caching inside a function would not work
+          # either: both consumers are invoked in command substitutions, so an
+          # assignment made inside one runs in a subshell and never reaches
+          # the parent shell that would reuse it.
+          fetch_open_prs() {
             gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-              | jq -sc --argjson cap "$MATRIX_CAP" --argjson run "$WINDOW_SEED" \
-                '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]
-                | sort_by(.pr_number)
+              | jq -sc '[.[][] | {pr_number: .number, head_sha: .head.sha, target_sha: .head.sha}]'
+          }
+
+          grade_all_open() {
+            printf '%s' "$1" \
+              | jq -c --argjson cap "$MATRIX_CAP" --argjson run "$WINDOW_SEED" \
+                'sort_by(.pr_number)
                 | . as $all
                 | (($all | length) + $cap - 1) / $cap | floor | if . < 1 then 1 else . end
                 | ($run % .) * $cap
@@ -192,15 +206,14 @@ jobs:
 
           warn_if_capped() {
             local total windows window
-            total=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-              | jq -s '[.[][]] | length')
+            total=$(printf '%s' "$1" | jq 'length')
             if [ "$total" -gt "$MATRIX_CAP" ]; then
               windows=$(( (total + MATRIX_CAP - 1) / MATRIX_CAP ))
               window=$(( WINDOW_SEED % windows ))
               echo "::warning::$total open pull requests, more than the" \
                 "$MATRIX_CAP job cap. Grading window $window of $windows this" \
-                "run; the window advances each run, so every open pull request" \
-                "is covered within $windows runs."
+                "hour; the window advances hourly, so every open pull request" \
+                "is covered within $windows hourly sweeps."
             fi
           }
 
@@ -227,8 +240,9 @@ jobs:
               ;;
 
             schedule)
-              warn_if_capped
-              matrix=$(grade_all_open)
+              open_prs=$(fetch_open_prs)
+              warn_if_capped "$open_prs"
+              matrix=$(grade_all_open "$open_prs")
               ;;
 
             workflow_dispatch)
@@ -236,14 +250,25 @@ jobs:
               # `schedule`, which is the useful default for recovering from a
               # missed slot rather than a single diagnosed pull request.
               if [ -z "$DISPATCH_PR_NUMBER" ]; then
-                warn_if_capped
-                matrix=$(grade_all_open)
+                open_prs=$(fetch_open_prs)
+                warn_if_capped "$open_prs"
+                matrix=$(grade_all_open "$open_prs")
               else
                 # Read fresh from the API rather than trusted from the input,
                 # the same reasoning as the merge_group case below: the only
                 # thing taken from outside this step is the pull request
                 # number, and the head it is graded against is asked for at
                 # run time.
+                # Validated before it is interpolated into an API path,
+                # not after. Only someone with write access can dispatch this,
+                # so this is a guard against a typo rather than an attacker,
+                # but a path segment is the wrong place to discover that.
+                case "$DISPATCH_PR_NUMBER" in
+                  ''|*[!0-9]*)
+                    echo "::error::pr_number must be digits, got '$DISPATCH_PR_NUMBER'."
+                    exit 1
+                    ;;
+                esac
                 head_sha=$(gh api "repos/$REPO/pulls/$DISPATCH_PR_NUMBER" --jq '.head.sha')
                 # shellcheck disable=SC2016
                 matrix=$(jq -nc --arg n "$DISPATCH_PR_NUMBER" --arg h "$head_sha" \
