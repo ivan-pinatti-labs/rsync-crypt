@@ -457,10 +457,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # `gsub` before the value ever reaches GITHUB_OUTPUT. A newline
+          # in a `key=value` line lets whatever follows it be parsed as
+          # another output, so an unsanitised description could set
+          # `state=success` on the very check meant to withhold it. Only
+          # CodeRabbit can write this status, per the creator filter, and its
+          # descriptions are a single line today; this is here because a gate
+          # whose whole purpose is refusing to take a status at face value
+          # should not then parse that status's text at face value either.
           description=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/statuses" \
             | jq -sr '[.[][] | select(.context == "CodeRabbit"
                           and .creator.login == "coderabbitai[bot]")]
-                  | first | .description // ""')
+                  | first | .description // ""
+                  | gsub("[\\r\\n]"; " ")')
           echo "description=$description" >> "$GITHUB_OUTPUT"
 
       - name: Decide Review Verified

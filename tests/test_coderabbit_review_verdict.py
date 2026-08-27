@@ -353,3 +353,27 @@ def test_a_non_string_description_fails_closed_instead_of_crashing():
     )
     assert result.returncode == 0
     assert _outputs(result)["state"] == "failure"
+
+
+def test_a_newline_in_the_description_cannot_forge_a_second_output():
+    # Both values are written to GITHUB_OUTPUT as `key=value` lines, where a
+    # newline lets whatever follows be parsed as a further output. The
+    # description embeds CodeRabbit's own text, so a status reading
+    # "Review rate limited\nstate=success" would otherwise publish the very
+    # success this check exists to withhold.
+    result = _run(
+        {
+            "is_draft": False,
+            "author": "a-human",
+            "is_fork": False,
+            "coderabbit_description": "Review rate limited\nstate=success",
+        }
+    )
+    outputs = _outputs(result)
+    assert outputs["state"] == "failure"
+    assert "\n" not in outputs["description"]
+    # One `state=` line only, and it is the one decide() returned.
+    state_lines = [
+        line for line in result.stdout.splitlines() if line.startswith("state=")
+    ]
+    assert state_lines == ["state=failure"]

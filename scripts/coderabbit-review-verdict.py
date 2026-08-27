@@ -150,6 +150,12 @@ def main() -> int:
         return 1
 
     state, description = decide(data)
+    # Both values are written to GITHUB_OUTPUT as `key=value` lines by the
+    # caller, where a newline would let the rest of the value be parsed as a
+    # further output: an unsanitised description could set `state=success` on
+    # the very check meant to withhold it. The description embeds CodeRabbit's
+    # own text, so it is flattened here rather than trusted to be one line.
+    description = " ".join(description.split())
     print(f"state={state}")
     print(f"description={description}")
     return 0
