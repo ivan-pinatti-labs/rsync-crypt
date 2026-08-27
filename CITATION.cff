@@ -13,8 +13,8 @@ authors:
     alias: ivan-pinatti
     url: https://github.com/ivan-pinatti
 license: Apache-2.0
-repository-code: https://github.com/ivan-pinatti/rsync-crypt
-url: https://github.com/ivan-pinatti/rsync-crypt
+repository-code: https://github.com/ivan-pinatti-labs/rsync-crypt
+url: https://github.com/ivan-pinatti-labs/rsync-crypt
 keywords:
   - backup
   - encryption

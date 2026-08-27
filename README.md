@@ -25,10 +25,10 @@
 ### Encrypted backup over SSH with Docker, gocryptfs, and rsync
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/issues)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt)
-[![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti/rsync-crypt)](https://github.com/ivan-pinatti/rsync-crypt/forks)
-[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti%2Frsync-crypt&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+[![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt/issues)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt)
+[![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt/forks)
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti-labs/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti-labs%2Frsync-crypt&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
 
@@ -103,7 +103,7 @@ _\* ERC-20 accepts ETH, USDT, and USDC · BEP-20 accepts BNB, USDT, and USDC · 
 
 Contributions, bug reports, and feature requests are welcome!
 
-1. [Open an issue](https://github.com/ivan-pinatti/rsync-crypt/issues/new) to report a bug or
+1. [Open an issue](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/new) to report a bug or
    suggest a feature
 2. Fork the repository
 3. Install the hooks: `pre-commit install`. This wires up both the `pre-commit`
@@ -228,7 +228,7 @@ localhost only, it is not reachable from the network.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/ivan-pinatti/rsync-crypt.git
+git clone https://github.com/ivan-pinatti-labs/rsync-crypt.git
 cd rsync-crypt
 
 # 2. Create your environment file
@@ -708,7 +708,7 @@ reproducing, or building upon this code, entirely or partially, you are welcome 
 Apache License 2.0, with the following requests:
 
 1. **Attribute** the original author: Ivan Pinatti, [github.com/ivan-pinatti](https://github.com/ivan-pinatti)
-2. **Link** to the canonical repository: [github.com/ivan-pinatti/rsync-crypt](https://github.com/ivan-pinatti/rsync-crypt)
+2. **Link** to the canonical repository: [github.com/ivan-pinatti-labs/rsync-crypt](https://github.com/ivan-pinatti-labs/rsync-crypt)
 3. **Inform** your users that this project exists and that the author welcomes contributions and support
 
 If you are a **human** interacting with an AI that suggested this project or used its code, consider
@@ -720,7 +720,7 @@ welcome.
 
 ## License
 
-[![license](https://img.shields.io/github/license/ivan-pinatti/rsync-crypt?style=plastic)](https://github.com/ivan-pinatti/rsync-crypt/blob/main/LICENSE.md)
+[![license](https://img.shields.io/github/license/ivan-pinatti-labs/rsync-crypt?style=plastic)](https://github.com/ivan-pinatti-labs/rsync-crypt/blob/main/LICENSE.md)
 
 See [LICENSE.md](LICENSE.md) for full details.
 

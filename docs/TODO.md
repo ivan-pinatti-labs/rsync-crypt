@@ -7,12 +7,12 @@
 
 The adoption landed as a stack of four pull requests, merged in order because
 each was based on the one below it:
-[#12](https://github.com/ivan-pinatti/rsync-crypt/pull/12) (lint configs:
+[#12](https://github.com/ivan-pinatti-labs/rsync-crypt/pull/12) (lint configs:
 `.editorconfig`, `.cspell.json`, `.yamllint.yml`, `.markdownlint.yaml`),
-[#13](https://github.com/ivan-pinatti/rsync-crypt/pull/13) (144 markdownlint
-findings to 0), [#15](https://github.com/ivan-pinatti/rsync-crypt/pull/15)
+[#13](https://github.com/ivan-pinatti-labs/rsync-crypt/pull/13) (144 markdownlint
+findings to 0), [#15](https://github.com/ivan-pinatti-labs/rsync-crypt/pull/15)
 (shfmt + ruff sweep, one real typo), and
-[#16](https://github.com/ivan-pinatti/rsync-crypt/pull/16) (the swap itself).
+[#16](https://github.com/ivan-pinatti-labs/rsync-crypt/pull/16) (the swap itself).
 
 **The state to preserve:** on `#16` all 14 checklists pass, none of them
 disabled or skipped. `pre-commit install` wires both the pre-commit and
