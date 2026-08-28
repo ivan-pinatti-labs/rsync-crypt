@@ -24,6 +24,12 @@
   // Keep PR volume manageable so CI is not overwhelmed.
   prConcurrentLimit: 5,
   prHourlyLimit: 2,
+
+  // The default deny. Overridden per update type by the first packageRules
+  // entry below, which is the only place that grants it: an update type this
+  // config has not thought about, or a datasource added later with no rule of
+  // its own, arrives unlabelled and waits for a person rather than merging on
+  // the strength of a default nobody chose.
   automerge: false,
 
   // Dependabot owns these two ecosystems; disabling them here avoids
@@ -31,6 +37,41 @@
   enabledManagers: ["asdf", "custom.regex"],
 
   packageRules: [
+    // What may merge without anyone looking, and the label that says so.
+    //
+    // First in the list on purpose, the same reason it is first in
+    // docker-torrent-box-with-vpn's copy of this file: later rules win on any
+    // key they share with an earlier one, and the two group rules below set
+    // names and labels, not automerge policy, so neither can accidentally
+    // override this by coming after it.
+    //
+    // The label is the whole point. bot-auto-merge.yml approves a Renovate
+    // pull request only when it carries `automerge`, reading the label
+    // rather than restating which update types are eligible, so the policy
+    // lives here, once, instead of two copies free to drift apart. `Pin
+    // Only` is the actual security gate behind that trust: every changed
+    // line still has to be nothing but a version in a pin position, checked
+    // line by line, before the label alone can do anything.
+    //
+    // patch and minor only, not this repository's whole update-type
+    // vocabulary. Both of Renovate's ecosystems here can offer a major:
+    // `asdf` for github-cli or pre-commit, and the custom regex manager's
+    // `versioning: docker` for ALPINE_VERSION, where "3.24" to "3.25" reads
+    // as minor but "3.x" to "4.x" would read as major. An Alpine major is
+    // exactly the case CLAUDE.md already says needs a person: apk drops and
+    // renames packages across major releases, which is what forced the apk
+    // pins in the Dockerfile to be re-resolved by hand the last time this
+    // repository's base image moved. `digest` and `pin` are not listed
+    // because neither can happen here: `pinDigests` is not enabled, and
+    // scripts/assert-pin-only-diff.py's own version grammar for the
+    // annotated `.env.example` line has no shape for a digest to occupy, so
+    // granting automerge to an update type this repository never produces
+    // would document a policy nothing here could ever exercise.
+    {
+      matchUpdateTypes: ["patch", "minor"],
+      automerge: true,
+      addLabels: ["automerge"],
+    },
     {
       matchManagers: ["asdf"],
       groupName: "asdf tool versions",
