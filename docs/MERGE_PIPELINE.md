@@ -88,6 +88,56 @@ pin only:
    `Review Verified`, is green and the approval is in place, the same as any
    other pull request; see "The merge queue is live" below.
 
+## What actually gets reviewed, and what does not
+
+Stated plainly, because it is easy to read the rest of this document and
+still assume CodeRabbit looks at everything: **a dependency bot pull request
+whose diff is pin only merges with no CodeRabbit review at all.**
+`scripts/coderabbit-review-verdict.py`'s bot lane resolves `Review Verified`
+straight to `success` with the description "pin-only diff, nothing to
+review" the moment `Pin Only` reads `success`, and CodeRabbit is never asked
+for an opinion. `coderabbit-review-queue.yml`'s hourly nudge skips it for the
+same reason: `Review Verified` already reads `success`, so there is nothing
+stuck to unstick.
+
+CodeRabbit only enters the bot lane when `Pin Only` **fails**. From there the
+pull request is graded exactly like a human one, on the literal description
+behind the `CodeRabbit` status, and it still gets no automatic approval
+either: `bot-auto-merge.yml` withholds that regardless of what CodeRabbit
+says, so it still requires a human approval before it can merge.
+
+So a clean bot pull request carries no reading of its intent at all, by
+design, not by omission. What actually stands between that and an unattended
+merge of something harmful is two things, neither of them a review:
+
+1. **The `Pin Only` assertion itself**, for a diff that tries to be something
+   other than a version bump. `scripts/assert-pin-only-diff.py` is honest
+   about its own limit: it can tell a line that changed structurally from
+   one that changed only its version, but it cannot tell a version that
+   exists from a version that is safe. `alpine:3.24` becoming `alpine:3.25`
+   is exactly the change it exists to permit, "and no amount of diff reading
+   can tell a good release from a backdoored one," in its own words.
+2. **Renovate's cooling window**, which is the actual defence against a
+   release that is well formed and malicious, since a fresh supply chain
+   compromise may have no published advisory yet, and advisory driven
+   detection cannot flag what has not been reported. Other signals remain:
+   a scanner may match on behaviour rather than a known identifier, and a
+   person can inspect release metadata or the published artifact. The
+   window buys the time in which any of that can happen. As of this
+   writing that window is not yet live in
+   this repository's `.github/renovate.json5`; it is proposed, mirroring
+   `docker-torrent-box-with-vpn`'s own seven day `minimumReleaseAge` with
+   `internalChecksFilter: strict` so a pull request does not open looking
+   blocked before its window is satisfied, and with
+   `vulnerabilityAlerts.minimumReleaseAge: null` so a known vulnerability
+   fix is not held back by a wait that does not make it safer. Treat it as
+   pending until it lands, not as a mitigation already in place.
+
+Until that window lands, a clean pin only bump from a compromised or
+misconfigured upstream can merge here as fast as any other clean bump,
+because nothing named above is positioned to catch it. That is the actual
+risk this section exists to name, not the CodeRabbit gap by itself.
+
 ## Every required status context
 
 | Context | What it actually proves | Who publishes it |
