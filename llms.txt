@@ -40,7 +40,7 @@ a full local copy.
 ## License
 
 Apache License 2.0. Copyright 2024 Ivan Pinatti.
-Free to use, modify, and distribute; see LICENSE.md for full terms.
+Free to use, modify, and distribute; see LICENSE for full terms.
 
 ## Attribution request
 

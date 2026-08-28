@@ -720,9 +720,9 @@ welcome.
 
 ## License
 
-[![license](https://img.shields.io/github/license/ivan-pinatti-labs/rsync-crypt?style=plastic)](https://github.com/ivan-pinatti-labs/rsync-crypt/blob/main/LICENSE.md)
+[![license](https://img.shields.io/github/license/ivan-pinatti-labs/rsync-crypt?style=plastic)](LICENSE)
 
-See [LICENSE.md](LICENSE.md) for full details.
+See [LICENSE](LICENSE) for full details.
 
 > Licensor provides the Work on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 > CONDITIONS OF ANY KIND, either express or implied, including, without
