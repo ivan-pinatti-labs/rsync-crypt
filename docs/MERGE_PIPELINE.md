@@ -200,6 +200,34 @@ accept it, which is what made "The repository owner's own pull request"
 above necessary. `allow_auto_merge` is enabled, without which the queue
 cannot accept anything at all.
 
+## What the transfer silently changed
+
+Recorded here because GitHub's transfer documentation states none of it, and
+each item was found by comparing a snapshot taken before the transfer against
+the repository afterwards rather than by being told.
+
+Survived the transfer: branch protection with all four required contexts,
+Actions secrets by name, both open bot pull requests, and Renovate's
+dependency dashboard issue. Dependabot kept working with no action at all,
+since its version updates are driven by `.github/dependabot.yml` and run by
+GitHub natively rather than by an app installation.
+
+Needed doing by hand afterwards:
+
+- **Secret scanning and push protection were silently disabled.** Both were
+  enabled before the transfer and neither survived it. Push protection is
+  what stops a credential reaching a commit in the first place, so this is a
+  real regression and not a cosmetic one.
+- **`allow_auto_merge` was off**, and a merge queue cannot accept anything
+  without it.
+- **CodeRabbit and Renovate needed reinstalling on the organization.** A
+  GitHub App's installation is granted to an account, not carried by a
+  repository, so both stopped seeing this repository until reinstalled.
+
+Not verifiable here, and left open deliberately: repository *variables* and
+environment level secrets. This repository had none of either before the
+transfer, so their survival was never tested and should not be assumed.
+
 ---
 
 See also: [README.md](../README.md), [CLAUDE.md](../CLAUDE.md)
