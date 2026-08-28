@@ -104,7 +104,7 @@ CodeRabbit only enters the bot lane when `Pin Only` **fails**. From there the
 pull request is graded exactly like a human one, on the literal description
 behind the `CodeRabbit` status, and it still gets no automatic approval
 either: `bot-auto-merge.yml` withholds that regardless of what CodeRabbit
-says, so a person is already looking at it by the time a review would matter.
+says, so it still requires a human approval before it can merge.
 
 So a clean bot pull request carries no reading of its intent at all, by
 design, not by omission. What actually stands between that and an unattended
@@ -119,8 +119,12 @@ merge of something harmful is two things, neither of them a review:
    can tell a good release from a backdoored one," in its own words.
 2. **Renovate's cooling window**, which is the actual defence against a
    release that is well formed and malicious, since a fresh supply chain
-   compromise has no advisory yet for any scanner, including a human
-   reviewer, to catch. As of this writing that window is not yet live in
+   compromise may have no published advisory yet, and advisory driven
+   detection cannot flag what has not been reported. Other signals remain:
+   a scanner may match on behaviour rather than a known identifier, and a
+   person can inspect release metadata or the published artifact. The
+   window buys the time in which any of that can happen. As of this
+   writing that window is not yet live in
    this repository's `.github/renovate.json5`; it is proposed, mirroring
    `docker-torrent-box-with-vpn`'s own seven day `minimumReleaseAge` with
    `internalChecksFilter: strict` so a pull request does not open looking
