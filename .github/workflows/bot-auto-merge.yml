@@ -75,17 +75,26 @@ on:
     types: [opened, synchronize, reopened, labeled]
     branches:
       - main
-  # For the owner's own path only, resolved separately below by
-  # `resolve-owner` rather than filtered here the way `pull_request_target`'s
-  # branch and type list is, because a `status` event carries no pull
-  # request context at all to filter on, only a commit SHA. `Review
-  # Verified` is realistically the slowest of the four required contexts,
-  # since it depends on CodeRabbit's own review completing, and
-  # `pull_request_target` alone never fires again once a pull request stops
-  # changing, so without this trigger a pull request whose review finished
-  # after the first poll window closed would need a push it did not
-  # otherwise need, just to get approved.
-  status:
+  # For the owner's own path only. `Review Verified` is realistically the
+  # slowest of the four required contexts, since it depends on CodeRabbit's
+  # own review completing, and `pull_request_target` alone never fires again
+  # once a pull request stops changing, so without a second trigger a pull
+  # request whose review finished after the first poll window closed would
+  # need a push it did not otherwise need, just to get approved.
+  #
+  # `workflow_run`, not `status`: `coderabbit-gate.yml` publishes
+  # `Review Verified` using `secrets.GITHUB_TOKEN`, and GitHub does not start
+  # new workflow runs from events a `GITHUB_TOKEN` creates, specifically to
+  # stop workflows triggering each other in a loop. A `status` trigger here
+  # would never fire from that publish at all, silently, which is a worse
+  # failure than the one it was meant to fix: at least a poll window closing
+  # fails this job closed and logs why. `workflow_run` is exempt from that
+  # restriction because it reacts to the run itself finishing, not to an API
+  # call a token made during it, which is why it exists as the sanctioned
+  # way to chain workflows without a personal access token.
+  workflow_run:
+    workflows: ["CodeRabbit Gate"]
+    types: [completed]
 
 # The floor. Each job widens it for itself.
 permissions:
@@ -295,14 +304,6 @@ jobs:
 
   resolve-owner:
     name: Find the owner's pull request to approve
-    # `status` fires on every commit status this repository receives,
-    # including ones with nothing to do with an owner authored pull request
-    # at all, so this is filtered to the one context whose settling is what
-    # this whole second trigger exists for. `pull_request_target` needs no
-    # such filter: its own type list above already scopes it.
-    if: >-
-      github.event_name != 'status' ||
-      github.event.context == 'Review Verified'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
@@ -324,7 +325,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
-          STATUS_SHA: ${{ github.event.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -340,17 +340,21 @@ jobs:
               fi
               ;;
 
-            status)
-              # Asked of the API fresh rather than trusted from the payload,
-              # since a `status` event carries only a commit SHA: zero, one,
-              # or in principle more than one open pull request can share a
-              # head SHA, and each is checked against the same author and
-              # fork conditions as the pull_request_target case above.
-              matrix=$(gh api "repos/$REPO/commits/$STATUS_SHA/pulls" \
-                | jq -c '[.[] | select(.state == "open"
-                                  and .user.login == "ivan-pinatti"
-                                  and (.head.repo.fork // false) == false)
-                          | {pr_number: .number}]')
+            workflow_run)
+              # Not narrowed to the one pull request coderabbit-gate.yml
+              # happened to grade in the run that just completed:
+              # `workflow_run.pull_requests` is only populated for the plain
+              # `pull_request` event, and coderabbit-gate.yml never uses it,
+              # so there is nothing reliable to narrow by. Re-checking every
+              # open owner authored pull request instead is cheap, since
+              # this repository only ever has a handful open, and it costs
+              # nothing extra to a pull request that is already approved:
+              # the Approve step below already dedupes.
+              matrix=$(gh pr list --repo "$REPO" --state open --limit 100 \
+                --json number,author,isCrossRepository \
+                --jq '[.[] | select(.author.login == "ivan-pinatti"
+                                and .isCrossRepository == false)
+                        | {pr_number: .number}]')
               ;;
 
             *)
@@ -426,10 +430,11 @@ jobs:
         # A two minute window is still not a guarantee `Review Verified`
         # settles inside it, since it depends on CodeRabbit's own review
         # completing. What makes that survivable rather than a dead end is
-        # the `status` trigger above: this job runs again, and re-reads the
-        # rollup fresh, the moment `Review Verified` actually changes,
-        # rather than depending on this one poll window catching it or on
-        # someone pushing a pull request that has nothing left to change.
+        # the `workflow_run` trigger above: every time coderabbit-gate.yml
+        # finishes a run, this job runs again and re-reads the rollup fresh,
+        # rather than depending on this one poll window catching the change
+        # or on someone pushing a pull request that has nothing left to
+        # change.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}

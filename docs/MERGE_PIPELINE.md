@@ -59,10 +59,16 @@ same as always.
 
 `Review Verified` is realistically the slowest of the four contexts to
 settle, since it waits on CodeRabbit's own review, which is why this job
-also reacts to a `status` event on that context landing, not only to
-`pull_request_target`: a pull request whose review finishes well after it
-was opened still gets approved without needing a push it otherwise has no
-reason to make.
+also reacts to `coderabbit-gate.yml` finishing a run (a `workflow_run`
+trigger, not `pull_request_target` alone), re-checking every open owner
+authored pull request each time rather than only the one that happened to
+prompt it: a pull request whose review finishes well after it was opened
+still gets approved without needing a push it otherwise has no reason to
+make. It is `workflow_run`, not a `status` trigger on `Review Verified`
+itself, because `coderabbit-gate.yml` publishes that status with
+`secrets.GITHUB_TOKEN`, and GitHub does not start new workflow runs from
+events a `GITHUB_TOKEN` creates; `workflow_run` reacts to the run finishing
+rather than to that publish, so it is not subject to the same restriction.
 
 ## A dependency bot pull request
 
