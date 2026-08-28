@@ -1,7 +1,10 @@
 ---
 name: Bot Auto Merge
 
-# Supplies the approving review that lets a dependency bump merge unattended.
+# Supplies the approving review that lets a dependency bump merge unattended,
+# and, separately, the approving review that lets the repository owner's own
+# pull request enter the merge queue at all.
+#
 # Ported from docker-torrent-box-with-vpn ahead of need, at a time when branch
 # protection was not yet enabled on this repository and every job below was
 # inert. It is not inert any more: branch protection now requires one
@@ -11,7 +14,8 @@ name: Bot Auto Merge
 # Nothing else happens here: the tests are proven by the `Tests` job in
 # pull-request-validation.yml, and the merge itself is GitHub's, armed either
 # by Renovate (platformAutomerge) or by the last step here on the Dependabot
-# path, because Dependabot cannot arm it.
+# path, because Dependabot cannot arm it; the owner's own path arms nothing at
+# all, see the `approve-owner` job below for why.
 #
 # Why an approval has to be supplied at all: no CODEOWNERS file exists here
 # and none should be added for this reason alone, since CODEOWNERS accepts
@@ -19,9 +23,30 @@ name: Bot Auto Merge
 # the plain "require an approving review" rule actually in effect, a
 # dependency bump could not merge without a person or a stored credential
 # belonging to one, because an approving review only counts from an account
-# with write access and this repository has exactly one. If a second write
-# collaborator is ever added, that stops being true and this arrangement has
-# to be revisited.
+# with write access and this repository has exactly one, and GitHub refuses
+# to let that one account approve its own pull request. Confirmed
+# empirically rather than assumed: `gh pr merge --admin` skips the queue
+# entirely (no `merge_group` run at all), and arming auto-merge on an
+# unapproved owner pull request leaves it enqueued forever with no
+# `merge_group` run either, because eligibility to enter the queue needs the
+# approval `enforce_admins: false` does not supply. Today, with exactly one
+# write collaborator, that left the owner a choice between using the queue
+# and merging their own work, never both. The `approve-owner` job below is
+# the fix. If a second write collaborator is ever added, every approval
+# decision in this file has to be revisited: the fence both jobs rely on is
+# that only accounts already trusted with write access are approved here at
+# all, and Renovate, Dependabot and the owner are the only three today.
+#
+# What an `approve-owner` approval does *not* mean: that a human read the
+# diff. It is issued the moment every required context reads green, with no
+# review of the content behind any of it, which is exactly why it is
+# withheld until `Review Verified` itself is green: that context is what
+# actually carries "a review happened," and issuing this approval any
+# earlier would open a merge path around the CodeRabbit gate for the one
+# author who can never be asked to review their own pull request, which is
+# the same hole #114 was about. A contributor or a fork gets no approval
+# from either job and still needs a genuine human review before anything
+# merges; nothing in this file changes for them.
 #
 # pull_request_target, not pull_request, and the difference is the whole
 # defense. Under `pull_request` this file would be read from the pull request's
@@ -29,8 +54,8 @@ name: Bot Auto Merge
 # wait for `Pin Only` below and approve itself, and Renovate does maintain pins
 # in .github/workflows/. pull_request_target runs the default branch's copy
 # instead. It is normally the more dangerous of the two because it hands a write
-# token to a workflow a fork can trigger, which does not apply here: this job
-# never checks out the pull request, and the author condition it is gated on
+# token to a workflow a fork can trigger, which does not apply here: neither
+# job checks out the pull request, and the author condition each is gated on
 # comes from the immutable copy.
 on:
   # zizmor: ignore[dangerous-triggers]
@@ -50,14 +75,34 @@ on:
     types: [opened, synchronize, reopened, labeled]
     branches:
       - main
+  # For the owner's own path only. `Review Verified` is realistically the
+  # slowest of the four required contexts, since it depends on CodeRabbit's
+  # own review completing, and `pull_request_target` alone never fires again
+  # once a pull request stops changing, so without a second trigger a pull
+  # request whose review finished after the first poll window closed would
+  # need a push it did not otherwise need, just to get approved.
+  #
+  # `workflow_run`, not `status`: `coderabbit-gate.yml` publishes
+  # `Review Verified` using `secrets.GITHUB_TOKEN`, and GitHub does not start
+  # new workflow runs from events a `GITHUB_TOKEN` creates, specifically to
+  # stop workflows triggering each other in a loop. A `status` trigger here
+  # would never fire from that publish at all, silently, which is a worse
+  # failure than the one it was meant to fix: at least a poll window closing
+  # fails this job closed and logs why. `workflow_run` is exempt from that
+  # restriction because it reacts to the run itself finishing, not to an API
+  # call a token made during it, which is why it exists as the sanctioned
+  # way to chain workflows without a personal access token.
+  workflow_run:
+    workflows: ["CodeRabbit Gate"]
+    types: [completed]
 
-# The floor. The job widens it for itself.
+# The floor. Each job widens it for itself.
 permissions:
   contents: read
 
 jobs:
-  approve:
-    name: Approve and enable auto-merge
+  approve-bot:
+    name: Approve and enable auto-merge for a dependency bot
     # user.login is set by GitHub from the authenticated author, so a pull
     # request cannot claim to be a bot. Exact equality, not startsWith or
     # contains: `renovate[bot]-x` is a login somebody may register, and the
@@ -256,3 +301,233 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --squash "$PR_URL"
+
+  resolve-owner:
+    name: Find the owner's pull request to approve
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      pull-requests: read
+    outputs:
+      # A JSON array of {pr_number}. Deliberately just the number: unlike
+      # coderabbit-gate.yml's resolve job, nothing here is graded against a
+      # merge queue's temporary commit, so there is no separate head/target
+      # SHA to carry, and the approve job re-reads the pull request fresh
+      # from the number anyway.
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - name: Build the list of owner pull requests to check
+        id: build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request_target)
+              # Read straight off the immutable payload: cheap, and this is
+              # the same trust boundary the bot job's own `if:` already
+              # relies on.
+              if [ "$PR_AUTHOR" = "ivan-pinatti" ] && [ "$IS_FORK" != "true" ]; then
+                matrix=$(jq -nc --arg n "$PR_NUMBER" '[{pr_number: ($n | tonumber)}]')
+              else
+                matrix='[]'
+              fi
+              ;;
+
+            workflow_run)
+              # Not narrowed to the one pull request coderabbit-gate.yml
+              # happened to grade in the run that just completed:
+              # `workflow_run.pull_requests` is only populated for the plain
+              # `pull_request` event, and coderabbit-gate.yml never uses it,
+              # so there is nothing reliable to narrow by. Re-checking every
+              # open owner authored pull request instead is cheap, since
+              # this repository only ever has a handful open, and it costs
+              # nothing extra to a pull request that is already approved:
+              # the Approve step below already dedupes.
+              matrix=$(gh pr list --repo "$REPO" --state open --limit 100 \
+                --json number,author,isCrossRepository \
+                --jq '[.[] | select(.author.login == "ivan-pinatti"
+                                and .isCrossRepository == false)
+                        | {pr_number: .number}]')
+              ;;
+
+            *)
+              echo "::error::Unhandled event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Checking: $matrix"
+
+  approve-owner:
+    name: Approve the owner's own pull request
+    needs: resolve-owner
+    # An empty array is not an error: nothing to check in, and nothing to
+    # approve. `fromJson('[]')` still starts a matrix with zero jobs, which
+    # reports as success on its own with no step of this job ever running.
+    if: needs.resolve-owner.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJson(needs.resolve-owner.outputs.matrix) }}
+    # Keyed on the pull request, not the workflow run, for the same reason
+    # coderabbit-gate.yml's grade job is: two triggers racing to approve the
+    # same pull request is exactly what this serializes, and the dedupe
+    # inside the Approve step below is what stops either of them piling up a
+    # second review once the first lands. Queued rather than cancelled: a
+    # superseded run has nothing to redo, but a cancelled one might have
+    # been the only run that would have approved.
+    concurrency:
+      group: bot-auto-merge-owner-${{ matrix.entry.pr_number }}
+      cancel-in-progress: false
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Read the pull request's URL
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ matrix.entry.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          url=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.html_url')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for every required context to be green
+        # Every required context, not just `Pin Only` the way the bot job
+        # waits: `Pre-commit`, `Tests`, `Pin Only` and `Review Verified` all
+        # have to read green before this job approves anything, because an
+        # approval issued before `Review Verified` settles would hand the
+        # owner a merge path around the CodeRabbit gate, which is the exact
+        # hole #114 was about, and the owner is the one author who can never
+        # be asked to supply that review themselves.
+        #
+        # `statusCheckRollup`, not the `/commits/{sha}/status` endpoint the
+        # bot job's wait step reads, because two of the four required
+        # contexts here, `Pre-commit` and `Tests`, are ordinary GitHub Checks
+        # (workflow jobs), not commit statuses, and that endpoint only ever
+        # returns the latter. `statusCheckRollup` is the one place both
+        # shapes show up together, the same reasoning
+        # coderabbit-review-queue.yml already relies on for the same reason.
+        #
+        # A two minute window is still not a guarantee `Review Verified`
+        # settles inside it, since it depends on CodeRabbit's own review
+        # completing. What makes that survivable rather than a dead end is
+        # the `workflow_run` trigger above: every time coderabbit-gate.yml
+        # finishes a run, this job runs again and re-reads the rollup fresh,
+        # rather than depending on this one poll window catching the change
+        # or on someone pushing a pull request that has nothing left to
+        # change.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ matrix.entry.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required='["Pre-commit","Tests","Pin Only","Review Verified"]'
+          for _ in $(seq 1 24); do
+            # $owner, $name and $number below are GraphQL query variables,
+            # not shell expansions; they are meant to stay literal inside
+            # the single-quoted query and are bound by the -f/-F arguments
+            # that follow it.
+            # shellcheck disable=SC2016
+            contexts=$(gh api graphql -f query='
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    commits(last: 1) {
+                      nodes {
+                        commit {
+                          statusCheckRollup {
+                            contexts(first: 50) {
+                              nodes {
+                                ... on StatusContext { context state }
+                                ... on CheckRun { name conclusion }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' -f owner="${REPO%%/*}" -f name="${REPO##*/}" -F number="$PR_NUMBER" \
+              --jq '.data.repository.pullRequest.commits.nodes[0].commit
+                    .statusCheckRollup.contexts.nodes // []')
+
+            # A CheckRun can pass as `neutral` or `skipped` as well as
+            # `success`; a StatusContext never reports either, so widening
+            # the accepted set costs nothing here and matches what branch
+            # protection itself treats as a passing required check.
+            # shellcheck disable=SC2016
+            all_green=$(printf '%s' "$contexts" | jq --argjson required "$required" '
+              (map({(.context // .name):
+                    ((.state // .conclusion // "pending") | ascii_downcase)})
+                | add // {}) as $states
+              | (["success", "neutral", "skipped"]) as $passing
+              | ($required
+                  | map(select(($states[.] // "absent") as $s
+                      | ($passing | index($s)) | not))
+                  | length) == 0')
+
+            if [ "$all_green" = "true" ]; then
+              echo "All required contexts are green for #$PR_NUMBER."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Not every required context is green for #$PR_NUMBER."
+          exit 1
+
+      - name: Approve
+        # No decide step here, unlike the bot job: reaching this point at all
+        # already means the author is the owner, the pull request is not a
+        # fork's, and every required context is green, which is the entire
+        # decision. Deduplicated against an existing approval the same way
+        # the bot job is, for the same reason: branch protection dismisses
+        # stale reviews on a rebase, so a rebase re-runs this job on a fresh
+        # `pull_request_target` event, and re-approving every time would
+        # pile up identical reviews the way docker-torrent-box-with-vpn's
+        # #61 did before that guard existed.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_NUMBER: ${{ matrix.entry.pr_number }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            | jq -s '[.[][] | select(.user.login == "github-actions[bot]"
+                              and .state == "APPROVED")] | length')
+          if [ "$existing" -gt 0 ]; then
+            echo "Already approved and not dismissed. Nothing to do."
+            exit 0
+          fi
+          gh pr review --approve "$PR_URL"
+
+        # No "Enable auto-merge" step here, deliberately: the owner decides
+        # when to enqueue their own pull request. Supplying the approval is
+        # enough to make it queue eligible; arming auto-merge on top of that
+        # would remove the "I will check everything is fine, then merge"
+        # step the owner explicitly wants to keep for their own work, even
+        # though nothing here would stop the owner running `gh pr merge
+        # --auto` by hand if they wanted the same convenience Renovate gets.
