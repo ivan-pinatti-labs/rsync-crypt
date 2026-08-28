@@ -202,9 +202,13 @@ cannot accept anything at all.
 
 ## What the transfer silently changed
 
-Recorded here because GitHub's transfer documentation states none of it, and
-each item was found by comparing a snapshot taken before the transfer against
-the repository afterwards rather than by being told.
+Recorded here because GitHub's transfer documentation does not fully describe
+these effects. It does state that secrets remain associated after a transfer,
+which held. It says nothing either way about branch protection, rulesets,
+repository variables, secret scanning, `allow_auto_merge`, or an app
+installation's scope, and every item below was found by comparing a snapshot
+taken before the transfer against the repository afterwards rather than by
+being told.
 
 Survived the transfer: branch protection with all four required contexts,
 Actions secrets by name, both open bot pull requests, and Renovate's
