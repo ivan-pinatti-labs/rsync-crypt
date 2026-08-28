@@ -6,10 +6,12 @@ What happens between opening a pull request against this repository and it
 landing on `main`. This is a thinner version of the document of the same
 name in `docker-torrent-box-with-vpn`, which this pipeline was ported from
 ahead of a planned migration of that repository to an organization (GitHub
-refuses a merge queue on a personal account). This repository has four
-required contexts, not six, and no integration suite, so the shape here is
-simpler; where the reasoning is identical it is only summarized, not
-restated.
+refuses a merge queue on a personal account). This repository was the
+rehearsal for that migration: it transferred first, proved the queue works
+under an organization, and the fixes found along the way are meant to sweep
+back into the sibling repository afterward. It has four required contexts,
+not six, and no integration suite, so the shape here is simpler; where the
+reasoning is identical it is only summarized, not restated.
 
 ## A human pull request
 
@@ -22,12 +24,51 @@ linters have not finished cleaning up yet.
 what starts CodeRabbit. Address what it raises, pushing fixes as needed; each
 push re-runs both jobs and gets a fresh review.
 
-Once every required check reads green and a maintainer has approved it,
-branch protection allows the merge. There is no merge queue on this
-repository (see "Branch protection: what is live and what is not" below), so
-`strict: true` does that job instead: GitHub requires the pull request to be
-up to date with `main` first, which a stale pull request clears by merging
-`main` into it rather than by anything this pipeline runs.
+Once every required check reads green and a maintainer has approved it, the
+pull request is eligible for the merge queue, but entering it still needs
+someone to select **Merge when ready** (or enable auto-merge), the same as
+any GitHub pull request with a merge queue in front of it; nothing here
+enqueues it on its own. Once it is enqueued, it merges when the queue's own
+run of the same check set passes on the commit the queue actually builds;
+see "The merge queue is live" below.
+
+## The repository owner's own pull request
+
+The owner is the only account with write access, and GitHub refuses to let
+an account approve its own pull request, which used to mean a genuine
+deadlock once the queue went live: `gh pr merge --admin` skips the queue
+entirely, and arming auto-merge on an unapproved pull request leaves it
+enqueued forever with no `merge_group` run, because `enforce_admins: false`
+exempts the owner from performing a merge without approval, not from the
+approval the queue itself requires to accept the pull request at all. Both
+failure modes were confirmed empirically, not assumed, on real pull requests
+against this repository.
+
+`bot-auto-merge.yml`'s `approve-owner` job is the fix: once `Pre-commit`,
+`Tests`, `Pin Only` and `Review Verified` are all green, it supplies the
+approval that makes the pull request queue eligible. It does not arm
+auto-merge, deliberately: the owner still decides when to enqueue, which is
+the "check everything is fine, then merge" step the rest of this pipeline
+takes away from nobody else. This approval is not evidence a human read the
+diff; it is issued the moment the four contexts settle, with no review of
+their content, which is exactly why it waits for `Review Verified` rather
+than for `Pin Only` alone. `Review Verified` is what actually carries "a
+review happened," and nothing else in this pipeline does. A contributor or a
+fork gets no approval from this job and still needs a genuine human review,
+same as always.
+
+`Review Verified` is realistically the slowest of the four contexts to
+settle, since it waits on CodeRabbit's own review, which is why this job
+also reacts to `coderabbit-gate.yml` finishing a run (a `workflow_run`
+trigger, not `pull_request_target` alone), re-checking every open owner
+authored pull request each time rather than only the one that happened to
+prompt it: a pull request whose review finishes well after it was opened
+still gets approved without needing a push it otherwise has no reason to
+make. It is `workflow_run`, not a `status` trigger on `Review Verified`
+itself, because `coderabbit-gate.yml` publishes that status with
+`secrets.GITHUB_TOKEN`, and GitHub does not start new workflow runs from
+events a `GITHUB_TOKEN` creates; `workflow_run` reacts to the run finishing
+rather than to that publish, so it is not subject to the same restriction.
 
 ## A dependency bot pull request
 
@@ -43,9 +84,9 @@ pin only:
    for `Pin Only` to read `success` and then supplies the approving review
    branch protection requires. A diff that is not pin-only gets no approval
    and waits for a person, same as a major bump does.
-3. **GitHub merges it** once every required check, including `Review
-   Verified`, is green, the approval is in place, and the pull request is up
-   to date with `main` (`strict: true`; see below).
+3. **GitHub enqueues and merges it** once every required check, including
+   `Review Verified`, is green and the approval is in place, the same as any
+   other pull request; see "The merge queue is live" below.
 
 ## Every required status context
 
@@ -136,28 +177,28 @@ the hourly schedule as a convenience that clears most missed runs without
 anyone having to notice, and `workflow_dispatch` as what an actual person
 reaches for when it does not.
 
-## Branch protection: what is live and what is not
+## The merge queue is live
 
-Classic branch protection on `main` requires `Pre-commit`, `Tests`,
-`Pin Only` and `Review Verified`, with `strict: true` (a pull request must be
-up to date with `main` before it merges), one approval, dismissal of stale
-reviews, approval of the last push, conversation resolution and a linear
-history. That means `bot-auto-merge.yml`'s approval now does something real:
-without it, a pin-only bot pull request has no approving review and cannot
-merge, which is the gap that workflow existed to close ahead of need.
+This repository transferred from a personal account to the
+`ivan-pinatti-labs` organization specifically so a `merge_queue` ruleset
+rule could exist at all: GitHub refuses that rule under personal ownership
+and accepts it under an organization, free plan included. Ruleset `21672903`
+is `enforcement: active`, with no bypass actor, so `merge_group` triggers on
+`pull-request-validation.yml` and `coderabbit-gate.yml`, both added ahead of
+need while the queue could not exist yet, are live rather than inert: every
+required context runs a second time against the queue's own temporary
+commit before anything actually merges, exactly as `docker-torrent-box-with-vpn`'s
+own queue does.
 
-Not live: a merge queue. This repository is personal-owned, and GitHub
-refuses a `merge_queue` ruleset rule on a personal account, which is the
-entire reason `docker-torrent-box-with-vpn` is transferring to an
-organization in the first place. `strict: true` here is doing the job a
-queue would otherwise do, at the older cost that made the sibling repository
-move away from it: a pull request has to be rebased or merged up to date with
-`main` itself, and one merge can invalidate every other open pull request's
-checks. `merge_group` triggers on `pull-request-validation.yml` and
-`coderabbit-gate.yml` exist anyway, and stay inert, so that enabling a queue
-after a future transfer does not also require writing new workflow code at
-the same time, which is the entire point of rehearsing this pipeline here
-first.
+Branch protection on `main` requires `Pre-commit`, `Tests`, `Pin Only` and
+`Review Verified`, one approval, dismissal of stale reviews, approval of the
+last push, conversation resolution and a linear history. `enforce_admins` is
+`false`, which matters for exactly one account: it lets the owner merge
+without being blocked by rules an admin can bypass, but it does not exempt
+the owner's own pull request from the approval the queue itself requires to
+accept it, which is what made "The repository owner's own pull request"
+above necessary. `allow_auto_merge` is enabled, without which the queue
+cannot accept anything at all.
 
 ---
 
