@@ -36,6 +36,41 @@
   // duplicate pull requests for the same update.
   enabledManagers: ["asdf", "custom.regex"],
 
+  // A cooling window before an update is offered at all, mirroring
+  // docker-torrent-box-with-vpn's reasoning rather than its number chosen for
+  // a much larger fleet of container images: `Pin Only` proves a diff changed
+  // nothing but a version token, and says so in its own docstring, but it
+  // cannot tell a good release from a backdoored one, because a fresh supply
+  // chain attack has no advisory yet for any scanner to match. Age is the
+  // only defence against that, and granting automerge above without it would
+  // have meant merging a release published minutes earlier, unattended, with
+  // no person ever looking, which is the exact window a compromised upstream
+  // release is exploited in.
+  //
+  // Seven days, the same as the sibling repository, not because the number
+  // was copied but because the reasoning behind it is not about fleet size:
+  // most compromised releases are spotted and pulled within hours to days
+  // regardless of how many images or tools a repository tracks, so the
+  // window that makes "we merged it first" into "it was already yanked" is
+  // the same window here as there. This repository's surface is asdf tool
+  // versions (github-cli, pre-commit) and one annotated Docker tag
+  // (ALPINE_VERSION); none of the three carry a materially different risk
+  // profile that would justify a shorter wait.
+  minimumReleaseAge: "7 days",
+
+  // Hold the pull request until the window is satisfied rather than opening
+  // one that is not allowed to merge yet. Without this, `minimumReleaseAge`
+  // still gates the merge, but Renovate opens the pull request immediately
+  // regardless, so it would sit for up to seven days looking blocked for no
+  // visible reason instead of not existing yet.
+  internalChecksFilter: "strict",
+
+  // The exception: a fix for a known vulnerability is not made safer by
+  // aging, and null clears the inherited window for these updates only.
+  vulnerabilityAlerts: {
+    minimumReleaseAge: null,
+  },
+
   packageRules: [
     // What may merge without anyone looking, and the label that says so.
     //
