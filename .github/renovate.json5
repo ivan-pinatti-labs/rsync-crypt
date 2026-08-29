@@ -16,7 +16,14 @@
   dependencyDashboard: true,
 
   timezone: "America/Toronto",
-  schedule: ["before 7am on Monday"],
+
+  // Daily, not weekly. A weekly schedule stacked against minimumReleaseAge's
+  // 7 day window below means a release that misses one week's slot by a day
+  // waits a full extra week for the next one, so the oldest a package could
+  // sit before merging was up to 14 days even though 7 was the intended
+  // floor. Checking daily keeps the schedule's own period short enough that
+  // it can no longer add more than a day on top of that floor.
+  schedule: ["before 7am"],
 
   labels: ["dependencies"],
   commitMessagePrefix: "chore:",
