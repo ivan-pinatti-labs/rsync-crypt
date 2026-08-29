@@ -165,7 +165,7 @@ one-line version bump. It stops being fine the moment work is added on top:
 Renovate's Alpine 3.24 bump grew three re-resolved apk pins and a format
 compatibility investigation, and none of it would have been reviewed. Ask for
 it explicitly with an `@coderabbitai review` comment, posted by a human
-account. See the next section for why that qualifier is load bearing.
+account. See the next section for why that qualifier is load-bearing.
 
 Two related traps on a long-open bot pull request:
 
