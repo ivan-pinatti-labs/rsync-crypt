@@ -36,14 +36,21 @@ jobs:
     name: Ask for one missing review
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      # For the comment. Reading statuses and comments needs nothing extra on a
-      # public repository.
-      pull-requests: write
+    # No permissions block here beyond the `contents: read` above: GITHUB_TOKEN
+    # never posts the review comment now, so it never needs `pull-requests:
+    # write`, and reading pull requests, statuses and comments needs nothing
+    # extra on a public repository either. The comment itself is posted with
+    # CODERABBIT_NUDGE_TOKEN, a separate credential scoped on its own, so this
+    # token's permissions do not need to grow to cover it.
     steps:
       - name: Find one head with no review, and ask
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only the comment that has to look human made to CodeRabbit uses
+          # this. Reading pull requests, statuses, comments and the GraphQL
+          # rollup below all keep using GH_TOKEN above; see the note beside
+          # the one call that reads this instead.
+          CODERABBIT_NUDGE_TOKEN: ${{ secrets.CODERABBIT_NUDGE_TOKEN }}
           REPO: ${{ github.repository }}
           # Forks are capped so a contributor's pull request cannot collect a
           # comment every hour forever while the quota is exhausted. Our own
@@ -255,11 +262,25 @@ jobs:
             fi
 
             echo "#$number (${sha:0:8}): $reason. Asking for a review."
-            # GITHUB_TOKEN is enough. The suppression that bites elsewhere in
-            # this repository, where an event a workflow's own token creates
-            # starts no further workflow, does not apply: CodeRabbit is a GitHub
-            # App on a webhook, not a workflow trigger.
-            gh pr comment "$number" --repo "$REPO" \
+            # GITHUB_TOKEN would dodge the trigger suppression problem
+            # described above (CodeRabbit is a GitHub App on a webhook, not a
+            # workflow trigger), but that is not the constraint that matters
+            # here. CodeRabbit silently ignores an `@coderabbitai review`
+            # command posted by a bot account, the same way it ignores a pull
+            # request authored by one: see CLAUDE.md, "CodeRabbit silently
+            # ignores `@coderabbitai review` from a bot account", and #39.
+            # GITHUB_TOKEN posts as github-actions[bot], so this one call
+            # authenticates as CODERABBIT_NUDGE_TOKEN instead, a fine grained
+            # personal access token scoped to Issues read and write on this
+            # repository only, stored as an org secret whose visibility is
+            # restricted to this repository. Everything else in this step
+            # keeps reading through GITHUB_TOKEN; only the comment that
+            # CodeRabbit has to see as human needs the PAT.
+            #
+            # If CODERABBIT_NUDGE_TOKEN is ever missing or revoked, this call
+            # fails loudly with a 401 or 403 from gh; that is the correct
+            # failure mode, so there is no fallback to GITHUB_TOKEN here.
+            GH_TOKEN="${CODERABBIT_NUDGE_TOKEN}" gh pr comment "$number" --repo "$REPO" \
               --body "$(printf '@coderabbitai review\n\n%s' "$marker")"
 
             # One per run. The quota frees a slot at a time, and firing a batch
