@@ -95,8 +95,14 @@ max_line_length = unset
 
 # The verbatim Apache License 2.0 text, centred with spaces exactly as
 # published. It is a legal document reproduced as-is, not something to
-# reformat to a house style.
-[LICENSE.md]
+# reformat to a house style. Plain LICENSE, no extension and nothing added
+# above the text: a Markdown heading and two HTML comments used to sit above
+# it for markdownlint's benefit when this was LICENSE.md, and GitHub's own
+# license detector (licensee) matched the text fine either way, confirmed
+# directly against the gem GitHub itself uses on both the old and the new
+# content. The rename removes the wrapper anyway, since nothing should ever
+# need to be said about a legal document's own formatting again.
+[LICENSE]
 indent_style = unset
 indent_size = unset
 trim_trailing_whitespace = false
