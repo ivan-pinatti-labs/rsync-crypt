@@ -164,7 +164,8 @@ check on them at all. That is fine while the pull request is only the bot's
 one-line version bump. It stops being fine the moment work is added on top:
 Renovate's Alpine 3.24 bump grew three re-resolved apk pins and a format
 compatibility investigation, and none of it would have been reviewed. Ask for
-it explicitly with an `@coderabbitai review` comment.
+it explicitly with an `@coderabbitai review` comment, posted by a human
+account. See the next section for why that qualifier is load-bearing.
 
 Two related traps on a long-open bot pull request:
 
@@ -188,6 +189,35 @@ Two related traps on a long-open bot pull request:
 That accident was useful once, because reviewing already-merged code surfaced
 five real defects in it, including the passkey quoting bug fixed in #23. It is
 not a review strategy: nothing guarantees the stale range covers anything.
+
+### CodeRabbit silently ignores `@coderabbitai review` from a bot account
+
+`.github/workflows/coderabbit-review-queue.yml` posts an `@coderabbitai
+review` comment through `github-actions[bot]` once an hour when `Review
+Verified` is stuck failing. On #37 that comment fired five times across most
+of a day and CodeRabbit never once replied to it, not with a review, not with
+a decline, not with a rate limit notice: nothing. Every comment posted by the
+human account got a reply within seconds every single time, including the
+times that reply was itself a decline. CodeRabbit appears to drop a review
+command from a bot commenter the same way it drops a pull request authored by
+one, and #37 sat blocked for hours on that mechanism before anyone checked
+whether it was actually being heard.
+
+The workflow still earns its keep: it is what proves, mechanically, that a
+pull request is waiting on a review nobody has asked for yet. What it cannot
+do is make that ask land. So when `Review Verified` is still failing after the
+nudge has fired, check the pull request's comments for a `coderabbitai[bot]`
+reply within roughly ten seconds of the nudge's timestamp before assuming the
+request is in flight:
+
+- **A `coderabbitai[bot]` reply exists** (even a decline). The request was
+  heard; a rate limit or a plan restriction is the actual blocker, and waiting
+  out the quota or trying again later is reasonable.
+- **No reply at all.** CodeRabbit never saw it as a command worth answering.
+  Waiting longer will not change that; only a human posting the exact same
+  `@coderabbitai review` comment will. Say so and ask for it, rather than
+  re-dispatching the workflow and letting another hourly window pass on a
+  mechanism with no evidence it has ever worked.
 
 ### Selectors match the library's templates
 
