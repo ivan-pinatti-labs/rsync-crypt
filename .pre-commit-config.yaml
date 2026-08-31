@@ -1,5 +1,5 @@
 ---
-# Hooks come from ivan-pinatti/pre-commit-checklists. See docs/hook-catalogue.md
+# Hooks come from ivan-pinatti-labs/pre-commit-checklists. See docs/hook-catalogue.md
 # in that repository for what each id runs, and CLAUDE.md here for the two
 # selectors below that deviate from its shipped templates.
 #
@@ -14,8 +14,8 @@
 # author fixes it. See "CI never autofixes" in CLAUDE.md.
 default_install_hook_types: [pre-commit, commit-msg]
 repos:
-  - repo: https://github.com/ivan-pinatti/pre-commit-checklists
-    rev: v2.2.3
+  - repo: https://github.com/ivan-pinatti-labs/pre-commit-checklists
+    rev: v2.2.4
     hooks:
       # Large-file, merge-conflict and line-ending hygiene. No selector needed.
       - id: checklist-basic

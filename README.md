@@ -124,7 +124,7 @@ Contributions, bug reports, and feature requests are welcome!
 ### What the hooks need installed
 
 Linting comes from
-[ivan-pinatti/pre-commit-checklists](https://github.com/ivan-pinatti/pre-commit-checklists),
+[ivan-pinatti-labs/pre-commit-checklists](https://github.com/ivan-pinatti-labs/pre-commit-checklists),
 pinned in `.pre-commit-config.yaml`. Running `pre-commit run --all-files`
 locally needs more than the tool itself does:
 

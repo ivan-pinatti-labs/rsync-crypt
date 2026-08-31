@@ -90,7 +90,7 @@ still open upstream and one already landed.
   on this repo's YAML go away. They are warnings only, since the upstream
   yamllint hook does not pass `--strict`.
 - `.markdown-link-check.json` support landed in `v2.2.1`
-  ([#12 there](https://github.com/ivan-pinatti/pre-commit-checklists/pull/12)),
+  ([#12 there](https://github.com/ivan-pinatti-labs/pre-commit-checklists/pull/12)),
   before this repo's current `v2.2.2` pin, so it already applies. No change
   was needed here: the stars badge was repointed at the repository rather
   than ignored, so this repo needs no ignore file at all.
@@ -432,7 +432,7 @@ five commits on a branch have been reviewed.
 **Why it matters:** the pause is silent. The CodeRabbit check still reports
 green, so a pull request looks reviewed when nothing has read its current
 head. Observed directly on
-[pre-commit-checklists#12](https://github.com/ivan-pinatti/pre-commit-checklists/pull/12),
+[pre-commit-checklists#12](https://github.com/ivan-pinatti-labs/pre-commit-checklists/pull/12),
 a branch with seven commits: reviews stopped after the fifth, and twelve
 hours passed with no review of the head and no indication anything was
 waiting. Recovery needs a manual `@coderabbitai review`.
