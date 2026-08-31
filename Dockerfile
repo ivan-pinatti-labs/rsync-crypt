@@ -10,7 +10,7 @@ RUN apk update \
         gocryptfs~=${GOCRYPTFS_VERSION} \
         less~=702 \
         openssh~=10.3 \
-        rsync~=3.4 \
+        rsync~=3.5 \
         sshfs~=3.7 \
         vim~=9.2 \
     && rm -rf /var/cache/apk/* \
