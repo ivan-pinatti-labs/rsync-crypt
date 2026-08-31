@@ -11,6 +11,20 @@ updates:
       day: monday
       time: "06:30"
       timezone: America/Toronto
+    # Seven days, matching Renovate's minimumReleaseAge in renovate.json5.
+    # Both bots carry the same floor deliberately: `Pin Only` proves a diff
+    # changed nothing but a version and says so in its own docstring, but it
+    # cannot tell a good release from a backdoored one, and these two
+    # ecosystems execute arbitrary code (in CI holding a token, and on a
+    # developer's machine) so they are the larger attack surface, not the
+    # smaller. Applies to version updates only, never to Dependabot security
+    # updates, which is the same carve-out as renovate.json5's
+    # vulnerabilityAlerts.minimumReleaseAge: null. Only default-days is set:
+    # the semver-*-days keys are supported on neither github-actions nor
+    # pre-commit, so setting them would do nothing silently. See
+    # ivan-pinatti-labs/.github's docs/BOT_SCHEDULE.md, "Cooling windows".
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
       - github-actions
@@ -30,6 +44,20 @@ updates:
       day: monday
       time: "06:00"
       timezone: America/Toronto
+    # Seven days, matching Renovate's minimumReleaseAge in renovate.json5.
+    # Both bots carry the same floor deliberately: `Pin Only` proves a diff
+    # changed nothing but a version and says so in its own docstring, but it
+    # cannot tell a good release from a backdoored one, and these two
+    # ecosystems execute arbitrary code (in CI holding a token, and on a
+    # developer's machine) so they are the larger attack surface, not the
+    # smaller. Applies to version updates only, never to Dependabot security
+    # updates, which is the same carve-out as renovate.json5's
+    # vulnerabilityAlerts.minimumReleaseAge: null. Only default-days is set:
+    # the semver-*-days keys are supported on neither github-actions nor
+    # pre-commit, so setting them would do nothing silently. See
+    # ivan-pinatti-labs/.github's docs/BOT_SCHEDULE.md, "Cooling windows".
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
       - pre-commit
