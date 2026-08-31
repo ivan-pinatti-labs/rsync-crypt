@@ -80,24 +80,24 @@ my spare time, and your support would be greatly appreciated! 😃
 
 <table>
   <tr>
-    <td align="center"><img alt="Bitcoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/btc.png" width="85"><br><code>&nbsp;BTC&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Ethereum (ERC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/eth.png" width="85"><br><code>ERC&#8209;20</code></td>
-    <td align="center"><img alt="Monero donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/xmr.png" width="85"><br><code>&nbsp;XMR&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="XRP donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/xrp.png" width="85"><br><code>&nbsp;XRP&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Cardano donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/ada.png" width="85"><br><code>&nbsp;ADA&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Cosmos donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/atom.png" width="85"><br><code>&nbsp;ATOM&nbsp;</code></td>
-    <td align="center"><img alt="Bitcoin Cash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/bch.png" width="85"><br><code>&nbsp;BCH&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="BNB (BEP-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/bnb.png" width="85"><br><code>BEP&#8209;20</code></td>
-    <td align="center"><img alt="Dogecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/doge.png" width="85"><br><code>&nbsp;DOGE&nbsp;</code></td>
-    <td align="center"><img alt="Kava donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/kava.png" width="85"><br><code>&nbsp;KAVA&nbsp;</code></td>
-    <td align="center"><img alt="Litecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/ltc.png" width="85"><br><code>&nbsp;LTC&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="TRON (TRC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/trx.png" width="85"><br><code>TRC&#8209;20</code></td>
-    <td align="center"><img alt="Zcash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti/ivan-pinatti/main/docs/crypto/qr-codes/zec.png" width="85"><br><code>&nbsp;ZEC&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="Bitcoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/btc.png" width="85"><br><code>&nbsp;BTC&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="Ethereum (ERC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/eth.png" width="85"><br><code>ERC&#8209;20</code></td>
+    <td align="center"><img alt="Monero donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xmr.png" width="85"><br><code>&nbsp;XMR&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="XRP donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xrp.png" width="85"><br><code>&nbsp;XRP&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="Cardano donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ada.png" width="85"><br><code>&nbsp;ADA&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="Cosmos donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/atom.png" width="85"><br><code>&nbsp;ATOM&nbsp;</code></td>
+    <td align="center"><img alt="Bitcoin Cash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bch.png" width="85"><br><code>&nbsp;BCH&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="BNB (BEP-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bnb.png" width="85"><br><code>BEP&#8209;20</code></td>
+    <td align="center"><img alt="Dogecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/doge.png" width="85"><br><code>&nbsp;DOGE&nbsp;</code></td>
+    <td align="center"><img alt="Kava donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/kava.png" width="85"><br><code>&nbsp;KAVA&nbsp;</code></td>
+    <td align="center"><img alt="Litecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ltc.png" width="85"><br><code>&nbsp;LTC&nbsp;&nbsp;</code></td>
+    <td align="center"><img alt="TRON (TRC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/trx.png" width="85"><br><code>TRC&#8209;20</code></td>
+    <td align="center"><img alt="Zcash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/zec.png" width="85"><br><code>&nbsp;ZEC&nbsp;&nbsp;</code></td>
   </tr>
 </table>
 <!-- markdownlint-enable -->
 
-_\* ERC-20 accepts ETH, USDT, and USDC · BEP-20 accepts BNB, USDT, and USDC · TRC-20 accepts TRX, USDT, and USDC · [All addresses and networks](https://github.com/ivan-pinatti/ivan-pinatti/blob/main/docs/crypto/addresses.md)_
+_\* ERC-20 accepts ETH, USDT, and USDC · BEP-20 accepts BNB, USDT, and USDC · TRC-20 accepts TRX, USDT, and USDC · [All addresses and networks](https://github.com/ivan-pinatti-labs/.github/blob/main/docs/crypto/addresses.md)_
 
 ### Contributing
 
