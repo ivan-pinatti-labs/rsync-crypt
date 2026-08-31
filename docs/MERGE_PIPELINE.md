@@ -119,13 +119,13 @@ merge of something harmful is two things, neither of them a review:
    can tell a good release from a backdoored one," in its own words.
 2. **A cooling window on both bots**, which is the actual defence against a
    release that is well formed and malicious, since a fresh supply chain
-   compromise may have no published advisory yet, and advisory driven
+   compromise may have no published advisory yet, and advisory-driven
    detection cannot flag what has not been reported. Other signals remain:
    a scanner may match on behaviour rather than a known identifier, and a
    person can inspect release metadata or the published artifact. The
    window buys the time in which any of that can happen.
 
-   Renovate's half is live: `.github/renovate.json5` carries a seven day
+   Renovate's half is live: `.github/renovate.json5` carries a seven-day
    `minimumReleaseAge` with `internalChecksFilter: strict`, so a pull
    request does not open looking blocked before its window is satisfied,
    and `vulnerabilityAlerts.minimumReleaseAge: null`, so a known
@@ -135,8 +135,13 @@ merge of something harmful is two things, neither of them a review:
    the larger surface of the two. Renovate here manages asdf tool versions
    and one annotated Docker tag; Dependabot manages GitHub Actions and
    pre-commit hooks, both of which execute arbitrary code, in CI holding a
-   token and on a developer's machine respectively, and both of which merge
-   unattended once `Pin Only` passes. `.github/dependabot.yml` now sets
+   token and on a developer's machine respectively. When such a bump's diff
+   is pin only, it takes the lane described under "A dependency bot pull
+   request" above: `bot-auto-merge.yml` supplies the approval, `Review
+   Verified` resolves without a review, and it merges with no person having
+   looked at it. A diff that is not pin only gets no approval and waits for
+   a human, so it is the pin-only lane specifically that a cooling window
+   has to cover. `.github/dependabot.yml` now sets
    `cooldown.default-days: 7` on both ecosystems to match. Only
    `default-days` is used: GitHub supports the `semver-*-days` keys on
    neither `github-actions` nor `pre-commit`, so setting them would be

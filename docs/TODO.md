@@ -91,7 +91,7 @@ still open upstream and one already landed.
   yamllint hook does not pass `--strict`.
 - `.markdown-link-check.json` support landed in `v2.2.1`
   ([#12 there](https://github.com/ivan-pinatti-labs/pre-commit-checklists/pull/12)),
-  before this repo's current `v2.2.2` pin, so it already applies. No change
+  before this repo's current `v2.2.4` pin, so it already applies. No change
   was needed here: the stars badge was repointed at the repository rather
   than ignored, so this repo needs no ignore file at all.
 
