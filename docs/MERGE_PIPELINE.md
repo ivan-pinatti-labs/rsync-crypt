@@ -117,26 +117,44 @@ merge of something harmful is two things, neither of them a review:
    exists from a version that is safe. `alpine:3.24` becoming `alpine:3.25`
    is exactly the change it exists to permit, "and no amount of diff reading
    can tell a good release from a backdoored one," in its own words.
-2. **Renovate's cooling window**, which is the actual defence against a
+2. **A cooling window on both bots**, which is the actual defence against a
    release that is well formed and malicious, since a fresh supply chain
-   compromise may have no published advisory yet, and advisory driven
+   compromise may have no published advisory yet, and advisory-driven
    detection cannot flag what has not been reported. Other signals remain:
    a scanner may match on behaviour rather than a known identifier, and a
    person can inspect release metadata or the published artifact. The
-   window buys the time in which any of that can happen. As of this
-   writing that window is not yet live in
-   this repository's `.github/renovate.json5`; it is proposed, mirroring
-   `docker-torrent-box-with-vpn`'s own seven day `minimumReleaseAge` with
-   `internalChecksFilter: strict` so a pull request does not open looking
-   blocked before its window is satisfied, and with
-   `vulnerabilityAlerts.minimumReleaseAge: null` so a known vulnerability
-   fix is not held back by a wait that does not make it safer. Treat it as
-   pending until it lands, not as a mitigation already in place.
+   window buys the time in which any of that can happen.
 
-Until that window lands, a clean pin only bump from a compromised or
-misconfigured upstream can merge here as fast as any other clean bump,
-because nothing named above is positioned to catch it. That is the actual
-risk this section exists to name, not the CodeRabbit gap by itself.
+   Renovate's half is live: `.github/renovate.json5` carries a seven-day
+   `minimumReleaseAge` with `internalChecksFilter: strict`, so a pull
+   request does not open looking blocked before its window is satisfied,
+   and `vulnerabilityAlerts.minimumReleaseAge: null`, so a known
+   vulnerability fix is not held back by a wait that does not make it safer.
+
+   Dependabot's half was missing entirely until this change, and it covered
+   the larger surface of the two. Renovate here manages asdf tool versions
+   and one annotated Docker tag; Dependabot manages GitHub Actions and
+   pre-commit hooks, both of which execute arbitrary code, in CI holding a
+   token and on a developer's machine respectively. When such a bump's diff
+   is pin only, it takes the lane described under "A dependency bot pull
+   request" above: `bot-auto-merge.yml` supplies the approval, `Review
+   Verified` resolves without a review, and it merges with no person having
+   looked at it. A diff that is not pin only gets no approval and waits for
+   a human, so it is the pin-only lane specifically that a cooling window
+   has to cover. `.github/dependabot.yml` now sets
+   `cooldown.default-days: 7` on both ecosystems to match. Only
+   `default-days` is used: GitHub supports the `semver-*-days` keys on
+   neither `github-actions` nor `pre-commit`, so setting them would be
+   configuration that silently does nothing. `cooldown` applies to version
+   updates and never to Dependabot security updates, which is the same
+   carve-out Renovate gets from `vulnerabilityAlerts` above.
+
+The organization-wide statement of this policy, and the reasoning for the
+schedules it interacts with, lives in `ivan-pinatti-labs/.github`'s
+`docs/BOT_SCHEDULE.md` under "Cooling windows". It is recorded there rather
+than only here because every repository in the organization shares it, and
+because the Renovate half of it had already been re-derived incorrectly more
+than once from a repository's config comment alone.
 
 ## Every required status context
 
