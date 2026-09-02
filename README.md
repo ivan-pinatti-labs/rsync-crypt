@@ -24,11 +24,12 @@
 
 ### Encrypted backup over SSH with Docker, gocryptfs, and rsync
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![GitHub issues](https://img.shields.io/github/issues/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt/issues)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt)
-[![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti-labs/rsync-crypt)](https://github.com/ivan-pinatti-labs/rsync-crypt/forks)
-[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti-labs/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti-labs%2Frsync-crypt&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+[![License](https://img.shields.io/github/license/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues-raw/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti-labs/rsync-crypt/issues)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/ivan-pinatti?logo=Github&style=for-the-badge)](https://github.com/sponsors/ivan-pinatti)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti-labs/rsync-crypt)
+[![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti-labs/rsync-crypt/forks)
+[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti-labs/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti-labs%2Frsync-crypt&labelColor=171717&color=FF570A&label=CodeRabbit+Reviews&style=for-the-badge)](https://coderabbit.ai)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
 
