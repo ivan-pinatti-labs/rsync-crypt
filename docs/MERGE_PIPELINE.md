@@ -156,7 +156,14 @@ here because every repository in the organization shares it, and because it
 had already been re-derived incorrectly more than once from a repository's
 config comment alone. That included the schedule half: Dependabot was given a
 weekday per repository to protect a CodeRabbit review quota its pin-only bumps
-never consumed, and both bots now run daily.
+never consumed, and neither bot is assigned a weekday any more.
+
+They are not on identical days, though, and the difference belongs to
+Dependabot rather than to anything configured here: `interval: daily` means
+weekdays only, Monday to Friday, while Renovate's `before 7am` is permitted
+every day. A release landing on a Saturday reaches Renovate's surfaces that
+morning and Dependabot's on Monday, well inside the seven day cooling window
+both sit behind.
 
 ## Every required status context
 
