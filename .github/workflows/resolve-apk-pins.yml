@@ -1,0 +1,244 @@
+name: Resolve apk Pins
+
+# GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION, OPENSSH_VERSION,
+# RSYNC_VERSION, SSHFS_VERSION and VIM_VERSION in .env.example are apk `~=`
+# version constraints, not Docker tags: no Renovate datasource models "the
+# version of this apk package available in Alpine release X", so an
+# independently tracked bump could propose a version that release's repo does
+# not carry and fail the build (see .github/renovate.json5's customManagers
+# comment). They used to be re-resolved by hand, every time ALPINE_VERSION
+# moved, by running `apk policy <pkg>` inside the new `alpine:<version>` and
+# editing .env.example. This workflow is that step, automated: it runs
+# scripts/resolve-apk-pins.py, which does exactly that, against the
+# ALPINE_VERSION a Renovate pull request proposes, and pushes a second commit
+# onto the same pull request if anything resolved differently.
+#
+# Each of the seven variables carries a `# apk-pin: resolved-from=ALPINE_VERSION`
+# comment immediately above it, not `# renovate:`, on purpose: that is what
+# scripts/assert-pin-only-diff.py's Pin Only check reads to decide a bump to
+# one of them is a pin bump and not "a dependency bot reaching outside its
+# lane" (see that script's APK_PIN_ANNOTATION). Renovate's own custom regex
+# manager is anchored to `# renovate:` specifically, so it never matches this
+# marker and never tries to track these seven independently, which is the
+# exact failure they were kept out of Renovate's hands to avoid in the first
+# place.
+#
+# Why a personal access token, not GITHUB_TOKEN, pushes the commit:
+# GitHub does not start new workflow runs from a push authenticated with the
+# default GITHUB_TOKEN, specifically to stop workflows triggering each other
+# in a loop (the same restriction bot-auto-merge.yml's own comments rely on
+# for `workflow_run` over `status`). Pushing with GITHUB_TOKEN would leave the
+# resolver's commit sitting on the pull request with `Tests` never re-run
+# against it, which fails the one requirement this workflow cannot compromise
+# on: "don't build a parallel test path", the real `Tests` job in
+# pull-request-validation.yml has to grade this commit the normal way.
+# APK_PIN_PUSH_TOKEN is a fine-grained personal access token, scoped to
+# Contents: write on this repository only, the same shape as
+# CODERABBIT_NUDGE_TOKEN in coderabbit-review-queue.yml and for the same
+# underlying reason: a push authenticated as an account is what GitHub
+# actually re-triggers workflows from. If that secret is ever missing or
+# revoked, the push step below fails loudly with a 401 or 403; there is no
+# silent fallback to GITHUB_TOKEN, the same posture coderabbit-review-queue.yml
+# takes for its own PAT.
+#
+# The failure mode this is defensively built around: Renovate's default
+# `rebaseWhen` can rebase or recreate its branch on its own (a later daily
+# run, or the base branch advancing), which can drop this workflow's commit
+# the same way any rebase drops a commit not present on the new base. Nothing
+# here can prevent that rebase; what makes it survivable is that dropping the
+# commit does not desynchronize anything silently. A rebase changes the head
+# SHA, which is a `synchronize` event, which re-triggers this workflow, which
+# recomputes from scratch and reads whatever .env.example the rebased branch
+# actually carries. If the rebase dropped the fix, recomputation finds the
+# same mismatch again and pushes the same fix again; if the rebase somehow
+# kept it, recomputation finds every value already resolved and pushes
+# nothing (`scripts/resolve-apk-pins.py` is idempotent by construction: it
+# only ever writes a value that differs from what is already there). Either
+# way the branch converges back to "every apk pin matches the ALPINE_VERSION
+# it carries" without anyone having to notice the rebase happened. The one
+# thing this does not need is a special case for "my own push retriggered
+# me": that push is authenticated with the PAT rather than GITHUB_TOKEN
+# specifically so it does retrigger, and the second run's own recomputation
+# finding nothing to change is what stops that from looping, not a guard
+# against running twice.
+on:
+  # zizmor: ignore[dangerous-triggers]
+  #
+  # Flagged by default, and the reasoning is bot-auto-merge.yml's: the branch
+  # this reacts to is never a fork's (guarded below), so nothing here is
+  # handing a write-scoped token to code an outside contributor controls.
+  # Unlike bot-auto-merge.yml and coderabbit-gate.yml, this workflow does
+  # check out pull request content, deliberately: it has to read the
+  # ALPINE_VERSION the pull request proposes and, if it resolves something
+  # different, commit onto that same branch. What stays off the pull
+  # request's copy is the code that decides what to do with that content: the
+  # scripts run in every step below are read from the base branch's checkout,
+  # a separate step, never from the pull request's own copy of them. See "Fetch
+  # the pull request's .env.example" and "Resolve apk pins" for exactly what
+  # is and is not read from where.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+    paths:
+      - ".env.example"
+
+# The floor. Nothing here needs contents: write from GITHUB_TOKEN: the commit
+# is pushed with APK_PIN_PUSH_TOKEN instead, see the header above.
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Re-resolve the apk pins for the proposed Alpine version
+    # Exact equality against renovate[bot], the same fence bot-auto-merge.yml
+    # uses for the same reason: user.login is set by GitHub from the
+    # authenticated author and cannot be spoofed by a pull request body, and
+    # the non-fork check is what makes checking out and pushing to this
+    # branch safe at all, since a fork's branch is not one this repository's
+    # credentials should ever be pushed to.
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One at a time per pull request. Renovate's own rebase and this
+    # workflow's own follow-up push can both produce a `synchronize` in quick
+    # succession; two overlapping runs computing against two different heads
+    # and racing to push would be exactly the pile-up bot-auto-merge.yml's
+    # concurrency groups exist to prevent, for the same reason. Queued rather
+    # than cancelled: a superseded run has nothing worth cancelling towards,
+    # but a cancelled one might have been the run that would have pushed the
+    # correct fix for the head that mattered.
+    concurrency:
+      group: resolve-apk-pins-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the default branch
+        # Explicit, and load-bearing: this is what makes scripts/resolve-apk-pins.py
+        # and scripts/assert-pin-only-diff.py's own APK_PIN_ANNOTATION the
+        # trusted, reviewed copies rather than whatever a compromised or
+        # misconfigured bot might have rewritten them to say on its own
+        # branch. Only .env.example, fetched separately below, is ever read
+        # from the pull request's branch.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Fetch the pull request's branch into its own worktree
+        id: fetch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth 1 origin "$HEAD_REF"
+          # A worktree, not a checkout of this same clone: the commit below
+          # has to land on top of the pull request's actual current head, not
+          # on top of the base branch this step's own checkout is sitting on.
+          # Checking FETCH_HEAD out in place here would overwrite that base
+          # branch checkout, including the trusted copies of the scripts the
+          # next step still needs to run from; a worktree keeps the two
+          # entirely separate on disk while sharing the same object store, so
+          # nothing has to be re-fetched or re-cloned to get both at once.
+          git worktree add ../pr-branch FETCH_HEAD
+
+          # Only worth acting on this pull request at all if ALPINE_VERSION
+          # itself actually moved: the paths filter above already narrows
+          # this to a pull request that touched .env.example, but Renovate's
+          # custom regex manager is the only thing that ever edits that file
+          # on Renovate's own branches, and it only ever touches
+          # ALPINE_VERSION, so this is a defensive check against that
+          # assumption changing later rather than a condition expected to
+          # ever actually trip.
+          base_alpine=$(grep -E '^ALPINE_VERSION=' .env.example)
+          head_alpine=$(grep -E '^ALPINE_VERSION=' ../pr-branch/.env.example)
+          if [ "$base_alpine" = "$head_alpine" ]; then
+            echo "::notice::ALPINE_VERSION did not change on this pull request; nothing to resolve."
+            echo "alpine_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "alpine_changed=true" >> "$GITHUB_OUTPUT"
+
+          # Digits and dots only, matching resolve-apk-pins.py's own
+          # SAFE_ALPINE_VERSION check. Defence in depth: the script already
+          # refuses anything else before it reaches `docker run`, but failing
+          # here, before this value is interpolated into any command at all,
+          # is cheaper than trusting a second layer to catch what the first
+          # one should never have let through.
+          alpine_version=$(printf '%s\n' "$head_alpine" | sed -E 's/^ALPINE_VERSION="([^"]*)"$/\1/')
+          case "$alpine_version" in
+            '' | *[!0-9.]*)
+              echo "::error::ALPINE_VERSION=$alpine_version is not digits and dots only."
+              exit 1
+              ;;
+          esac
+          echo "alpine_version=$alpine_version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve apk pins
+        id: resolve
+        if: steps.fetch.outputs.alpine_changed == 'true'
+        env:
+          ALPINE_VERSION: ${{ steps.fetch.outputs.alpine_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The script is the trusted copy from the base branch checkout
+          # above; only the --env-file it rewrites, in the worktree, comes
+          # from the pull request's branch.
+          python3 scripts/resolve-apk-pins.py \
+            --alpine-version "$ALPINE_VERSION" \
+            --env-file ../pr-branch/.env.example \
+            | tee resolve-output.txt
+          changed=$(head -1 resolve-output.txt)
+          echo "$changed" >> "$GITHUB_OUTPUT"
+          # The remaining lines are the human-readable change summary, reused
+          # as the commit body below; a blank summary when nothing changed is
+          # fine, since the commit step is skipped in that case anyway.
+          tail -n +2 resolve-output.txt > resolve-summary.txt
+
+      - name: Commit and push if anything resolved differently
+        if: steps.resolve.outputs.changed == 'true'
+        env:
+          APK_PIN_PUSH_TOKEN: ${{ secrets.APK_PIN_PUSH_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          ALPINE_VERSION: ${{ steps.fetch.outputs.alpine_version }}
+        working-directory: ../pr-branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$APK_PIN_PUSH_TOKEN" ]; then
+            echo "::error::APK_PIN_PUSH_TOKEN is not set. A fine-grained personal" \
+              "access token with Contents: write on this repository only is" \
+              "required so this push authenticates as something other than" \
+              "GITHUB_TOKEN and actually retriggers the pull request's required" \
+              "checks; see this workflow's header comment."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .env.example
+          # $GITHUB_WORKSPACE, not a relative "../<repo name>": relative to
+          # this worktree that happens to work when the checkout step's
+          # default path matches the repository's own name, but the
+          # environment variable is what actually names it regardless.
+          {
+            echo "chore: resolve apk pins for alpine $ALPINE_VERSION"
+            echo
+            cat "$GITHUB_WORKSPACE/resolve-summary.txt"
+          } > commit-message.txt
+          git commit --file commit-message.txt
+          rm commit-message.txt
+
+          # HEAD here is this worktree's own head: the pull request's actual
+          # current commit, plus the one just made on top of it, which is
+          # exactly what makes this a fast-forward push rather than a rewrite
+          # of history the pull request's other commits are sitting on.
+          git push \
+            "https://x-access-token:${APK_PIN_PUSH_TOKEN}@github.com/${REPO}.git" \
+            "HEAD:refs/heads/${HEAD_REF}"

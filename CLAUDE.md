@@ -45,9 +45,71 @@ The `-bs` (block size) flag is NOT supported by this build. Do not add it back.
 
 An `ALPINE_VERSION` bump can invalidate this and the `~=` pins in the
 Dockerfile, which is what those pins are for: the build fails loudly instead
-of silently installing a different major version. Re-resolve every pin against
-the new base image before merging such a bump. Alpine 3.24 moved `gocryptfs`
-2.5 to 2.6, `less` 685 to 702, and `openssh` 10.2 to 10.3.
+of silently installing a different major version.
+
+### apk pins re-resolve themselves when ALPINE_VERSION bumps
+
+`GOCRYPTFS_VERSION`, `BASH_VERSION`, `LESS_VERSION`, `OPENSSH_VERSION`,
+`RSYNC_VERSION`, `SSHFS_VERSION` and `VIM_VERSION` in `.env.example` are apk
+`~=` version constraints, not Docker tags, so no Renovate datasource can
+track them: an independently proposed bump could easily name a version the
+pinned Alpine release's repo does not carry and fail the build. This used to
+mean re-resolving all seven by hand (`apk policy <pkg>` inside the new
+`alpine:${ALPINE_VERSION}`) every time a Renovate `ALPINE_VERSION` pull
+request landed, which is how the 2.5 to 2.6, 685 to 702 and 10.2 to 10.3
+moves above were originally found.
+
+That step is automated now, by `.github/workflows/resolve-apk-pins.yml` and
+`scripts/resolve-apk-pins.py`. When a `renovate[bot]` pull request changes
+`ALPINE_VERSION`, the workflow runs `apk update && apk policy <pkg>` inside
+the proposed `alpine:<version>` for all seven packages and, if anything
+resolves to a different value, pushes a second commit onto the same pull
+request with the update. Each of the seven carries a
+`# apk-pin: resolved-from=ALPINE_VERSION` comment directly above it, a
+marker distinct from Renovate's own `# renovate:` on purpose: it is what
+`scripts/assert-pin-only-diff.py`'s `Pin Only` check reads to accept a bump
+to one of these seven as a pin bump rather than refusing the pull request for
+"a dependency bot reaching outside its lane" (see `APK_PIN_ANNOTATION` in
+that script). It is deliberately not `# renovate:` with a different
+datasource attached: that shape is exactly what Renovate's own regex manager
+matches, which would put these seven right back under Renovate's independent
+tracking, the failure mode they are excluded from Renovate to avoid in the
+first place.
+
+The commit is pushed with a personal access token (`APK_PIN_PUSH_TOKEN`
+secret, fine-grained, `Contents: write` on this repository only), not
+`GITHUB_TOKEN`, the same reasoning as `CODERABBIT_NUDGE_TOKEN` in
+`coderabbit-review-queue.yml`: GitHub does not start new workflow runs from a
+push authenticated with the default `GITHUB_TOKEN`, specifically to prevent
+workflows retriggering each other in a loop, and this repository needs the
+opposite here. The whole point of pushing this commit is that
+`pull-request-validation.yml`'s real `Tests` job (`make build` plus the
+backup/restore roundtrip) grades it the normal way, and a `GITHUB_TOKEN`
+push would leave that job never re-run against it.
+
+Safe to re-run, including when Renovate's own `rebaseWhen` rebases or
+recreates its branch later and drops this workflow's commit the way any
+rebase drops a commit absent from the new base: the rebase changes the head
+SHA, which is a `synchronize` event, which re-triggers this workflow, which
+recomputes from scratch against whatever `.env.example` the rebased branch
+actually carries. `scripts/resolve-apk-pins.py` only ever writes a value
+that differs from what is already there, so a rebase that dropped the fix
+gets it re-applied and a rebase that happened to keep it produces no commit
+at all. Nothing has to detect that a rebase happened; recomputing and
+comparing is what makes it not matter.
+
+`bot-auto-merge.yml` needed no change for this: `Pin Only` grades the pull
+request's cumulative diff (`gh pr diff`), not any one commit, so a second,
+workflow-authored commit on top of Renovate's own is graded the same as if
+it had all been one commit, and the approval job re-triggers correctly on
+the resolver's own `synchronize` event the same way it already does on any
+other push to the pull request.
+
+Only these seven packages resolve automatically. A package newly added to
+the Dockerfile's `apk add` line still needs a person to decide its variable
+name, add it to `.env.example` with the `# apk-pin:` marker, and add it to
+`scripts/resolve-apk-pins.py`'s `PACKAGE_TO_VAR` before this mechanism picks
+it up.
 
 ### rsync exit codes 23 and 24
 
