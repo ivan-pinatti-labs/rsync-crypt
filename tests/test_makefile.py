@@ -5,6 +5,7 @@ These need neither Docker nor a remote, so they stay fast and run first.
 
 from __future__ import annotations
 
+import os
 import shlex
 
 import pytest
@@ -193,13 +194,25 @@ def test_build_refuses_an_empty_apk_version_pin(build_env_file, tmp_path, var):
     env_file = tmp_path / "env.blank"
     env_file.write_text(blanked)
 
-    result = run(["make", "build", f"ENV_FILE={env_file}"])
+    # A stub 'docker' ahead of the real one on PATH, so "docker was never
+    # invoked" is proven by an absent marker file rather than by the absence
+    # of "docker build" in captured output, which @-prefixed recipe lines
+    # never echo either way and would pass even if the guard were removed.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    marker = tmp_path / "docker-was-invoked"
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\nexit 0\n")
+    fake_docker.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+
+    result = run(["make", "build", f"ENV_FILE={env_file}"], env=env)
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert var in combined
     assert "missing or empty" in combined
-    # Never got as far as invoking docker.
-    assert "docker build" not in combined
+    assert not marker.exists(), "docker was invoked despite the missing pin"
 
 
 def test_example_env_documents_every_variable_the_makefile_reads():
