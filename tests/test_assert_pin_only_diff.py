@@ -84,12 +84,56 @@ def test_accepts_a_tool_versions_bump():
 
 def test_accepts_the_renovate_annotated_alpine_line():
     # ALPINE_VERSION is the one line in .env.example a renovate: comment
-    # anchors, and it is the only variable this script reads live off
-    # .env.example as eligible for a version bump.
+    # anchors, and it is the only variable Renovate's own manager may bump.
     result = _check(
         _diff(
             ".env.example",
             '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="3.25"\n',
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_accepts_an_apk_pin_annotated_line():
+    # GOCRYPTFS_VERSION carries the distinct `# apk-pin:` marker
+    # resolve-apk-pins.yml is anchored to, not `# renovate:`; this is the
+    # marker this script's own APK_PIN_ANNOTATION is built to recognize.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="2.7"\n',
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_accepts_every_apk_pin_annotated_variable_bumped_together():
+    # resolve-apk-pins.yml can touch any subset of the seven in one commit,
+    # not just one at a time.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-BASH_VERSION="5.3"\n+BASH_VERSION="5.4"\n'
+            '-LESS_VERSION="702"\n+LESS_VERSION="703"\n'
+            '-OPENSSH_VERSION="10.3"\n+OPENSSH_VERSION="10.4"\n'
+            '-RSYNC_VERSION="3.5"\n+RSYNC_VERSION="3.6"\n'
+            '-SSHFS_VERSION="3.7"\n+SSHFS_VERSION="3.8"\n'
+            '-VIM_VERSION="9.2"\n+VIM_VERSION="9.3"\n',
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_accepts_alpine_and_apk_pin_bumps_together_in_one_diff():
+    # The real shape resolve-apk-pins.yml produces: its commit lands on top
+    # of Renovate's own ALPINE_VERSION commit, so the pull request's
+    # cumulative diff carries both a renovate: annotated bump and one or
+    # more apk-pin: annotated bumps at once.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="3.25"\n'
+            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="2.7"\n',
         )
     )
     assert result.returncode == 0, result.stdout
@@ -100,23 +144,11 @@ def test_accepts_the_renovate_annotated_alpine_line():
 # ---------------------------------------------------------------------------
 
 
-def test_refuses_gocryptfs_version_despite_looking_like_a_pin():
-    # CLAUDE.md and .env.example's own comment say this one is bumped by
-    # hand: it is an apk version constraint, not a Docker tag, and no
-    # renovate: annotation sits above it. A script that normalized any
-    # `*_VERSION="..."` line would wave this through.
-    result = _check(
-        _diff(
-            ".env.example",
-            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="2.7"\n',
-        )
-    )
-    assert result.returncode == 1, result.stdout
-
-
 def test_refuses_docker_image_tag_version_despite_looking_like_a_pin():
-    # DOCKER_IMAGE_TAG_VERSION is a local build tag with no upstream to track
-    # and no renovate: annotation above it either.
+    # DOCKER_IMAGE_TAG_VERSION is a local build tag with no upstream to
+    # track, and no annotation of either kind (renovate: or apk-pin:) above
+    # it. A script that normalized any `*_VERSION="..."` line would wave
+    # this through.
     result = _check(
         _diff(
             ".env.example",
@@ -324,11 +356,13 @@ def test_refuses_a_github_action_sha_trading_for_a_floating_tag():
 
 
 def test_refuses_an_unannotated_sibling_bumped_alongside_the_annotated_line():
-    # .env.example carries several other `*_VERSION="..."` lines besides
-    # ALPINE_VERSION (GOCRYPTFS_VERSION, BASH_VERSION, RSYNC_VERSION, and
-    # friends), none of them renovate-annotated. A diff that bumps the real,
-    # annotated ALPINE_VERSION line cleanly must still be refused if it
-    # smuggles a bump to one of those unannotated siblings in alongside it:
+    # .env.example's other `*_VERSION="..."` lines besides ALPINE_VERSION are
+    # all apk-pin: annotated now (GOCRYPTFS_VERSION, BASH_VERSION,
+    # RSYNC_VERSION and friends), so DOCKER_IMAGE_TAG_VERSION is the one
+    # genuinely unannotated version-shaped sibling left: a local build tag
+    # with no annotation of either kind above it. A diff that bumps the
+    # real, annotated ALPINE_VERSION line cleanly must still be refused if
+    # it smuggles a bump to that unannotated sibling in alongside it:
     # per-variable-name gating has to hold even when several version-shaped
     # lines change in the same file at once.
     result = _check(
@@ -336,8 +370,8 @@ def test_refuses_an_unannotated_sibling_bumped_alongside_the_annotated_line():
             ".env.example",
             '-ALPINE_VERSION="3.24"\n'
             '+ALPINE_VERSION="3.25"\n'
-            '-RSYNC_VERSION="3.5"\n'
-            '+RSYNC_VERSION="3.6"\n',
+            '-DOCKER_IMAGE_TAG_VERSION="1.0.0"\n'
+            '+DOCKER_IMAGE_TAG_VERSION="1.0.1"\n',
         )
     )
     assert result.returncode == 1, result.stdout
@@ -351,6 +385,19 @@ def test_refuses_a_non_version_payload_in_an_annotated_env_line():
         _diff(
             ".env.example",
             '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="$(payload)"\n',
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
+def test_refuses_a_non_version_payload_in_an_apk_pin_annotated_env_line():
+    # Same requirement, the other marker: apk-pin: annotation makes
+    # GOCRYPTFS_VERSION eligible for a bump, not eligible for any edit at
+    # all.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="$(payload)"\n',
         )
     )
     assert result.returncode == 1, result.stdout
