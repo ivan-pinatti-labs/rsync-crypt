@@ -1,0 +1,31 @@
+{
+  "comment": [
+    "Read by markdown-link-check via checklist-markdown. That tool does NOT",
+    "auto-discover this file; the checklist passes --config explicitly, but",
+    "only when the file exists, so deleting it restores the unconfigured",
+    "default rather than breaking the hook.",
+    "https://github.com/tcort/markdown-link-check#config-file-format",
+    "",
+    "This file is for links no CI can resolve, not for links that are merely",
+    "broken."
+  ],
+  "ignorePatterns": [
+    {
+      "comment": [
+        "THIRD_PARTY_LICENSES.md links to ~49 gitlab.alpinelinux.org/alpine/aports",
+        "source-tree pages, one per bundled package. Every one of them resolves",
+        "with a plain `curl` (200, or 307 to the same page) when checked slowly,",
+        "one at a time. markdown-link-check fires all of them in quick",
+        "succession and gitlab.alpinelinux.org answers a chunk of that burst",
+        "with 418 (a rate-limit / anti-bot response, not a real dead link),",
+        "and which links get hit depends on request timing so the failing set",
+        "is not even stable between runs. Confirmed by re-running the same",
+        "check with the links spaced out: everything resolves."
+      ],
+      "pattern": "^https://gitlab\\.alpinelinux\\.org/alpine/aports/.*$"
+    }
+  ],
+  "retryOn429": true,
+  "retryCount": 3,
+  "aliveStatusCodes": [200, 206, 307]
+}
