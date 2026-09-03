@@ -151,9 +151,24 @@ comments say so.
 - No `ci:` block in `.pre-commit-config.yaml`. That block configures
   pre-commit.ci, whose `autofix_prs` is the only mechanism that would push.
   The app is not installed here (verified against the repo's check runs).
-- No auto-commit or auto-push step in any workflow. Checkouts keep
-  `persist-credentials: false`; jobs hold `contents: read`.
+- No auto-commit or auto-push step in any workflow that grades a pull
+  request's content. Checkouts keep `persist-credentials: false`; jobs hold
+  `contents: read`.
 - A fixable finding fails the PR. The author fixes it locally and pushes.
+
+The one deliberate exception is `.github/workflows/resolve-apk-pins.yml`
+(see "apk pins re-resolve themselves when ALPINE_VERSION bumps" above), and
+it is not really an exception to this policy so much as a different kind of
+automation the policy was never about. `pre-commit` never fixes and pushes
+*findings* from linting the content someone wrote; that stays true and
+unchanged. `resolve-apk-pins.yml` looks up an external fact (what apk version
+a given Alpine release actually carries) that no author, human or bot, can
+know without querying it, and records the answer, the same category of
+automation Renovate and Dependabot already perform on this repository's
+behalf, just for the one datasource neither of them can model. Its checkout
+keeps `persist-credentials: false` too; the push instead uses
+`APK_PIN_PUSH_TOKEN`, a separate, narrowly-scoped credential, deliberately
+not `GITHUB_TOKEN`, for the reasons in that section above.
 
 ### Branch, PR, gates, then merge
 
