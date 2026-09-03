@@ -3,13 +3,24 @@ version: 2
 # Dependabot handles GitHub Actions and pre-commit hooks.
 # Renovate handles .tool-versions and the version pins in .env.example,
 # see renovate.json5.
+#
+# Both bots run daily. Note that Dependabot's "daily" means weekdays only.
+# This was Monday until 2026-09-02, one weekday out of a per-repository table
+# in ivan-pinatti-labs/.github's docs/BOT_SCHEDULE.md, which kept two
+# repositories' bots from opening pull requests in the same hour and queueing
+# behind each other for CodeRabbit's installation-wide review quota. The
+# premise was wrong: a pin-only Dependabot bump resolves `Review Verified`
+# through the bot lane without CodeRabbit ever being asked, exactly as a
+# Renovate bump does, so the table rationed a quota Dependabot never spent
+# while charging a weekly slot that stacked on the seven day cooldown below
+# and made the real floor 7 to 14 days. See that repository's README.md,
+# "Dependency policy".
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-      time: "06:30"
+      interval: daily
+      time: "06:00"
       timezone: America/Toronto
     # Seven days, matching Renovate's minimumReleaseAge in renovate.json5.
     # Both bots carry the same floor deliberately: `Pin Only` proves a diff
@@ -22,7 +33,7 @@ updates:
     # vulnerabilityAlerts.minimumReleaseAge: null. Only default-days is set:
     # the semver-*-days keys are supported on neither github-actions nor
     # pre-commit, so setting them would do nothing silently. See
-    # ivan-pinatti-labs/.github's docs/BOT_SCHEDULE.md, "Cooling windows".
+    # ivan-pinatti-labs/.github's README.md, "Both bots wait seven days".
     cooldown:
       default-days: 7
     labels:
@@ -40,8 +51,7 @@ updates:
   - package-ecosystem: pre-commit
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
       time: "06:00"
       timezone: America/Toronto
     # Seven days, matching Renovate's minimumReleaseAge in renovate.json5.
@@ -55,7 +65,7 @@ updates:
     # vulnerabilityAlerts.minimumReleaseAge: null. Only default-days is set:
     # the semver-*-days keys are supported on neither github-actions nor
     # pre-commit, so setting them would do nothing silently. See
-    # ivan-pinatti-labs/.github's docs/BOT_SCHEDULE.md, "Cooling windows".
+    # ivan-pinatti-labs/.github's README.md, "Both bots wait seven days".
     cooldown:
       default-days: 7
     labels:

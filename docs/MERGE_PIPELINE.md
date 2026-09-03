@@ -151,10 +151,19 @@ merge of something harmful is two things, neither of them a review:
 
 The organization-wide statement of this policy, and the reasoning for the
 schedules it interacts with, lives in `ivan-pinatti-labs/.github`'s
-`docs/BOT_SCHEDULE.md` under "Cooling windows". It is recorded there rather
-than only here because every repository in the organization shares it, and
-because the Renovate half of it had already been re-derived incorrectly more
-than once from a repository's config comment alone.
+`README.md` under "Dependency policy". It is recorded there rather than only
+here because every repository in the organization shares it, and because it
+had already been re-derived incorrectly more than once from a repository's
+config comment alone. That included the schedule half: Dependabot was given a
+weekday per repository to protect a CodeRabbit review quota its pin-only bumps
+never consumed, and neither bot is assigned a weekday anymore.
+
+They are not on identical days, though, and the difference belongs to
+Dependabot rather than to anything configured here: `interval: daily` means
+weekdays only, Monday to Friday, while Renovate's `before 7am` is permitted
+every day. A release landing on a Saturday reaches Renovate's surfaces that
+morning and Dependabot's on Monday, well inside the seven-day cooling window
+both sit behind.
 
 ## Every required status context
 

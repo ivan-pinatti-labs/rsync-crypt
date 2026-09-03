@@ -225,11 +225,35 @@ jobs:
         # metadata action. All three of its ecosystems are eligible, test
         # requirements included: they only reach the test virtualenv, and the
         # suite is what clears them either way.
+        #
+        # Graded from `updated-dependencies-json` alone, never from the
+        # top-level `update-type` output. update-type is fetch-metadata's own
+        # summary of the *highest* semver level *present* among a group's
+        # entries, not a guarantee that *every* entry is at or below that
+        # level: `maxSemver` builds a set of each entry's updateType and
+        # returns the first of major/minor/patch found in it, blank entries
+        # included in the set but never selected over a real one. A group
+        # pairing one resolved minor bump with one blank, unresolved entry
+        # therefore reports the top-level type as "version-update:semver-minor",
+        # confirmed by running fetch-metadata's own algorithm against that
+        # exact shape, which would have approved the whole group on the
+        # strength of the one entry that happened to resolve. Reading
+        # `updated-dependencies-json` unconditionally instead, and requiring
+        # every single entry in it to be a patch or minor bump, closes that
+        # gap without opening a new one: for a genuine single-dependency
+        # update this is the same check the top-level field would have made,
+        # since its one entry is exactly what `update-type` was built from.
+        #
+        # A grouped update is the normal shape here, not an edge case: this
+        # organization's every repository groups its pre-commit and
+        # github-actions ecosystems with `patterns: ["*"]`, so the grouped
+        # shape is the one Dependabot produces most often. Ported from
+        # docker-torrent-box-with-vpn, where #94 was the live example.
         id: decide
         env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           HAS_AUTOMERGE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'automerge') }}
-          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}
         run: |
           approve=false
           arm=false
@@ -243,16 +267,43 @@ jobs:
               fi
               ;;
             "dependabot[bot]")
-              case "$UPDATE_TYPE" in
-                version-update:semver-patch | version-update:semver-minor)
-                  approve=true
-                  # Dependabot cannot arm auto-merge itself, unlike Renovate.
-                  arm=true
-                  ;;
-                *)
-                  echo "::notice::${UPDATE_TYPE:-unknown}: not patch/minor, waits for review."
-                  ;;
-              esac
+              # Every entry has to be a patch or minor bump on its own, one
+              # dependency or many. Piped in on stdin rather than
+              # interpolated into the jq program text, so nothing about a
+              # dependency's name or version is ever read as jq syntax.
+              #
+              # shellcheck disable=SC2016
+              result=$(printf '%s' "$UPDATED_DEPENDENCIES_JSON" | jq -r -s '
+                  def ok: . == "version-update:semver-patch"
+                    or . == "version-update:semver-minor";
+                  if length != 1 then
+                    "false\texpected exactly one JSON value, got \(length)"
+                  else .[0]
+                    | if (type != "array") or length == 0 then
+                        "false\tno updated-dependencies-json to grade"
+                      else
+                        ([.[].updateType
+                          | if . == "" or . == null then "unknown" else . end]) as $types
+                        | if ($types | all(ok)) then
+                            "true\tevery bump is patch or minor (\($types | join(", ")))"
+                          else
+                            "false\tnot every bump is patch or minor (\($types | join(", ")))"
+                          end
+                      end
+                  end
+                ' 2>/dev/null) || result=""
+              if [ -z "$result" ]; then
+                result="false"$'\t'"updated-dependencies-json was empty or invalid JSON"
+              fi
+              IFS=$'\t' read -r bump_ok bump_reason <<< "$result"
+              if [ "$bump_ok" = "true" ]; then
+                approve=true
+                # Dependabot cannot arm auto-merge itself, unlike Renovate.
+                arm=true
+                echo "::notice::$bump_reason."
+              else
+                echo "::notice::$bump_reason, so it waits for review."
+              fi
               ;;
           esac
 
