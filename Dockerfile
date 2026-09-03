@@ -2,17 +2,23 @@ ARG ALPINE_VERSION
 FROM alpine:${ALPINE_VERSION}
 
 ARG GOCRYPTFS_VERSION
+ARG BASH_VERSION
+ARG LESS_VERSION
+ARG OPENSSH_VERSION
+ARG RSYNC_VERSION
+ARG SSHFS_VERSION
+ARG VIM_VERSION
 
 RUN apk update \
     && apk upgrade \
     && apk add --no-cache \
-        bash~=5.3 \
+        bash~=${BASH_VERSION} \
         gocryptfs~=${GOCRYPTFS_VERSION} \
-        less~=702 \
-        openssh~=10.3 \
-        rsync~=3.5 \
-        sshfs~=3.7 \
-        vim~=9.2 \
+        less~=${LESS_VERSION} \
+        openssh~=${OPENSSH_VERSION} \
+        rsync~=${RSYNC_VERSION} \
+        sshfs~=${SSHFS_VERSION} \
+        vim~=${VIM_VERSION} \
     && rm -rf /var/cache/apk/* \
     && adduser -D -u 1000 crypt \
     && mkdir -p \

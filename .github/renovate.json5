@@ -132,8 +132,17 @@
       //   # renovate: datasource=<ds> depName=<name> [versioning=<scheme>]
       //   VAR="<currentValue>"
       //
-      // GOCRYPTFS_VERSION is intentionally left unannotated: it is an apk
-      // version constraint rather than a Docker tag, so it is bumped by hand.
+      // GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION, OPENSSH_VERSION,
+      // RSYNC_VERSION, SSHFS_VERSION and VIM_VERSION are all intentionally
+      // left unannotated: each is an apk `~=` version constraint rather than
+      // a Docker tag, resolved against whichever Alpine release
+      // ALPINE_VERSION pins, which carries exactly one version of each
+      // package in its community/main repos. No Renovate datasource here
+      // models "the version of this apk package available in Alpine release
+      // X", so an independently tracked bump could easily propose a version
+      // that does not exist in that release's repo and fail the build. All
+      // seven stay manual, bumped by hand (`apk policy <pkg>` inside the
+      // target `alpine:${ALPINE_VERSION}`) whenever ALPINE_VERSION moves.
       customType: "regex",
       managerFilePatterns: ["/^\\.env\\.example$/"],
       matchStrings: [

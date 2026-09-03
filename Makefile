@@ -119,6 +119,12 @@ build:
 	@docker build . \
 		--build-arg ALPINE_VERSION=${ALPINE_VERSION} \
 		--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION} \
+		--build-arg BASH_VERSION=${BASH_VERSION} \
+		--build-arg LESS_VERSION=${LESS_VERSION} \
+		--build-arg OPENSSH_VERSION=${OPENSSH_VERSION} \
+		--build-arg RSYNC_VERSION=${RSYNC_VERSION} \
+		--build-arg SSHFS_VERSION=${SSHFS_VERSION} \
+		--build-arg VIM_VERSION=${VIM_VERSION} \
 		--tag ${DOCKER_IMAGE_TAG_NAME} \
 		--tag ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
 

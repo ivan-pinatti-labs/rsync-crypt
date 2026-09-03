@@ -323,6 +323,26 @@ def test_refuses_a_github_action_sha_trading_for_a_floating_tag():
     assert result.returncode == 1, result.stdout
 
 
+def test_refuses_an_unannotated_sibling_bumped_alongside_the_annotated_line():
+    # .env.example carries several other `*_VERSION="..."` lines besides
+    # ALPINE_VERSION (GOCRYPTFS_VERSION, BASH_VERSION, RSYNC_VERSION, and
+    # friends), none of them renovate-annotated. A diff that bumps the real,
+    # annotated ALPINE_VERSION line cleanly must still be refused if it
+    # smuggles a bump to one of those unannotated siblings in alongside it:
+    # per-variable-name gating has to hold even when several version-shaped
+    # lines change in the same file at once.
+    result = _check(
+        _diff(
+            ".env.example",
+            '-ALPINE_VERSION="3.24"\n'
+            '+ALPINE_VERSION="3.25"\n'
+            '-RSYNC_VERSION="3.5"\n'
+            '+RSYNC_VERSION="3.6"\n',
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
 def test_refuses_a_non_version_payload_in_an_annotated_env_line():
     # ALPINE_VERSION is annotated and eligible for a bump, but the quoted
     # value still has to be a release on its own; a script that substituted
