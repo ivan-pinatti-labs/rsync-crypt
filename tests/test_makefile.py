@@ -165,6 +165,43 @@ def test_env_file_override_is_honoured(build_env_file):
     assert "local/gocryptfs-test" in result.stdout
 
 
+@pytest.mark.parametrize(
+    "var",
+    [
+        "ALPINE_VERSION",
+        "GOCRYPTFS_VERSION",
+        "BASH_VERSION",
+        "LESS_VERSION",
+        "OPENSSH_VERSION",
+        "RSYNC_VERSION",
+        "SSHFS_VERSION",
+        "VIM_VERSION",
+    ],
+)
+def test_build_refuses_an_empty_apk_version_pin(build_env_file, tmp_path, var):
+    """An empty *_VERSION must fail loudly before it reaches an empty --build-arg.
+
+    Without this guard, a blank pin silently becomes `bash~=` inside the
+    Dockerfile's apk add, which fails deep inside the build with no hint that
+    the real problem is the env file, not the Dockerfile.
+    """
+    text = build_env_file.read_text()
+    original = next(line for line in text.splitlines() if line.startswith(f'{var}="'))
+    blanked = text.replace(original, f'{var}=""')
+    assert blanked != text
+
+    env_file = tmp_path / "env.blank"
+    env_file.write_text(blanked)
+
+    result = run(["make", "build", f"ENV_FILE={env_file}"])
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert var in combined
+    assert "missing or empty" in combined
+    # Never got as far as invoking docker.
+    assert "docker build" not in combined
+
+
 def test_example_env_documents_every_variable_the_makefile_reads():
     """Every ${VAR} the Makefile expands should exist in .env.example."""
     makefile = (REPO_ROOT / "Makefile").read_text()

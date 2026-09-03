@@ -115,6 +115,15 @@ v:   view
 vr:  view_as_root
 
 build:
+	@if [ -z "${ALPINE_VERSION}" ] || [ -z "${GOCRYPTFS_VERSION}" ] || [ -z "${BASH_VERSION}" ] || \
+	   [ -z "${LESS_VERSION}" ] || [ -z "${OPENSSH_VERSION}" ] || [ -z "${RSYNC_VERSION}" ] || \
+	   [ -z "${SSHFS_VERSION}" ] || [ -z "${VIM_VERSION}" ]; then \
+		echo "Error: one or more of ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION,"; \
+		echo "OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION, VIM_VERSION is missing or empty in '$(ENV_FILE)'."; \
+		echo "Regenerate '$(ENV_FILE)' from .env.example, which defines all of them, rather than"; \
+		echo "building with an empty apk version pin."; \
+		exit 1; \
+	fi
 	@echo "Building Docker image..."
 	@docker build . \
 		--build-arg ALPINE_VERSION=${ALPINE_VERSION} \
