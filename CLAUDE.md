@@ -76,16 +76,24 @@ matches, which would put these seven right back under Renovate's independent
 tracking, the failure mode they are excluded from Renovate to avoid in the
 first place.
 
-The commit is pushed with a personal access token (`APK_PIN_PUSH_TOKEN`
-secret, fine-grained, `Contents: write` on this repository only), not
-`GITHUB_TOKEN`, the same reasoning as `CODERABBIT_NUDGE_TOKEN` in
-`coderabbit-review-queue.yml`: GitHub does not start new workflow runs from a
-push authenticated with the default `GITHUB_TOKEN`, specifically to prevent
-workflows retriggering each other in a loop, and this repository needs the
-opposite here. The whole point of pushing this commit is that
+The commit is pushed with `GITHUB_TOKEN` (the job grants itself `contents:
+write` for exactly this). GitHub does not start new workflow runs from a push
+authenticated with the default `GITHUB_TOKEN`, specifically to prevent
+workflows retriggering each other in a loop, so that push alone would leave
 `pull-request-validation.yml`'s real `Tests` job (`make build` plus the
-backup/restore roundtrip) grades it the normal way, and a `GITHUB_TOKEN`
-push would leave that job never re-run against it.
+backup/restore roundtrip) never re-run against it. The anti-recursion rule
+has one documented exception: an explicit `workflow_dispatch` call made
+through the API, even with `GITHUB_TOKEN`. `pull-request-validation.yml`
+carries a `workflow_dispatch` trigger for exactly this, and right after the
+push, `resolve-apk-pins.yml` calls `gh workflow run
+pull-request-validation.yml --ref <branch>` (needing `actions: write`) to
+start `Tests` against the new commit directly. Branch protection matches a
+required check by name and by the SHA it reports against, not by which event
+produced the run, so a `Tests` run started this way satisfies the pull
+request's requirement the same as a `synchronize`-triggered one would. No
+stored credential (no PAT like `CODERABBIT_NUDGE_TOKEN` in
+`coderabbit-review-queue.yml`) is needed for this one, since the retrigger is
+an explicit API call rather than a push that needs to look human-authored.
 
 Safe to re-run, including when Renovate's own `rebaseWhen` rebases or
 recreates its branch later and drops this workflow's commit the way any
@@ -166,9 +174,10 @@ a given Alpine release actually carries) that no author, human or bot, can
 know without querying it, and records the answer, the same category of
 automation Renovate and Dependabot already perform on this repository's
 behalf, just for the one datasource neither of them can model. Its checkout
-keeps `persist-credentials: false` too; the push instead uses
-`APK_PIN_PUSH_TOKEN`, a separate, narrowly-scoped credential, deliberately
-not `GITHUB_TOKEN`, for the reasons in that section above.
+keeps `persist-credentials: false` too; the push instead uses `GITHUB_TOKEN`
+with a job-scoped `contents: write`, plus an explicit `workflow_dispatch`
+re-trigger of `pull-request-validation.yml`, for the reasons in that section
+above.
 
 ### Branch, PR, gates, then merge
 

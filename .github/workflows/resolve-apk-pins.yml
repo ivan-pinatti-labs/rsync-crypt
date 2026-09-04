@@ -23,23 +23,33 @@ name: Resolve apk Pins
 # exact failure they were kept out of Renovate's hands to avoid in the first
 # place.
 #
-# Why a personal access token, not GITHUB_TOKEN, pushes the commit:
+# Why GITHUB_TOKEN pushes the commit, and re-triggers Tests by hand:
 # GitHub does not start new workflow runs from a push authenticated with the
 # default GITHUB_TOKEN, specifically to stop workflows triggering each other
 # in a loop (the same restriction bot-auto-merge.yml's own comments rely on
-# for `workflow_run` over `status`). Pushing with GITHUB_TOKEN would leave the
+# for `workflow_run` over `status`). Left there, that would leave the
 # resolver's commit sitting on the pull request with `Tests` never re-run
 # against it, which fails the one requirement this workflow cannot compromise
 # on: "don't build a parallel test path", the real `Tests` job in
 # pull-request-validation.yml has to grade this commit the normal way.
-# APK_PIN_PUSH_TOKEN is a fine-grained personal access token, scoped to
-# Contents: write on this repository only, the same shape as
-# CODERABBIT_NUDGE_TOKEN in coderabbit-review-queue.yml and for the same
-# underlying reason: a push authenticated as an account is what GitHub
-# actually re-triggers workflows from. If that secret is ever missing or
-# revoked, the push step below fails loudly with a 401 or 403; there is no
-# silent fallback to GITHUB_TOKEN, the same posture coderabbit-review-queue.yml
-# takes for its own PAT.
+#
+# The anti-recursion rule has one documented exception: an explicit
+# `workflow_dispatch` call made through the API is exempt even when made with
+# GITHUB_TOKEN, because that call is the workflow deliberately asking for
+# another run rather than a push incidentally causing one. So instead of a
+# stored credential whose only job is to look like a human push,
+# `pull-request-validation.yml` carries a `workflow_dispatch` trigger and,
+# right after the push below lands, the "Re-trigger pull request validation"
+# step calls `gh workflow run pull-request-validation.yml --ref
+# "$HEAD_REF"` to start a `Tests` run against the branch's new tip directly.
+# That call needs `actions: write`, granted below, the same way the push
+# needs `contents: write`; both are GITHUB_TOKEN, scoped down to this job,
+# with no separate secret to create, rotate or lose.
+#
+# Branch protection matches a required check by name and by the commit SHA
+# the check run reports against, not by which event produced the run, so a
+# `Tests` run started this way satisfies the pull request's requirement for
+# its head SHA exactly as a `pull_request: synchronize`-triggered one would.
 #
 # The failure mode this is defensively built around: Renovate's default
 # `rebaseWhen` can rebase or recreate its branch on its own (a later daily
@@ -55,12 +65,16 @@ name: Resolve apk Pins
 # nothing (`scripts/resolve-apk-pins.py` is idempotent by construction: it
 # only ever writes a value that differs from what is already there). Either
 # way the branch converges back to "every apk pin matches the ALPINE_VERSION
-# it carries" without anyone having to notice the rebase happened. The one
-# thing this does not need is a special case for "my own push retriggered
-# me": that push is authenticated with the PAT rather than GITHUB_TOKEN
-# specifically so it does retrigger, and the second run's own recomputation
-# finding nothing to change is what stops that from looping, not a guard
-# against running twice.
+# it carries" without anyone having to notice the rebase happened. That
+# `synchronize` has to be a genuine push from Renovate's own bot identity,
+# not from GITHUB_TOKEN: this workflow's own commit below is pushed with
+# GITHUB_TOKEN precisely so it does not retrigger `pull_request_target` here,
+# the same anti-recursion rule described above, just working in this
+# workflow's favor instead of against it this time. There is no second run of
+# this workflow to reason about after a self-push, and so no loop to guard
+# against; the `workflow_dispatch` re-trigger a few paragraphs up is a
+# narrower, explicit ask of one specific workflow (`pull-request-validation.yml`),
+# not a broad synchronize this workflow would otherwise also react to.
 on:
   # zizmor: ignore[dangerous-triggers]
   #
@@ -83,8 +97,9 @@ on:
     paths:
       - ".env.example"
 
-# The floor. Nothing here needs contents: write from GITHUB_TOKEN: the commit
-# is pushed with APK_PIN_PUSH_TOKEN instead, see the header above.
+# The floor. The job below grants itself contents: write and actions: write
+# on GITHUB_TOKEN explicitly, scoped to that one job rather than raised here,
+# see the header above for why both are needed.
 permissions:
   contents: read
 
@@ -102,19 +117,25 @@ jobs:
       github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # One at a time per pull request. Renovate's own rebase and this
-    # workflow's own follow-up push can both produce a `synchronize` in quick
-    # succession; two overlapping runs computing against two different heads
-    # and racing to push would be exactly the pile-up bot-auto-merge.yml's
-    # concurrency groups exist to prevent, for the same reason. Queued rather
-    # than cancelled: a superseded run has nothing worth cancelling towards,
-    # but a cancelled one might have been the run that would have pushed the
-    # correct fix for the head that mattered.
+    # One at a time per pull request. Renovate can push more than once in
+    # quick succession on its own (a rebase landing moments after the
+    # original open, say), each a genuine `synchronize`; two overlapping runs
+    # computing against two different heads and racing to push would be
+    # exactly the pile-up bot-auto-merge.yml's concurrency groups exist to
+    # prevent, for the same reason. This workflow's own commit below no
+    # longer adds to that risk, since it pushes with GITHUB_TOKEN and does not
+    # produce a `synchronize` this workflow reacts to (see the header above),
+    # but the concurrency group still guards against Renovate's own
+    # back-to-back pushes. Queued rather than cancelled: a superseded run has
+    # nothing worth cancelling towards, but a cancelled one might have been
+    # the run that would have pushed the correct fix for the head that
+    # mattered.
     concurrency:
       group: resolve-apk-pins-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
+      actions: write
     steps:
       - name: Check out the default branch
         # Explicit, and load-bearing: this is what makes scripts/resolve-apk-pins.py
@@ -203,7 +224,7 @@ jobs:
       - name: Commit and push if anything resolved differently
         if: steps.resolve.outputs.changed == 'true'
         env:
-          APK_PIN_PUSH_TOKEN: ${{ secrets.APK_PIN_PUSH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           ALPINE_VERSION: ${{ steps.fetch.outputs.alpine_version }}
@@ -211,15 +232,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$APK_PIN_PUSH_TOKEN" ]; then
-            echo "::error::APK_PIN_PUSH_TOKEN is not set. A fine-grained personal" \
-              "access token with Contents: write on this repository only is" \
-              "required so this push authenticates as something other than" \
-              "GITHUB_TOKEN and actually retriggers the pull request's required" \
-              "checks; see this workflow's header comment."
-            exit 1
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .env.example
@@ -239,6 +251,33 @@ jobs:
           # current commit, plus the one just made on top of it, which is
           # exactly what makes this a fast-forward push rather than a rewrite
           # of history the pull request's other commits are sitting on.
+          # GITHUB_TOKEN, no stored credential involved. The job's own
+          # contents: write permission (above) is all this needs, and this
+          # is exactly the push the header comment says will not retrigger
+          # this workflow.
+          # That is fine: the "Re-trigger pull request validation" step below
+          # is what starts `Tests` against this new commit, not this push.
           git push \
-            "https://x-access-token:${APK_PIN_PUSH_TOKEN}@github.com/${REPO}.git" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" \
             "HEAD:refs/heads/${HEAD_REF}"
+
+      - name: Re-trigger pull request validation
+        # A push authenticated with GITHUB_TOKEN, the one above, does not
+        # start a new workflow run; only this explicit workflow_dispatch call
+        # does, see the header comment. `--ref` is enough: none of
+        # pull-request-validation.yml's jobs read `github.event.pull_request.*`
+        # for their actual test logic (verified by reading that workflow
+        # file), they only need the branch checked out, which
+        # `workflow_dispatch` does the same way `pull_request` does, so no
+        # input parameters are needed here.
+        if: steps.resolve.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run pull-request-validation.yml \
+            --repo "$REPO" \
+            --ref "$HEAD_REF"
