@@ -54,7 +54,7 @@ To try a different version without editing the `Dockerfile`, set the variable
 on the command line and the `build` target forwards it as a `--build-arg`:
 
 ```bash
-ALPINE_VERSION=3.25 make build
+ALPINE_VERSION=3.20 make build
 make build GOCRYPTFS_VERSION=2.7   # same thing, other spelling
 ```
 

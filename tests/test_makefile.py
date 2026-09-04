@@ -214,6 +214,55 @@ def test_build_passes_an_explicit_override_through(build_env_file, var):
     assert f"--build-arg {var}=9.9.9" in recipe
 
 
+def _legacy_env_file(build_env_file, tmp_path, var, value):
+    """build_env_file plus one leftover pin, as if from before this split.
+
+    Anyone who copied .env.example before the eight pins moved into the
+    Dockerfile still has a line like this sitting in their real .env; the
+    migration cannot reach into an existing file and remove it for them.
+    """
+    path = tmp_path / "env.legacy"
+    path.write_text(build_env_file.read_text() + f"{var}={value}\n")
+    return path
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_ignores_a_legacy_pin_left_in_the_env_file(build_env_file, tmp_path, var):
+    """A pin surviving from before the Dockerfile-ARG split must not forward.
+
+    'make build' passes '--build-arg VAR' as a plain $(if ${VAR},...) test, so
+    to plain Make there is no difference between "the caller set this on the
+    command line" and "this line is still sitting in an old .env file": both
+    ways for ${VAR} to be non-empty. Left unguarded, a caller who has not
+    edited their env file since it carried these eight pins would have every
+    build silently overridden by whatever version their file happened to
+    freeze, defeating the entire point of moving the defaults into the
+    Dockerfile: that a plain 'docker build .' and 'make build' agree. The
+    Makefile's 'pin_override' $(origin)-based check is what closes this: a
+    value read from ENV_FILE reports origin "file", not "command line" or
+    "environment", and only those last two forward.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "9.9.9")
+    assert f"--build-arg {var}" not in _build_recipe(legacy)
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_command_line_override_wins_over_a_legacy_env_pin(
+    build_env_file, tmp_path, var
+):
+    """An explicit override must still work even with a legacy pin present.
+
+    Ignoring ENV_FILE-origin values (the test above) must not also swallow a
+    genuine one-off override typed on the command line in the same run: Make
+    origin reports "command line" for that regardless of what ENV_FILE
+    separately set the same variable to.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "1.1.1")
+    recipe = _build_recipe(legacy, extra_args=[f"{var}=9.9.9"])
+    assert f"--build-arg {var}=9.9.9" in recipe
+    assert f"--build-arg {var}=1.1.1" not in recipe
+
+
 def test_build_invokes_docker_with_no_pins_configured(build_env_file, tmp_path):
     """The default path must actually reach 'docker build', not just look right.
 

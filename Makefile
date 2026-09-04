@@ -114,16 +114,32 @@ rro: restore_as_root_to_origin
 v:   view
 vr:  view_as_root
 
+# True (non-empty) only when $(1) was set by the caller, on the command line
+# or in the invoking shell's environment, as opposed to merely being defined
+# in the included ENV_FILE. $(origin) reports "file" for the latter, and a
+# plain $(if $(VAR),...) cannot tell the two apart: it sees only the value,
+# never where it came from. That distinction matters here specifically
+# because these eight pins used to live in the env file; a caller upgrading
+# from before this split who has not since edited their .env still has
+# ALPINE_VERSION or one of its seven siblings sitting in it, and every plain
+# $(if) below would keep reading that leftover value and forwarding it as
+# --build-arg forever, silently overriding the Dockerfile's own default with
+# a value nobody meant to set. $(findstring ...) rather than $(filter ...):
+# $(origin) can return "command line", which $(filter) would split on the
+# space into two separate patterns instead of matching literally.
+pin_override = $(or $(findstring command line,$(origin $(1))),$(findstring environment,$(origin $(1))))
+
 # The eight version pins live in the Dockerfile now, as ARG defaults, not in
 # the env file. So this target passes no --build-arg at all by default and the
 # Dockerfile's own defaults apply, which is what keeps 'make build' and a bare
 # 'docker build .' producing the same image.
 #
-# Each $(if ...) below emits its --build-arg only when the matching variable is
-# actually set to something, which is how a one-off override still works:
+# Each $(if ...) below emits its --build-arg only when the matching variable
+# was both set to something AND set by the caller (see pin_override above),
+# which is how a one-off override still works:
 #
-#   ALPINE_VERSION=3.25 make build     (command-line variable)
-#   make build ALPINE_VERSION=3.25     (same thing, other spelling)
+#   ALPINE_VERSION=3.20 make build     (command-line variable)
+#   make build ALPINE_VERSION=3.20     (same thing, other spelling)
 #
 # An unset variable expands to empty and $(if ...) drops the flag entirely,
 # rather than passing '--build-arg ALPINE_VERSION=' and building 'alpine:'.
@@ -133,14 +149,14 @@ vr:  view_as_root
 build:
 	@echo "Building Docker image..."
 	@docker build . \
-		$(if ${ALPINE_VERSION},--build-arg ALPINE_VERSION=${ALPINE_VERSION}) \
-		$(if ${GOCRYPTFS_VERSION},--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION}) \
-		$(if ${BASH_VERSION},--build-arg BASH_VERSION=${BASH_VERSION}) \
-		$(if ${LESS_VERSION},--build-arg LESS_VERSION=${LESS_VERSION}) \
-		$(if ${OPENSSH_VERSION},--build-arg OPENSSH_VERSION=${OPENSSH_VERSION}) \
-		$(if ${RSYNC_VERSION},--build-arg RSYNC_VERSION=${RSYNC_VERSION}) \
-		$(if ${SSHFS_VERSION},--build-arg SSHFS_VERSION=${SSHFS_VERSION}) \
-		$(if ${VIM_VERSION},--build-arg VIM_VERSION=${VIM_VERSION}) \
+		$(if $(call pin_override,ALPINE_VERSION),--build-arg ALPINE_VERSION=${ALPINE_VERSION}) \
+		$(if $(call pin_override,GOCRYPTFS_VERSION),--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION}) \
+		$(if $(call pin_override,BASH_VERSION),--build-arg BASH_VERSION=${BASH_VERSION}) \
+		$(if $(call pin_override,LESS_VERSION),--build-arg LESS_VERSION=${LESS_VERSION}) \
+		$(if $(call pin_override,OPENSSH_VERSION),--build-arg OPENSSH_VERSION=${OPENSSH_VERSION}) \
+		$(if $(call pin_override,RSYNC_VERSION),--build-arg RSYNC_VERSION=${RSYNC_VERSION}) \
+		$(if $(call pin_override,SSHFS_VERSION),--build-arg SSHFS_VERSION=${SSHFS_VERSION}) \
+		$(if $(call pin_override,VIM_VERSION),--build-arg VIM_VERSION=${VIM_VERSION}) \
 		--tag ${DOCKER_IMAGE_TAG_NAME} \
 		--tag ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
 
