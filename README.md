@@ -238,19 +238,30 @@ No clone, no build. Fetch two files, edit one of them, run one command.
 
 ### 1. Fetch the config template and the filter rules
 
+Both files below are later sourced as shell (`.env` in steps 2 and 4) or fed
+straight to `rsync` (the filter rules), so fetch a tagged release rather than
+`main`: a branch ref is mutable, and a tag pinned to the same release you
+verify with cosign in step 3 cannot change under you between when you read
+this and when you actually run it. Substitute the current version from the
+[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page
+for `v1.5.0` below:
+
 ```bash
 mkdir -p rsync-crypt/conf && cd rsync-crypt
+ref="v1.5.0"
 
 # Your settings, as .env
 curl -fsSL -o .env \
-  https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/main/.env.example
+  "https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/${ref}/.env.example"
 
 # Which files get backed up
 curl -fsSL -o conf/backup-filter-rules.txt \
-  https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/main/conf/backup-filter-rules.txt
+  "https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/${ref}/conf/backup-filter-rules.txt"
 ```
 
-Both work equally well with `wget -O <file> <url>` if you prefer it.
+Both work equally well with `wget -O <file> <url>` if you prefer it. Read
+`.env` before sourcing it in the steps below regardless: it is a config
+template, but sourcing any file executes it as shell.
 
 ### 2. Edit `.env`
 
@@ -273,14 +284,43 @@ set -a; . ./.env; set +a
   && printf '%s' "$pass" > "$GOCRYPTFS_PASSKEY_FILE" && unset pass )
 ```
 
-### 3. Back up
+### 3. Verify the image
+
+Pin a released version rather than `latest`: it is the one tag
+`publish-image.yml` never rebuilds in place, so a signature verified against
+it stays true for the image you actually run next. See the
+[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page for
+the current version. Every image is signed with
+[cosign](https://github.com/sigstore/cosign) using GitHub Actions' keyless
+signing, so there is no private key to leak or rotate:
+
+```bash
+IMAGE="ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.0"
+
+cosign verify \
+  --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  "$IMAGE"
+```
+
+### 4. Back up
 
 `.env` is ordinary shell syntax, so sourcing it is all the wiring this needs.
 This is exactly what the `make backup` target runs, with the same flags,
-mounts and arguments:
+mounts and arguments, `$IMAGE` from step 3 in place of the tag it resolves
+from `DOCKER_IMAGE_TAG_NAME`/`DOCKER_IMAGE_TAG_VERSION`. The passkey volume
+is skipped when `PARANOID_MODE=true`, matching `make backup`'s own
+conditional mount: paranoid mode's entire point is that no passphrase ever
+touches disk, so mounting the passkey file unconditionally here would defeat
+it (and `GOCRYPTFS_PASSKEY_FILE` need not even exist in that mode):
 
 ```bash
 set -a; . ./.env; set +a
+
+passkey_volume=()
+if [ "${PARANOID_MODE}" != "true" ]; then
+  passkey_volume=(--volume "${GOCRYPTFS_PASSKEY_FILE}:/backup/passfile")
+fi
 
 docker run \
   --name gocryptfs \
@@ -294,11 +334,11 @@ docker run \
   --volume "${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt" \
   --volume "${SSH_KEY_FILE}:/root/.ssh/id_rsa" \
   --volume "${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts" \
-  --volume "${GOCRYPTFS_PASSKEY_FILE}:/backup/passfile" \
+  "${passkey_volume[@]}" \
   --env "PARANOID_MODE=${PARANOID_MODE}" \
   --rm \
   --interactive --tty \
-  ghcr.io/ivan-pinatti-labs/rsync-crypt:latest \
+  "$IMAGE" \
   /app/backup.sh \
     "/backup/src" \
     "/backup/enc" \
@@ -320,7 +360,7 @@ means losing the backup permanently: see
 
 Subsequent runs are incremental; only changed files are transferred.
 
-### Which image, and verifying it
+### Which image
 
 Images are published to two registries as multi-arch builds (`linux/amd64`
 and `linux/arm64`), with the same digest under the same tags on both:
@@ -329,22 +369,10 @@ and `linux/arm64`), with the same digest under the same tags on both:
 - `docker.io/ivanpinatti/rsync-crypt` (alternative, same image)
 
 Tags are `latest` (the most recent release) and a bare release version, e.g.
-`1.5.0` (that exact build, never rebuilt in place). Prefer a pinned version
-for anything unattended, so the same `gocryptfs` and `rsync` binaries run
-every time. Current tags are on the
+`1.5.0` (that exact build, never rebuilt in place, which is why step 3 above
+verifies and step 4 runs that same pinned tag rather than `latest`). Current
+tags are on the
 [Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page.
-
-Every image is signed with [cosign](https://github.com/sigstore/cosign) using
-GitHub Actions' keyless signing, so there is no private key to leak or rotate.
-Verify a pulled image actually came out of this repository's workflow before
-trusting it:
-
-```bash
-cosign verify \
-  --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.0
-```
 
 ### What is not covered here
 
