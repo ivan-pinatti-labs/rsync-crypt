@@ -1,0 +1,236 @@
+name: Publish Image
+
+# Builds the Docker image and pushes it to
+# ghcr.io/ivan-pinatti-labs/rsync-crypt, tagged 'latest' and with the exact
+# semantic version merge.yml already minted for the release.
+#
+# Trigger: 'release: published', not a 'workflow_run' reacting to merge.yml
+# and not a raw tag push. merge.yml's own two jobs already do the two things
+# a trigger here would otherwise have to re-derive:
+#
+#   - create-tag (mathieudutour/github-tag-action) computes the next semver
+#     tag and creates the git tag.
+#   - create-release (ncipollo/release-action) turns that tag into a GitHub
+#     Release.
+#
+# 'release: published' fires once that second job finishes, and its payload
+# (github.event.release.tag_name) already carries the exact tag create-tag
+# minted, so this workflow never has to recompute a version itself. A
+# 'workflow_run' trigger watching merge.yml would still need something to
+# read the tag back out of the completed run (a second API call, or an
+# artifact create-tag never uploads), and it would fire even if
+# create-release's job failed after create-tag's succeeded, i.e. on a tag
+# with no release behind it. A raw tag push ('push: tags: v*') would fire a
+# commit earlier than 'release: published' does, before the release (and its
+# changelog body) exists at all, for no benefit here since nothing in this
+# workflow reads the release body. 'release: published' is therefore the one
+# trigger that names the finished artifact (the release) this workflow
+# actually republishes as an image, with no re-derivation and no ordering
+# gap.
+#
+# workflow_dispatch exists only to test this workflow itself (build, push,
+# verify) without waiting for a real release: it takes its own 'tag' input
+# rather than reading github.event.release.tag_name, which does not exist
+# outside a 'release' event.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Version tag to publish as the image tag, e.g. '0.0.0-test'. Only
+          used for a manual run; a real release always uses the release's own
+          tag_name instead.
+        required: true
+        default: "0.0.0-manual"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/ivan-pinatti-labs/rsync-crypt
+
+jobs:
+  build-and-push:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    # amd64 alone builds in a couple of minutes; arm64 goes through QEMU
+    # emulation for every apk transaction the Dockerfile runs, which is
+    # noticeably slower for the same image. 30 minutes leaves headroom for
+    # that without masking a genuine hang.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # The only new permission this task needs. GITHUB_TOKEN scoped to
+      # packages: write on this job is sufficient to push to
+      # ghcr.io/ivan-pinatti-labs/rsync-crypt, which lives under this
+      # repository's own owner; no personal access token or other stored
+      # secret is required.
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Determine the version tag
+        id: version
+        # github-tag-action's default tag_prefix is 'v' and merge.yml does not
+        # override it, so github.event.release.tag_name arrives as 'vX.Y.Z'.
+        # The image tag drops the 'v': published tags here read '1.2.0', not
+        # 'v1.2.0'.
+        #
+        # Both untrusted values are passed through env: rather than
+        # interpolated directly into the script, so a release tag or a
+        # workflow_dispatch input crafted as shell syntax is read as an inert
+        # string, not executed.
+        env:
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="$RELEASE_TAG_NAME"
+          else
+            tag="$DISPATCH_TAG"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::No version tag resolved from the triggering event."
+            exit 1
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Read apk version pins from .env.example
+        id: pins
+        # The Dockerfile's ARGs (ALPINE_VERSION, GOCRYPTFS_VERSION,
+        # BASH_VERSION, LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION,
+        # SSHFS_VERSION, VIM_VERSION) are exactly what the Makefile's 'build'
+        # target passes as --build-arg, all sourced from .env.example. Reading
+        # them straight out of that file, rather than re-deriving them or
+        # invoking 'make build' (which has no push or multi-arch support),
+        # keeps this workflow unable to drift from what a local 'make build'
+        # would produce.
+        run: |
+          set -euo pipefail
+          {
+            echo "build_args<<PINS_EOF"
+            for var in ALPINE_VERSION GOCRYPTFS_VERSION BASH_VERSION LESS_VERSION \
+              OPENSSH_VERSION RSYNC_VERSION SSHFS_VERSION VIM_VERSION; do
+              value=$(grep -m1 "^${var}=" .env.example | cut -d'=' -f2- | tr -d '"')
+              if [ -z "$value" ]; then
+                echo "::error::${var} missing or empty in .env.example."
+                exit 1
+              fi
+              echo "${var}=${value}"
+            done
+            echo "PINS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.pins.outputs.build_args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  verify:
+    name: Verify Published Image
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Read-only: this job only pulls what the previous job already pushed.
+      packages: read
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the published image by digest
+        # By digest, not by the 'latest' or version tag: a tag can move
+        # between the push above and this pull, a digest cannot, so this is
+        # proof the exact image just built is what gets verified.
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: docker pull "${{ env.IMAGE }}@${DIGEST}"
+
+      # Same checks tests/test_build.py runs against a locally built image
+      # (test_required_binary_is_present, test_entrypoint_is_gocryptfs,
+      # test_image_runs_as_the_crypt_user), reused here directly against the
+      # freshly pushed GHCR image rather than pointed at through pytest: that
+      # suite's 'image' fixture builds locally via 'make build' and has no
+      # existing seam for a pre-built remote ref, and duplicating its handful
+      # of docker run assertions here is simpler than adding one.
+      - name: Verify required binaries are present
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for binary in gocryptfs rsync sshfs fusermount ssh sshd; do
+            docker run --rm --entrypoint /bin/bash \
+              "${{ env.IMAGE }}@${DIGEST}" \
+              -c "command -v ${binary}"
+          done
+
+      - name: Verify the entrypoint is gocryptfs and starts without error
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          entrypoint=$(docker inspect -f '{{json .Config.Entrypoint}}' "${{ env.IMAGE }}@${DIGEST}")
+          case "$entrypoint" in
+            *gocryptfs*) ;;
+            *)
+              echo "::error::Entrypoint is not gocryptfs: $entrypoint"
+              exit 1
+              ;;
+          esac
+          docker run --rm --entrypoint /usr/bin/gocryptfs "${{ env.IMAGE }}@${DIGEST}" -version
+
+      - name: Verify the image runs as the crypt user
+        env:
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          resolved=$(docker run --rm --entrypoint id "${{ env.IMAGE }}@${DIGEST}" -un)
+          [ "$resolved" = "crypt" ]
