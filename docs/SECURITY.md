@@ -48,8 +48,13 @@ During the first `gocryptfs -reverse -init`, gocryptfs generates a random
 master key and prints it to the terminal. The script pauses with a "Press O"
 prompt so you can write it down.
 
-> **The master key is never written to disk. It is printed once and never
-> again.**
+> **The plaintext master key is never written to disk. It is printed once
+> and never again.** An encrypted copy of it (`EncryptedKey`, wrapped with a
+> key scrypt derives from your passphrase) lives inside
+> `.gocryptfs.reverse.conf`, which is how the passphrase file alone is
+> normally enough to unlock the backup: without the passphrase, that copy is
+> only as recoverable as the passphrase itself, which is why the printed
+> plaintext is the one durable, offline fallback.
 
 Store it off-machine, separate from the backup destination:
 
@@ -61,10 +66,28 @@ Store it off-machine, separate from the backup destination:
 encrypted backup is permanently unrecoverable.**
 
 With the master key you can still access the backup even without the
-passphrase file:
+passphrase file. Mount the *remote* encrypted directory (not
+`BACKUP_SOURCE_FOLDER`, which is the plaintext reverse-mode source, not the
+backup itself), read-only, supplying the key on stdin rather than as a
+command-line argument that would otherwise sit in your shell history and
+`ps` output:
 
 ```bash
-gocryptfs -masterkey <your-master-key> ...
+echo "<your-master-key>" | gocryptfs -ro -masterkey=stdin \
+  /path/to/remote/encrypted/dir /path/to/mount-point
+```
+
+That relies on `gocryptfs.conf` still being present in the remote directory
+(the ordinary case: `backup.sh` ships the reverse-mode config there under
+that name on every run) for the cipher and filename-encryption settings. If
+that config is also gone, supply them explicitly instead: reverse mode
+always uses AES-SIV regardless of `GOCRYPTFS_CIPHER`, so add `-aessiv`, and
+add `-plaintextnames` too if the backup was initialised with the default
+`GOCRYPTFS_ENCRYPT_NAMES=false`:
+
+```bash
+echo "<your-master-key>" | gocryptfs -ro -masterkey=stdin -aessiv -plaintextnames \
+  /path/to/remote/encrypted/dir /path/to/mount-point
 ```
 
 ---
@@ -125,10 +148,19 @@ release happened to bake in. A released version tag is never rebuilt in place;
 
 - The passphrase file (`GOCRYPTFS_PASSKEY_FILE`)
 - Both `.gocryptfs.reverse.conf` files from `BACKUP_SOURCE_FOLDER`
+- The root-backup config copy (`BACKUP_ENCRYPTION_CONF`), if set
 - The Docker image
 
 After `make clean`, the next `make backup` re-initialises gocryptfs with a new
 master key. **The previous backup on the remote server remains intact and can
 still be read using the original passphrase or master key**, but the fresh
-local init produces a new config that is incompatible with the existing remote
-backup until a full re-sync completes.
+local init produces a new config that is incompatible with the existing
+remote backup: the new key does not decrypt files the old one wrote, and the
+new `gocryptfs.conf` `rsync` ships to the same destination would overwrite
+the old one there, stranding whatever old-encrypted files that sync doesn't
+also happen to touch, unreadable under either config. Point
+`REMOTE_SERVER_BACKUP_FOLDER` at a new, empty destination for the
+re-initialised backup instead of reusing the old one. Only repoint it back to
+the original destination, if that is what you want, after a full sync to the
+new destination has completed and you have confirmed the old backup is no
+longer needed.
