@@ -269,14 +269,21 @@ template, but sourcing any file executes it as shell.
 $EDITOR .env
 ```
 
-At minimum, set `SSH_KEY_FILE`, `SSH_KNOWN_HOSTS_FILE`,
-`GOCRYPTFS_PASSKEY_FILE`, `BACKUP_SOURCE_FOLDER`, `REMOTE_SERVER` and
-`REMOTE_SERVER_BACKUP_FOLDER`. Use absolute paths: they are mount sources for
-the container, not paths inside it. The full reference for every variable is
-in [docs/USAGE.md](docs/USAGE.md#environment-variables).
+At minimum, set `SSH_KEY_FILE`, `SSH_KNOWN_HOSTS_FILE`, `BACKUP_SOURCE_FOLDER`,
+`REMOTE_SERVER` and `REMOTE_SERVER_BACKUP_FOLDER`. Use absolute paths: they are
+mount sources for the container, not paths inside it. The full reference for
+every variable is in [docs/USAGE.md](docs/USAGE.md#environment-variables).
 
-Then create the passphrase file that `GOCRYPTFS_PASSKEY_FILE` points at,
-without putting the passphrase in your shell history:
+Also set `GOCRYPTFS_PASSKEY_FILE`, unless you set `PARANOID_MODE=true`
+instead: paranoid mode's entire point is that no passphrase ever touches
+disk, so it needs neither this variable nor the file below, and prompts for
+the passphrase interactively at container startup instead (which means it
+needs a real terminal; see
+[docs/SECURITY.md](docs/SECURITY.md#the-passphrase-file)). Skip straight to
+step 3 if that is what you set.
+
+Otherwise, create the passphrase file that `GOCRYPTFS_PASSKEY_FILE` points
+at, without putting the passphrase in your shell history:
 
 ```bash
 set -a; . ./.env; set +a
