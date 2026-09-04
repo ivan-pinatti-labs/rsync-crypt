@@ -181,12 +181,19 @@ same reason as in the sibling repository: a status a workflow chooses whether
 to write, and what to write, does not read as passed merely because it was
 skipped.
 
-`Docker Build`, also a job in `pull-request-validation.yml`, is deliberately
-not in this table. It builds the Dockerfile standalone and, once
-`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` exist, logs into Docker Hub before
-doing it, which is the probe for whether those secrets survive a future
-repository transfer. It is not required, and nothing in this pipeline waits
-on it.
+`Docker Hub Probe`, also a job in `pull-request-validation.yml`, is
+deliberately not in this table. It is not a second build-verification job:
+`Tests` above already builds this exact image through `make build`, always
+as an anonymous pull. `Docker Hub Probe` logs into Docker Hub with
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` before building, which is the only
+place either the credentialed pull path or those two secrets themselves are
+exercised. It was stood up to answer whether those secrets would survive the
+transfer to an organization described below; the transfer has since
+completed and "What the transfer silently changed" confirms Actions secrets
+did survive it by name, so that original question is settled. What the job
+still does on every pull request is catch the secrets going stale, rotated,
+or revoked at any later point, which is an ongoing concern, not a one-time
+one. It is not required, and nothing in this pipeline waits on it.
 
 ## `Review Verified`, and the bug it exists to fix
 

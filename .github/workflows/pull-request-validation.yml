@@ -70,25 +70,38 @@ jobs:
       - name: Run tests
         run: pytest tests --verbose
 
-  docker-build:
-    name: Docker Build
+  docker-hub-probe:
+    name: Docker Hub Probe
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Not a required check yet, see docs/MERGE_PIPELINE.md. The `tests` job
-    # above already builds this exact image, through `make build`, as part of
-    # covering test_build.py's `image` fixture, so this job is not closing a
-    # gap in what gets exercised. It exists for two separate reasons instead:
+    # Not a build-verification job and not a required check, see
+    # docs/MERGE_PIPELINE.md. `Tests` above already builds this exact image,
+    # through `make build`, as part of covering test_build.py's `image`
+    # fixture, always as an anonymous pull, so this job is not closing a gap
+    # in what gets built or exercised. Its actual purpose is narrower: it is
+    # a live probe of the one pull path `Tests` never touches at all, the
+    # credentialed one, so a contributor reading only the name should not
+    # assume this job re-verifies anything `Tests` already covers.
     #
-    #   - The Dockerfile has never had a build attempted outside of a test
-    #     run, with a stand-alone Docker Hub login in front of it, which
-    #     means nothing in this repository has ever proven that the pull it
-    #     depends on (`FROM alpine:${ALPINE_VERSION}`) survives whatever rate
-    #     limiting a login is meant to avoid.
-    #   - It is the instrument for a question the transfer itself cannot
-    #     answer in advance: whether repository secrets survive a transfer to
-    #     an organization. GitHub's own transfer documentation does not say,
-    #     so this job is what will be watched, before and after that
-    #     transfer, once DOCKERHUB_USERNAME and DOCKERHUB_TOKEN exist.
+    # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN exist on this repository (added
+    # 2026-08-26, ahead of the personal-account-to-organization transfer
+    # docs/MERGE_PIPELINE.md's "What the transfer silently changed" section
+    # describes). That transfer has since completed, and Actions secrets by
+    # name are confirmed, in that section, to have survived it, so the
+    # original one-time question this job was stood up to answer, "do
+    # repository secrets survive the transfer," is already settled. What the
+    # job still does, every pull request, is genuinely ongoing rather than
+    # historical:
+    #
+    #   - It is the only place `docker login docker.io` is attempted, so it
+    #     is what would first notice DOCKERHUB_USERNAME or DOCKERHUB_TOKEN
+    #     going stale, rotated, or revoked, long after the transfer that
+    #     motivated adding them.
+    #   - It is the only place `FROM alpine:${ALPINE_VERSION}` is pulled
+    #     authenticated rather than anonymous. `Tests`'s own `make build`
+    #     never logs in, so this is the sole exercise of the
+    #     credential-boosted pull path and its higher rate limit, distinct
+    #     from the always-anonymous pull `Tests` performs.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -96,13 +109,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to Docker Hub
-        # These two secrets do not exist on this repository yet; the owner
-        # adds them separately. Until then this step has nothing to log in
-        # with and has to say so and move on rather than fail the job, the
-        # same way integration-tests.yml handles a fork's missing credentials
-        # in docker-torrent-box-with-vpn: an absent secret is not a build
-        # failure, it is just an anonymous pull, and Docker Hub allows those,
-        # rate limited rather than refused.
+        # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN exist on this repository
+        # (see the job comment above), so this branch is not the normal
+        # path. It stays as a graceful fallback rather than a hard failure
+        # for the day either secret is removed or revoked: an absent secret
+        # is not a build failure, it is just an anonymous pull, and Docker
+        # Hub allows those, rate limited rather than refused, the same way
+        # integration-tests.yml handles a fork's missing credentials in
+        # docker-torrent-box-with-vpn.
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -74,9 +74,10 @@ jobs:
           # docker-torrent-box-with-vpn's `Code Check`, `Prerequisite Checks`
           # and `Detect Changed Paths`: there is no path filtering and no
           # integration suite here, so there is nothing else to name.
-          # `Docker Build` is deliberately left out too: it is not a required
-          # check (see docs/MERGE_PIPELINE.md), so a pull request is never
-          # blocked on it and there is nothing for a nudge to wait on there.
+          # `Docker Hub Probe` is deliberately left out too: it is not a
+          # required check (see docs/MERGE_PIPELINE.md), so a pull request is
+          # never blocked on it and there is nothing for a nudge to wait on
+          # there.
           OTHER_REQUIRED_CONTEXTS: "Pre-commit,Tests"
         shell: bash
         run: |
