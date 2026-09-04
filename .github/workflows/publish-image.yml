@@ -28,10 +28,26 @@ name: Publish Image
 # actually republishes as an image, with no re-derivation and no ordering
 # gap.
 #
-# workflow_dispatch exists only to test this workflow itself (build, push,
-# verify) without waiting for a real release: it takes its own 'tag' input
-# rather than reading github.event.release.tag_name, which does not exist
-# outside a 'release' event.
+# It is also, on its own, a trigger that never fires for the release
+# merge.yml actually creates. create-release calls ncipollo/release-action
+# with no 'token:' override, so it defaults to GITHUB_TOKEN, and GitHub does
+# not start new workflow runs from an event a GITHUB_TOKEN created, release
+# creation through the API included, specifically to stop workflows
+# triggering each other in a loop. This is the exact same restriction
+# CLAUDE.md documents for resolve-apk-pins.yml's push, and the fix is the
+# same shape: merge.yml's own 'trigger-image-publish' job explicitly
+# dispatches this workflow right after create-release finishes, via
+# 'gh workflow run publish-image.yml --field tag=<tag> --field
+# publish_latest=true' (needs 'actions: write', not a stored credential).
+# 'release: published' is left in place regardless, for the one case that
+# dispatch cannot cover: a release published by hand, or by a real user
+# token, through the GitHub UI or API rather than by merge.yml.
+#
+# workflow_dispatch exists for two things: it is what merge.yml's own dispatch
+# above rides on, and it is also how this workflow gets tested directly
+# (build, push, verify) without waiting for a real release. Either way it
+# takes its own 'tag' input rather than reading github.event.release.tag_name,
+# which does not exist outside a 'release' event.
 on:
   release:
     types: [published]
@@ -39,11 +55,21 @@ on:
     inputs:
       tag:
         description: >-
-          Version tag to publish as the image tag, e.g. '0.0.0-test'. Only
-          used for a manual run; a real release always uses the release's own
-          tag_name instead.
+          Version tag to publish as the image tag, e.g. '0.0.0-test'. A real
+          release always uses the release's own tag_name when triggered
+          natively; merge.yml's dispatch passes this explicitly instead,
+          since GITHUB_TOKEN release creation carries no event of its own to
+          read a tag_name from (see the comment above).
         required: true
         default: "0.0.0-manual"
+      publish_latest:
+        description: >-
+          Also push the ':latest' tag. merge.yml's dispatch sets this for a
+          genuine release; leave it false for an ad hoc manual test so a
+          throwaway tag never clobbers ':latest'.
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -73,6 +99,7 @@ jobs:
       packages: write
     outputs:
       version: ${{ steps.version.outputs.version }}
+      publish_latest: ${{ steps.version.outputs.publish_latest }}
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout
@@ -92,20 +119,25 @@ jobs:
         # workflow_dispatch input crafted as shell syntax is read as an inert
         # string, not executed.
         env:
+          EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
           DISPATCH_TAG: ${{ inputs.tag }}
+          DISPATCH_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$EVENT_NAME" = "release" ]; then
             tag="$RELEASE_TAG_NAME"
+            publish_latest=true
           else
             tag="$DISPATCH_TAG"
+            publish_latest="$DISPATCH_PUBLISH_LATEST"
           fi
           if [ -z "$tag" ]; then
             echo "::error::No version tag resolved from the triggering event."
             exit 1
           fi
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
 
       - name: Read apk version pins from .env.example
         id: pins
@@ -153,8 +185,12 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE }}
+          # 'latest' is enabled for a native 'release' event and for
+          # merge.yml's dispatch (which passes publish_latest=true), and
+          # disabled for an ad hoc manual workflow_dispatch test run, so a
+          # throwaway test tag is never mistaken for the current release.
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ steps.version.outputs.publish_latest == 'true' }}
             type=raw,value=${{ steps.version.outputs.version }}
 
       - name: Build and push
