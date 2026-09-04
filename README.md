@@ -149,6 +149,8 @@ push the fix.
 - [How It Works](#how-it-works)
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Build from Source](#build-from-source)
+  - [Use the Published Image](#use-the-published-image)
 - [Configuration](#configuration)
   - [Environment Variables](#environment-variables)
   - [Multiple Configurations](#multiple-configurations)
@@ -227,6 +229,8 @@ localhost only, it is not reachable from the network.
 
 ## Installation
 
+### Build from Source
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/ivan-pinatti-labs/rsync-crypt.git
@@ -240,6 +244,62 @@ $EDITOR .env
 
 # 4. Build the Docker image
 make build
+```
+
+### Use the Published Image
+
+Tagged releases are also built and pushed by `.github/workflows/publish-image.yml` to
+`ghcr.io/ivan-pinatti-labs/rsync-crypt`, as a multi-arch image (`linux/amd64` and `linux/arm64`).
+Two kinds of tags are published:
+
+- `latest`: always the most recently released version
+- a bare release version, e.g. `1.4.0`: that exact build, never overwritten again
+
+Prefer a pinned version tag over `latest` for anything unattended (a cron job, a scheduled backup):
+it guarantees the same `gocryptfs`, `rsync`, and other `apk`-pinned binaries on every run, instead
+of whatever the most recent release happened to bake in. Use `latest` only when pulling by hand,
+where re-verifying after each pull is easy. Check the
+[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page for the current tag.
+
+> **Note:** the `ghcr.io/ivan-pinatti-labs/rsync-crypt` package is not yet public. Until the
+> maintainer makes it public, pulling it without access fails with `unauthorized` or `denied:
+> requested access to the resource is denied`. If you hit that, ask the maintainer for access, or
+> use [Build from Source](#build-from-source) above instead.
+
+Only the OS package versions (Alpine, gocryptfs, rsync, sshfs, openssh, and so on) are baked into
+the image at build time, from the `--build-arg` values the `build` target in the `Makefile` passes
+in. Everything specific to your setup, your SSH key, the backup source folder, the filter rules
+file, the remote server, the passphrase file, is never baked in: it lives on your host and is
+mounted into the container at `docker run` time by every `make` target, the same way whether the
+image was built locally or pulled from GHCR. So using the published image still needs a local clone
+of this repository, with `.env` created and edited as in [Build from Source](#build-from-source)
+above, and the `conf/` files it points to (`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST`,
+`RESTORE_PATHS_FILE`) present at those paths. The only step it removes is `make build` itself.
+
+Point `.env` at the published image instead of a locally built one, then use the existing `make`
+targets exactly as documented in [Usage](#usage):
+
+```bash
+# 1. Clone the repository (still needed: it carries the Makefile, .env.example, and conf/ files)
+git clone https://github.com/ivan-pinatti-labs/rsync-crypt.git
+cd rsync-crypt
+
+# 2. Create and edit your environment file, same as building from source
+cp .env.example .env
+$EDITOR .env
+
+# 3. In .env, point the image name and version at the published image instead of a local
+#    build, so every 'make' target's docker run uses it (skip 'make build' entirely):
+#      DOCKER_IMAGE_TAG_NAME="ghcr.io/ivan-pinatti-labs/rsync-crypt"
+#      DOCKER_IMAGE_TAG_VERSION="1.4.0"
+
+# 4. Optional: 'docker run' pulls automatically if the image is not present locally, but
+#    pulling explicitly surfaces an access error before you get partway through the
+#    interactive passphrase prompt.
+docker pull ghcr.io/ivan-pinatti-labs/rsync-crypt:1.4.0
+
+# 5. Run any existing target normally, e.g.
+make backup
 ```
 
 ---
