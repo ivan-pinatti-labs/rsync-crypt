@@ -45,3 +45,37 @@ jobs:
           name: Release ${{ needs.create-tag.outputs.new_tag }}
           body: ${{ needs.create-tag.outputs.changelog }}
           allowUpdates: true
+
+  trigger-image-publish:
+    name: Trigger Image Publish
+    needs: [create-tag, create-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      # Explicit API dispatch, not a stored credential: the release above is
+      # created with the default GITHUB_TOKEN (no 'token:' override on
+      # ncipollo/release-action), and GitHub does not start new workflow runs
+      # from an event a GITHUB_TOKEN created, release creation included, to
+      # stop workflows retriggering each other in a loop. That would leave
+      # publish-image.yml's 'release: published' trigger permanently unfired
+      # for every release this workflow itself creates. The documented
+      # exception is an explicit workflow_dispatch call made through the API,
+      # even with GITHUB_TOKEN, which is exactly what this job makes,
+      # carrying the tag create-tag already minted so publish-image.yml never
+      # has to recompute it. Same shape as resolve-apk-pins.yml's own
+      # workflow_dispatch re-trigger of pull-request-validation.yml; see
+      # CLAUDE.md.
+      actions: write
+    steps:
+      - name: Dispatch publish-image.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.create-tag.outputs.new_tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish-image.yml \
+            --repo "$REPO" \
+            --ref "$TAG" \
+            --field tag="$TAG" \
+            --field publish_latest=true
