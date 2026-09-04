@@ -82,8 +82,10 @@ every `make` target passes the same three flags:
 | `--security-opt apparmor:unconfined` | AppArmor's default profile denies the FUSE mount        |
 
 Podman accepts all three with the same spelling. `--security-opt
-label=disable` (SELinux, on Fedora and RHEL) is also already passed by the
-targets that mount host directories read-write.
+label=disable` (SELinux, on Fedora and RHEL) is also already passed by every
+target that mounts raw system paths (`/etc`, `/home`, `/opt`, `/root`,
+`/srv`) read-write: `backup_as_root`, `restore_as_root_to_origin`,
+`view_as_root` and `run_container_as_root`.
 
 If `/dev/fuse` is missing on the host, install `fuse3` and load the module:
 
@@ -116,9 +118,12 @@ These mount `/etc`, `/home`, `/opt`, `/root` and `/srv`, which is the point of
 them: they back up the system, including other users' files and root-owned
 configuration. That needs privileged access to the host by definition, and no
 container runtime changes that. Under rootless Podman these targets simply
-cannot read most of what they are pointed at, so they have to be run with
-`sudo podman` (or rootful Podman), at which point the container's root really
-is the host's root again.
+cannot read most of what they are pointed at, so they have to be run as real
+root: `sudo make backup_as_root` (and likewise for `view_as_root` and
+`restore_as_root_to_origin`), not `make backup_as_root` on its own.
+`podman-docker`'s `docker` shim is a system-wide symlink, not a per-user one,
+so `sudo` reaching it still resolves to Podman, just no longer rootless, at
+which point the container's root really is the host's root again.
 
 So for the `_as_root` family, Podman's advantage narrows to "no daemon" and
 "no `docker` group". Those still count, but the user-namespace isolation, the

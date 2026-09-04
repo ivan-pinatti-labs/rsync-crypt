@@ -238,6 +238,7 @@ backup_as_root:
 		--cap-add SYS_ADMIN \
 		--device /dev/fuse \
 		--security-opt apparmor:unconfined \
+		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume /etc:/backup/src/etc \
 		--volume /home:/backup/src/home \
@@ -370,6 +371,7 @@ restore_as_root_to_origin:
 		--cap-add SYS_ADMIN \
 		--device /dev/fuse \
 		--security-opt apparmor:unconfined \
+		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume /etc:/restore/origin/etc \
 		--volume /home:/restore/origin/home \
