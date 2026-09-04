@@ -177,6 +177,100 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Refuse to republish a version tag that already exists
+        # The incident this exists to stop from recurring: publish-image.yml
+        # was re-dispatched by hand with tag=1.5.0, a version already
+        # released. Nothing about the source tree had changed, but the image
+        # built from it had: the Dockerfile runs `apk update && apk upgrade`
+        # and its `~=` pins constrain a minor version, not an exact one, so
+        # Alpine's mirrors moving underneath an unchanged pin is enough for a
+        # rebuild to be different bytes. Docker Hub refused the overwrite,
+        # because its tag immutability rule (already configured there, regex
+        # '^\d+\.\d+\.\d+$') is exactly this check. GHCR has no equivalent
+        # setting at all and accepted it silently, which left GHCR's 1.5.0
+        # and both registries' 'latest' pointing at a different, unsigned
+        # build than Docker Hub's 1.5.0. See issue #55:
+        # https://github.com/ivan-pinatti-labs/rsync-crypt/issues/55
+        #
+        # So this is GHCR's missing immutability rule, enforced in the one
+        # place that can enforce it for a registry that will not: before the
+        # build, in the workflow that does the pushing. It runs after both
+        # logins on purpose, since `imagetools inspect` needs the same
+        # credentials the push will, and before the build so a refusal costs
+        # nothing but the checkout.
+        #
+        # Only bare semver is gated. '0.0.0-test', '0.0.0-manual' and any
+        # other non-semver tag are meant to be reused, run after run, for
+        # manual validation dispatches, and they are also exactly what Docker
+        # Hub's own immutability regex declines to match, so gating them here
+        # would be this workflow disagreeing with the registry it is
+        # mirroring the rule from.
+        #
+        # Only a workflow_dispatch is gated, for the reason the header
+        # explains at length: a native 'release' event fires for a release
+        # someone published by hand, where re-publishing an existing tag may
+        # well be the intent, and merge.yml's create-tag job mints a version
+        # nothing has used before every time. Note that merge.yml's release
+        # path reaches this workflow as a workflow_dispatch rather than a
+        # 'release' event (GITHUB_TOKEN-created releases start no runs, see
+        # the header), so this check does run for a genuine release. That is
+        # harmless in the ordinary case, since the tag genuinely does not
+        # exist yet, and is a free second opinion on create-tag's uniqueness
+        # if that ever stops being true.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Bare semver only, anchored end to end: '1.5.0' is gated,
+          # '0.0.0-test' and '1.5.0-rc1' are not. grep rather than a case
+          # pattern because a glob cannot require "digits" the way a
+          # character class repetition can, and this is the same shape as
+          # Docker Hub's own immutability regex on purpose.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::notice::${VERSION} is not bare semver, so it is reusable by design."
+            exit 0
+          fi
+
+          # A successful inspect is the only signal treated as "this tag
+          # exists". Any failure is treated as "it does not", which is
+          # deliberately the direction that fails open: a transient registry
+          # error must not be able to block a genuine release, and this check
+          # is not the only thing standing between a dispatch and a bad
+          # overwrite. Docker Hub still enforces its own immutability rule
+          # server side regardless of what this step concluded, and both
+          # logins above already succeeded by the time this runs, so an
+          # authentication problem has failed the job earlier rather than
+          # arriving here disguised as an absent tag.
+          published=""
+          for image in "$IMAGE_GHCR" "$IMAGE_DOCKERHUB"; do
+            if docker buildx imagetools inspect "${image}:${VERSION}" > /dev/null 2>&1; then
+              published="${published} ${image}:${VERSION}"
+            fi
+          done
+
+          if [ -z "$published" ]; then
+            echo "::notice::${VERSION} is not published on either registry yet."
+            exit 0
+          fi
+
+          # Assembled rather than written as one long line: a GitHub
+          # annotation is a single line, and this file's own 100 column limit
+          # is not somewhere to smuggle an exception.
+          reason="Version ${VERSION} is already published on:${published}."
+          reason="${reason} Rebuilding a released version tag does not reproduce"
+          reason="${reason} the image it already points at, because the"
+          reason="${reason} Dockerfile's apk pins constrain a minor version and"
+          reason="${reason} Alpine's mirrors move within it, so this would"
+          reason="${reason} replace a signed, released image with different"
+          reason="${reason} bytes under the same name. Docker Hub refuses this"
+          reason="${reason} itself; GHCR does not, which is what this check is"
+          reason="${reason} for (issue #55). Publish a new version instead, or"
+          reason="${reason} dispatch with a non-semver tag such as 0.0.0-test"
+          reason="${reason} for a manual validation run."
+          echo "::error::${reason}"
+          exit 1
+
       - name: Derive image tags and labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
