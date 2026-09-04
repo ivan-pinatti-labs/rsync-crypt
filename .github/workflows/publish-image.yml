@@ -290,6 +290,21 @@ jobs:
         if: | # zizmor: ignore[bot-conditions]
           steps.version.outputs.publish_latest == 'true' &&
           (github.event_name == 'release' || github.actor == 'github-actions[bot]')
+        # continue-on-error: Docker Hub's description-update endpoint only
+        # accepts password-based JWT login, not a Personal Access Token, and
+        # DOCKERHUB_TOKEN here is a PAT (see the login step above). That is a
+        # platform limitation, not a misconfiguration on our end: filed
+        # upstream at docker/roadmap#323 (pre-existing) and confirmed again in
+        # our own docker/roadmap#918 and docker/hub-feedback#2532. Storing an
+        # actual account password as a CI secret to work around it would be a
+        # strictly worse security posture than the PAT already in use, so
+        # this step is left to fail with a 403 and the job carries on: image
+        # signing (above) and the vulnerability scan plus verify matrix
+        # (below) must never be blocked by a Docker Hub listing that failed
+        # to refresh. v1.5.0's publish run
+        # (https://github.com/ivan-pinatti-labs/rsync-crypt/actions/runs/33903867494)
+        # hit exactly this in production, which is what surfaced the gap.
+        continue-on-error: true
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
