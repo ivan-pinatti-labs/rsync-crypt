@@ -80,20 +80,29 @@ The commit is pushed with `GITHUB_TOKEN` (the job grants itself `contents:
 write` for exactly this). GitHub does not start new workflow runs from a push
 authenticated with the default `GITHUB_TOKEN`, specifically to prevent
 workflows retriggering each other in a loop, so that push alone would leave
-`pull-request-validation.yml`'s real `Tests` job (`make build` plus the
-backup/restore roundtrip) never re-run against it. The anti-recursion rule
-has one documented exception: an explicit `workflow_dispatch` call made
-through the API, even with `GITHUB_TOKEN`. `pull-request-validation.yml`
-carries a `workflow_dispatch` trigger for exactly this, and right after the
-push, `resolve-apk-pins.yml` calls `gh workflow run
-pull-request-validation.yml --ref <branch>` (needing `actions: write`) to
-start `Tests` against the new commit directly. Branch protection matches a
-required check by name and by the SHA it reports against, not by which event
-produced the run, so a `Tests` run started this way satisfies the pull
-request's requirement the same as a `synchronize`-triggered one would. No
-stored credential (no PAT like `CODERABBIT_NUDGE_TOKEN` in
-`coderabbit-review-queue.yml`) is needed for this one, since the retrigger is
-an explicit API call rather than a push that needs to look human-authored.
+none of the pull request's required checks re-run against it: not
+`pull-request-validation.yml`'s `Tests` job (`make build` plus the
+backup/restore roundtrip), and not `coderabbit-gate.yml`'s `Pin Only` and
+`Review Verified` either, since that workflow's own regrading triggers never
+fire from a GITHUB_TOKEN push any more than `pull-request-validation.yml`'s
+do. The anti-recursion rule has one documented exception: an explicit
+`workflow_dispatch` call made through the API, even with `GITHUB_TOKEN`.
+Right after the push, `resolve-apk-pins.yml` dispatches both workflows
+directly: `pull-request-validation.yml` carries a `workflow_dispatch` trigger
+added for this, invoked with `gh workflow run pull-request-validation.yml
+--ref <branch>`; `coderabbit-gate.yml` already had one, `pr_number`, its own
+manual recovery path for a pull request stuck with a stale verdict, invoked
+with `gh workflow run coderabbit-gate.yml --field pr_number=<number>`
+instead (both need `actions: write`). Finishing that second run also fires
+`bot-auto-merge.yml`'s own `workflow_run` trigger, which is what actually
+supplies the approval once every required check reads green. Branch
+protection matches a required check by name and by the SHA it reports
+against, not by which event produced the run, so a check run started this
+way satisfies the pull request's requirement the same as one from the
+ordinary trigger would. No stored credential (no PAT like
+`CODERABBIT_NUDGE_TOKEN` in `coderabbit-review-queue.yml`) is needed for
+this, since the retrigger is an explicit API call rather than a push that
+needs to look human-authored.
 
 Safe to re-run, including when Renovate's own `rebaseWhen` rebases or
 recreates its branch later and drops this workflow's commit the way any
@@ -109,9 +118,13 @@ comparing is what makes it not matter.
 `bot-auto-merge.yml` needed no change for this: `Pin Only` grades the pull
 request's cumulative diff (`gh pr diff`), not any one commit, so a second,
 workflow-authored commit on top of Renovate's own is graded the same as if
-it had all been one commit, and the approval job re-triggers correctly on
-the resolver's own `synchronize` event the same way it already does on any
-other push to the pull request.
+it had all been one commit. The approval job does not react to a
+`synchronize` from the resolver's own push, since that push is GITHUB_TOKEN
+and produces no such event; it reacts to `coderabbit-gate.yml`'s
+`workflow_run` finishing instead, the same `workflow_dispatch` re-trigger
+described above, and that is what actually re-derives `Pin Only` and `Review
+Verified` for the new commit and, once both read `success`, supplies the
+approval.
 
 Only these seven packages resolve automatically. A package newly added to
 the Dockerfile's `apk add` line still needs a person to decide its variable

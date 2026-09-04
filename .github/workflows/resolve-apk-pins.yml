@@ -23,33 +23,44 @@ name: Resolve apk Pins
 # exact failure they were kept out of Renovate's hands to avoid in the first
 # place.
 #
-# Why GITHUB_TOKEN pushes the commit, and re-triggers Tests by hand:
+# Why GITHUB_TOKEN pushes the commit, and re-triggers the required checks by
+# hand:
 # GitHub does not start new workflow runs from a push authenticated with the
 # default GITHUB_TOKEN, specifically to stop workflows triggering each other
 # in a loop (the same restriction bot-auto-merge.yml's own comments rely on
 # for `workflow_run` over `status`). Left there, that would leave the
-# resolver's commit sitting on the pull request with `Tests` never re-run
-# against it, which fails the one requirement this workflow cannot compromise
-# on: "don't build a parallel test path", the real `Tests` job in
-# pull-request-validation.yml has to grade this commit the normal way.
+# resolver's commit sitting on the pull request with none of `Tests`, `Pin
+# Only` or `Review Verified` ever re-run against it, which fails the one
+# requirement this workflow cannot compromise on: "don't build a parallel
+# test or review path", the real jobs that publish those three have to grade
+# this commit the normal way.
 #
 # The anti-recursion rule has one documented exception: an explicit
 # `workflow_dispatch` call made through the API is exempt even when made with
 # GITHUB_TOKEN, because that call is the workflow deliberately asking for
 # another run rather than a push incidentally causing one. So instead of a
-# stored credential whose only job is to look like a human push,
-# `pull-request-validation.yml` carries a `workflow_dispatch` trigger and,
-# right after the push below lands, the "Re-trigger pull request validation"
-# step calls `gh workflow run pull-request-validation.yml --ref
-# "$HEAD_REF"` to start a `Tests` run against the branch's new tip directly.
-# That call needs `actions: write`, granted below, the same way the push
-# needs `contents: write`; both are GITHUB_TOKEN, scoped down to this job,
-# with no separate secret to create, rotate or lose.
+# stored credential whose only job is to look like a human push, the "Re-
+# trigger pull request validation" and "Re-trigger the CodeRabbit gate"
+# steps, right after the push below lands, dispatch the two workflows that
+# publish those three checks directly:
+#
+#   - `pull-request-validation.yml` carries a `workflow_dispatch` trigger
+#     (added alongside this change) for `Pre-commit` and `Tests`.
+#   - `coderabbit-gate.yml` already had one, `pr_number`, its own "manual
+#     recovery path" for a pull request stuck with a stale or missing
+#     verdict; this reuses it rather than adding a second mechanism, for
+#     `Pin Only` and `Review Verified`. Finishing that run also fires
+#     bot-auto-merge.yml's `workflow_run` trigger, which is what actually
+#     supplies the approval once every required check reads green.
+#
+# Both calls need `actions: write`, granted below, the same way the push
+# needs `contents: write`; all three are GITHUB_TOKEN, scoped down to this
+# job, with no separate secret to create, rotate or lose.
 #
 # Branch protection matches a required check by name and by the commit SHA
 # the check run reports against, not by which event produced the run, so a
-# `Tests` run started this way satisfies the pull request's requirement for
-# its head SHA exactly as a `pull_request: synchronize`-triggered one would.
+# check run started this way satisfies the pull request's requirement for
+# its head SHA exactly as one from the ordinary trigger would.
 #
 # The failure mode this is defensively built around: Renovate's default
 # `rebaseWhen` can rebase or recreate its branch on its own (a later daily
@@ -72,9 +83,10 @@ name: Resolve apk Pins
 # the same anti-recursion rule described above, just working in this
 # workflow's favor instead of against it this time. There is no second run of
 # this workflow to reason about after a self-push, and so no loop to guard
-# against; the `workflow_dispatch` re-trigger a few paragraphs up is a
-# narrower, explicit ask of one specific workflow (`pull-request-validation.yml`),
-# not a broad synchronize this workflow would otherwise also react to.
+# against; the two `workflow_dispatch` re-triggers a few paragraphs up are a
+# narrower, explicit ask of two specific workflows
+# (`pull-request-validation.yml` and `coderabbit-gate.yml`), not a broad
+# synchronize this workflow itself would otherwise also react to.
 on:
   # zizmor: ignore[dangerous-triggers]
   #
@@ -255,16 +267,18 @@ jobs:
           # contents: write permission (above) is all this needs, and this
           # is exactly the push the header comment says will not retrigger
           # this workflow.
-          # That is fine: the "Re-trigger pull request validation" step below
-          # is what starts `Tests` against this new commit, not this push.
+          # That is fine: the two "Re-trigger" steps below are what start
+          # `Tests`, `Pin Only` and `Review Verified` against this new
+          # commit, not this push.
           git push \
             "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" \
             "HEAD:refs/heads/${HEAD_REF}"
 
       - name: Re-trigger pull request validation
         # A push authenticated with GITHUB_TOKEN, the one above, does not
-        # start a new workflow run; only this explicit workflow_dispatch call
-        # does, see the header comment. `--ref` is enough: none of
+        # start a new workflow run at all, for any workflow, on any trigger:
+        # only an explicit workflow_dispatch call does, see the header
+        # comment. `--ref` is enough for this one: none of
         # pull-request-validation.yml's jobs read `github.event.pull_request.*`
         # for their actual test logic (verified by reading that workflow
         # file), they only need the branch checked out, which
@@ -281,3 +295,37 @@ jobs:
           gh workflow run pull-request-validation.yml \
             --repo "$REPO" \
             --ref "$HEAD_REF"
+
+      - name: Re-trigger the CodeRabbit gate
+        # `Tests` is not the only required check the suppressed push leaves
+        # stale: `Pin Only` and `Review Verified` are published by
+        # coderabbit-gate.yml, which only regrades a pull request on its own
+        # pull_request_target/status/schedule/merge_group triggers, none of
+        # which the push above fires either. Left alone, both statuses would
+        # sit at whatever they last read for the pull request's previous
+        # head, never republished for the commit this workflow just pushed,
+        # so the pull request could never actually satisfy its required
+        # checks for its new head SHA.
+        #
+        # coderabbit-gate.yml already has a workflow_dispatch input built for
+        # exactly this: `pr_number`, its own "manual recovery path" for a
+        # pull request stuck with a stale or missing verdict (see that
+        # workflow's header comment). It never checks out the pull request's
+        # branch, only reads its number, metadata and diff through the API,
+        # so this call dispatches the default branch's copy of the workflow,
+        # not `$HEAD_REF`, and passes the pull request number instead.
+        # Finishing this run also fires bot-auto-merge.yml's own
+        # `workflow_run` trigger, which is what actually supplies the
+        # approval once every required check reads green; nothing further
+        # needs to be dispatched for that to happen.
+        if: steps.resolve.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run coderabbit-gate.yml \
+            --repo "$REPO" \
+            --field "pr_number=$PR_NUMBER"
