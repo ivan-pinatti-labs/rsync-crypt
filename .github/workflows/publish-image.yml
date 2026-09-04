@@ -71,23 +71,6 @@ on:
         required: false
         default: false
 
-concurrency:
-  # Keyed on the version being published, not github.ref: the republish
-  # guard below (`docker buildx imagetools inspect`, then build) is a
-  # read-then-act check with no lock of its own, so two runs that both
-  # resolve to the same VERSION need to serialize against each other or
-  # both can pass the "does this tag exist yet" read before either has
-  # pushed, and both then push. github.ref does not protect against that
-  # for workflow_dispatch specifically: it is the ref the workflow was
-  # dispatched *from* (almost always the default branch), completely
-  # independent of the 'tag' input actually being published, so two manual
-  # dispatches of the same tag from two different refs would previously
-  # have raced right past this. github.event.release.tag_name covers the
-  # 'release' trigger the same way; only one of the two is ever set on a
-  # given run.
-  group: ${{ github.workflow }}-${{ github.event.release.tag_name || inputs.tag }}
-  cancel-in-progress: false
-
 permissions: {}
 
 env:
@@ -98,40 +81,14 @@ env:
   IMAGE_DOCKERHUB: docker.io/ivanpinatti/rsync-crypt
 
 jobs:
-  build-and-push:
-    name: Build and Push
+  resolve-version:
+    name: Resolve the version tag
     runs-on: ubuntu-latest
-    # amd64 alone builds in a couple of minutes; arm64 goes through QEMU
-    # emulation for every apk transaction the Dockerfile runs, which is
-    # noticeably slower for the same image. 30 minutes leaves headroom for
-    # that without masking a genuine hang.
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      # GITHUB_TOKEN scoped to packages: write on this job is sufficient to
-      # push to ghcr.io/ivan-pinatti-labs/rsync-crypt, which lives under
-      # this repository's own owner; no personal access token or other
-      # stored secret is required. The Docker Hub push instead uses the
-      # long-lived DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets below, since
-      # GITHUB_TOKEN has no reach outside github.com.
-      packages: write
-      # Lets cosign request a short-lived Fulcio certificate bound to this
-      # run's own OIDC identity (keyless signing, below), instead of a
-      # stored private signing key.
-      id-token: write
-      # Lets the Docker Scout SARIF upload (below) attach its findings to
-      # this repository's code scanning tab.
-      security-events: write
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
       publish_latest: ${{ steps.version.outputs.publish_latest }}
-      digest: ${{ steps.build.outputs.digest }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
       - name: Determine the version tag
         id: version
         # github-tag-action's default tag_prefix is 'v' and merge.yml does not
@@ -143,6 +100,18 @@ jobs:
         # interpolated directly into the script, so a release tag or a
         # workflow_dispatch input crafted as shell syntax is read as an inert
         # string, not executed.
+        #
+        # This lives in its own job, ahead of build-and-push, specifically so
+        # build-and-push's own concurrency group (below) can key on this
+        # step's normalized output rather than on the raw
+        # github.event.release.tag_name/inputs.tag: those two carry the
+        # version in different shapes ('vX.Y.Z' vs 'X.Y.Z'), so keying
+        # concurrency on the raw value would fail to serialize a 'release'
+        # run against a workflow_dispatch run of what is actually the same
+        # version. A job's own concurrency key can read another job's
+        # output via 'needs', but the top-level, workflow-wide concurrency:
+        # block a single job used to sit under cannot, since it has to
+        # evaluate before any job (this one included) has run.
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
@@ -163,6 +132,59 @@ jobs:
           fi
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    name: Build and Push
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    # amd64 alone builds in a couple of minutes; arm64 goes through QEMU
+    # emulation for every apk transaction the Dockerfile runs, which is
+    # noticeably slower for the same image. 30 minutes leaves headroom for
+    # that without masking a genuine hang.
+    timeout-minutes: 30
+    # Keyed on the resolved version, not github.ref: the republish guard
+    # below (`docker buildx imagetools inspect`, then build) is a
+    # read-then-act check with no lock of its own, so two runs that both
+    # resolve to the same version need to serialize against each other or
+    # both can pass the "does this tag exist yet" read before either has
+    # pushed, and both then push. github.ref does not protect against that
+    # for workflow_dispatch specifically: it is the ref the workflow was
+    # dispatched *from* (almost always the default branch), completely
+    # independent of the 'tag' input actually being published, so two manual
+    # dispatches of the same tag from two different refs would previously
+    # have raced right past this. Reading needs.resolve-version.outputs.version
+    # rather than the raw github.event.release.tag_name/inputs.tag also
+    # means a 'release' run and a workflow_dispatch run of the same version
+    # ('vX.Y.Z' vs 'X.Y.Z') serialize against each other too, which comparing
+    # the two raw, differently-shaped values here never would have.
+    concurrency:
+      group: ${{ github.workflow }}-${{ needs.resolve-version.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # GITHUB_TOKEN scoped to packages: write on this job is sufficient to
+      # push to ghcr.io/ivan-pinatti-labs/rsync-crypt, which lives under
+      # this repository's own owner; no personal access token or other
+      # stored secret is required. The Docker Hub push instead uses the
+      # long-lived DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets below, since
+      # GITHUB_TOKEN has no reach outside github.com.
+      packages: write
+      # Lets cosign request a short-lived Fulcio certificate bound to this
+      # run's own OIDC identity (keyless signing, below), instead of a
+      # stored private signing key.
+      id-token: write
+      # Lets the Docker Scout SARIF upload (below) attach its findings to
+      # this repository's code scanning tab.
+      security-events: write
+    outputs:
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish_latest: ${{ needs.resolve-version.outputs.publish_latest }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
@@ -232,7 +254,7 @@ jobs:
         # if that ever stops being true.
         if: github.event_name == 'workflow_dispatch'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           set -euo pipefail
           # Bare semver only, anchored end to end: '1.5.0' is gated,
@@ -317,6 +339,11 @@ jobs:
 
       - name: Derive image tags and labels
         id: meta
+        env:
+          # Aliased to keep the 'tags:' line below under this file's 100
+          # column limit; env.PUBLISH_LATEST is available inside 'with:'
+          # the same way env.IMAGE_GHCR already is.
+          PUBLISH_LATEST: ${{ needs.resolve-version.outputs.publish_latest }}
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           # Both registries, one buildx invocation, one shared digest: the
@@ -329,8 +356,8 @@ jobs:
           # disabled for an ad hoc manual workflow_dispatch test run, so a
           # throwaway test tag is never mistaken for the current release.
           tags: |
-            type=raw,value=latest,enable=${{ steps.version.outputs.publish_latest == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' }}
+            type=raw,value=${{ needs.resolve-version.outputs.version }}
 
       - name: Build and push
         id: build
@@ -413,7 +440,7 @@ jobs:
         # reserved identity no such caller can assume by choice, only by
         # dispatching through GITHUB_TOKEN the way merge.yml does.
         if: | # zizmor: ignore[bot-conditions]
-          steps.version.outputs.publish_latest == 'true' &&
+          needs.resolve-version.outputs.publish_latest == 'true' &&
           (github.event_name == 'release' || github.actor == 'github-actions[bot]')
         # continue-on-error: Docker Hub's description-update endpoint only
         # accepts password-based JWT login, not a Personal Access Token, and
