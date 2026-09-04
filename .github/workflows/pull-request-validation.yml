@@ -11,6 +11,16 @@ on:
   # commit; ported ahead of need, alongside coderabbit-gate.yml, so that gap
   # cannot reopen later.
   merge_group:
+  # resolve-apk-pins.yml pushes its own commit onto a Renovate pull request
+  # with GITHUB_TOKEN, which GitHub's anti-recursion rule keeps from starting
+  # a new `pull_request: synchronize` run here; an explicit workflow_dispatch
+  # call is exempt from that rule, which is what that workflow uses this
+  # trigger for, right after its push, to get `Tests` to run against the new
+  # commit the normal way. No inputs: none of the jobs below read
+  # `github.event.pull_request.*` for their actual logic, only `actions/checkout`
+  # (which defaults to the ref that triggered the run either way), so
+  # `--ref <branch>` on the dispatch is sufficient on its own.
+  workflow_dispatch:
 
 permissions:
   contents: read
