@@ -72,7 +72,20 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Keyed on the version being published, not github.ref: the republish
+  # guard below (`docker buildx imagetools inspect`, then build) is a
+  # read-then-act check with no lock of its own, so two runs that both
+  # resolve to the same VERSION need to serialize against each other or
+  # both can pass the "does this tag exist yet" read before either has
+  # pushed, and both then push. github.ref does not protect against that
+  # for workflow_dispatch specifically: it is the ref the workflow was
+  # dispatched *from* (almost always the default branch), completely
+  # independent of the 'tag' input actually being published, so two manual
+  # dispatches of the same tag from two different refs would previously
+  # have raced right past this. github.event.release.tag_name covers the
+  # 'release' trigger the same way; only one of the two is ever set on a
+  # given run.
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 permissions: {}
@@ -232,19 +245,50 @@ jobs:
             exit 0
           fi
 
-          # A successful inspect is the only signal treated as "this tag
-          # exists". Any failure is treated as "it does not", which is
-          # deliberately the direction that fails open: a transient registry
-          # error must not be able to block a genuine release, and this check
-          # is not the only thing standing between a dispatch and a bad
-          # overwrite. Docker Hub still enforces its own immutability rule
-          # server side regardless of what this step concluded, and both
-          # logins above already succeeded by the time this runs, so an
-          # authentication problem has failed the job earlier rather than
-          # arriving here disguised as an absent tag.
+          # A successful inspect means "this tag exists", unambiguously. A
+          # failed one used to mean "it does not" outright, which was fail
+          # open in the one direction that matters least: Docker Hub still
+          # enforces its own immutability rule server side regardless of what
+          # this step concludes, but GHCR does not, and GHCR not existing is
+          # exactly the incident (#55) this check exists to catch. A
+          # transient GHCR error (a registry blip, a rate limit, a timeout)
+          # read as "absent" would wave through the exact overwrite this step
+          # is for, on the one registry with nothing else standing in the
+          # way.
+          #
+          # So a failure is only ever "absent" once the registry has actually
+          # said so: `imagetools inspect` surfaces a real 404 as
+          # 'MANIFEST_UNKNOWN' or 'manifest unknown' (both registries) or a
+          # plain 'not found', regardless of which one of the two rejected
+          # it. Anything else, an auth hiccup, a timeout, a 5xx, an error
+          # this check does not recognize, is inconclusive rather than
+          # "absent", and 3 attempts with a short backoff exist only to let a
+          # genuinely transient one clear before treating it as a hard
+          # failure, since both logins above already succeeded by the time
+          # this runs and a real auth problem would have failed the job
+          # there instead of arriving here.
+          check_tag() {
+            local image="$1" attempt output
+            for attempt in 1 2 3; do
+              if output=$(docker buildx imagetools inspect "$image" 2>&1); then
+                return 0 # confirmed present
+              fi
+              if printf '%s' "$output" \
+                | grep -qiE 'manifest_unknown|manifest unknown|not found|no such manifest'; then
+                return 1 # confirmed absent
+              fi
+              echo "::warning::Inconclusive inspect of ${image}" \
+                "(attempt ${attempt}/3): ${output}"
+              sleep $((attempt * 5))
+            done
+            echo "::error::Could not confirm whether ${image} exists after" \
+              "3 attempts; last result: ${output}"
+            exit 2
+          }
+
           published=""
           for image in "$IMAGE_GHCR" "$IMAGE_DOCKERHUB"; do
-            if docker buildx imagetools inspect "${image}:${VERSION}" > /dev/null 2>&1; then
+            if check_tag "${image}:${VERSION}"; then
               published="${published} ${image}:${VERSION}"
             fi
           done
