@@ -151,32 +151,6 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
 
-      - name: Read apk version pins from .env.example
-        id: pins
-        # The Dockerfile's ARGs (ALPINE_VERSION, GOCRYPTFS_VERSION,
-        # BASH_VERSION, LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION,
-        # SSHFS_VERSION, VIM_VERSION) are exactly what the Makefile's 'build'
-        # target passes as --build-arg, all sourced from .env.example. Reading
-        # them straight out of that file, rather than re-deriving them or
-        # invoking 'make build' (which has no push or multi-arch support),
-        # keeps this workflow unable to drift from what a local 'make build'
-        # would produce.
-        run: |
-          set -euo pipefail
-          {
-            echo "build_args<<PINS_EOF"
-            for var in ALPINE_VERSION GOCRYPTFS_VERSION BASH_VERSION LESS_VERSION \
-              OPENSSH_VERSION RSYNC_VERSION SSHFS_VERSION VIM_VERSION; do
-              value=$(grep -m1 "^${var}=" .env.example | cut -d'=' -f2- | tr -d '"')
-              if [ -z "$value" ]; then
-                echo "::error::${var} missing or empty in .env.example."
-                exit 1
-              fi
-              echo "${var}=${value}"
-            done
-            echo "PINS_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
         with:
@@ -222,6 +196,20 @@ jobs:
 
       - name: Build and push
         id: build
+        # No 'build-args:' input, deliberately. Every version this image is
+        # built from (ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION,
+        # LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION,
+        # VIM_VERSION) is an ARG default in the Dockerfile itself, kept
+        # correct by .github/workflows/resolve-apk-pins.yml on every
+        # ALPINE_VERSION bump, so passing them here would only be restating
+        # the file's own defaults back to it and creating a second place they
+        # could drift from. A preceding step used to read all eight out of
+        # .env.example for exactly that; it was removed with the pins.
+        #
+        # This is also what keeps a published image identical to a local
+        # 'make build': that target now passes a --build-arg only for a value
+        # a user explicitly overrode on the command line, and passes none at
+        # all by default, which is the same build this step performs.
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -229,7 +217,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ steps.pins.outputs.build_args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Attaches a Software Bill of Materials and full (every

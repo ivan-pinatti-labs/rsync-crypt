@@ -1,19 +1,28 @@
 name: Resolve apk Pins
 
 # GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION, OPENSSH_VERSION,
-# RSYNC_VERSION, SSHFS_VERSION and VIM_VERSION in .env.example are apk `~=`
-# version constraints, not Docker tags: no Renovate datasource models "the
-# version of this apk package available in Alpine release X", so an
-# independently tracked bump could propose a version that release's repo does
-# not carry and fail the build (see .github/renovate.json5's customManagers
-# comment). They used to be re-resolved by hand, every time ALPINE_VERSION
-# moved, by running `apk policy <pkg>` inside the new `alpine:<version>` and
-# editing .env.example. This workflow is that step, automated: it runs
-# scripts/resolve-apk-pins.py, which does exactly that, against the
-# ALPINE_VERSION a Renovate pull request proposes, and pushes a second commit
-# onto the same pull request if anything resolved differently.
+# RSYNC_VERSION, SSHFS_VERSION and VIM_VERSION are `ARG` defaults in the
+# Dockerfile, and each is an apk `~=` version constraint, not a Docker tag: no
+# Renovate datasource models "the version of this apk package available in
+# Alpine release X", so an independently tracked bump could propose a version
+# that release's repo does not carry and fail the build (see
+# .github/renovate.json5's customManagers comment). They used to be
+# re-resolved by hand, every time ALPINE_VERSION moved, by running
+# `apk policy <pkg>` inside the new `alpine:<version>` and editing the pins.
+# This workflow is that step, automated: it runs scripts/resolve-apk-pins.py,
+# which does exactly that, against the ALPINE_VERSION a Renovate pull request
+# proposes, and pushes a second commit onto the same pull request if anything
+# resolved differently.
 #
-# Each of the seven variables carries a `# apk-pin: resolved-from=ALPINE_VERSION`
+# All eight pins, ALPINE_VERSION included, used to live in `.env.example` as
+# quoted `NAME="value"` lines, and this workflow read and rewrote that file.
+# They are `ARG NAME=value` defaults in the `Dockerfile` now, so that the file
+# consuming a version is also the file declaring it and a plain
+# `docker build .` needs no build arguments at all. Nothing about the trust
+# model below changed with them; only which file is fetched from the pull
+# request's branch and what grammar the script edits.
+#
+# Each of the seven ARGs carries a `# apk-pin: resolved-from=ALPINE_VERSION`
 # comment immediately above it, not `# renovate:`, on purpose: that is what
 # scripts/assert-pin-only-diff.py's Pin Only check reads to decide a bump to
 # one of them is a pin bump and not "a dependency bot reaching outside its
@@ -69,7 +78,7 @@ name: Resolve apk Pins
 # here can prevent that rebase; what makes it survivable is that dropping the
 # commit does not desynchronize anything silently. A rebase changes the head
 # SHA, which is a `synchronize` event, which re-triggers this workflow, which
-# recomputes from scratch and reads whatever .env.example the rebased branch
+# recomputes from scratch and reads whatever Dockerfile the rebased branch
 # actually carries. If the rebase dropped the fix, recomputation finds the
 # same mismatch again and pushes the same fix again; if the rebase somehow
 # kept it, recomputation finds every value already resolved and pushes
@@ -100,14 +109,17 @@ on:
   # request's copy is the code that decides what to do with that content: the
   # scripts run in every step below are read from the base branch's checkout,
   # a separate step, never from the pull request's own copy of them. See "Fetch
-  # the pull request's .env.example" and "Resolve apk pins" for exactly what
-  # is and is not read from where.
+  # the pull request's branch into its own worktree" and "Resolve apk pins"
+  # for exactly what is and is not read from where.
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
       - main
     paths:
-      - ".env.example"
+      # The Dockerfile, not .env.example: that is where all eight version pins
+      # live now (see the header above). A Renovate pull request that bumps
+      # ALPINE_VERSION touches this file and nothing else.
+      - "Dockerfile"
 
 # The floor. The job below grants itself contents: write and actions: write
 # on GITHUB_TOKEN explicitly, scoped to that one job rather than raised here,
@@ -154,7 +166,7 @@ jobs:
         # and scripts/assert-pin-only-diff.py's own APK_PIN_ANNOTATION the
         # trusted, reviewed copies rather than whatever a compromised or
         # misconfigured bot might have rewritten them to say on its own
-        # branch. Only .env.example, fetched separately below, is ever read
+        # branch. Only the Dockerfile, fetched separately below, is ever read
         # from the pull request's branch.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -181,14 +193,19 @@ jobs:
 
           # Only worth acting on this pull request at all if ALPINE_VERSION
           # itself actually moved: the paths filter above already narrows
-          # this to a pull request that touched .env.example, but Renovate's
+          # this to a pull request that touched the Dockerfile, but Renovate's
           # custom regex manager is the only thing that ever edits that file
           # on Renovate's own branches, and it only ever touches
           # ALPINE_VERSION, so this is a defensive check against that
           # assumption changing later rather than a condition expected to
-          # ever actually trip.
-          base_alpine=$(grep -E '^ALPINE_VERSION=' .env.example)
-          head_alpine=$(grep -E '^ALPINE_VERSION=' ../pr-branch/.env.example)
+          # ever actually trip. It matters slightly more than it used to: the
+          # paths filter now names a file a human edits for unrelated reasons
+          # (a new apk package, a new COPY), where `.env.example` was only
+          # ever touched by Renovate. Those pull requests are not Renovate's
+          # and never reach this job at all, but the check is what makes that
+          # not depend on the author fence alone.
+          base_alpine=$(grep -E '^ARG ALPINE_VERSION=' Dockerfile)
+          head_alpine=$(grep -E '^ARG ALPINE_VERSION=' ../pr-branch/Dockerfile)
           if [ "$base_alpine" = "$head_alpine" ]; then
             echo "::notice::ALPINE_VERSION did not change on this pull request; nothing to resolve."
             echo "alpine_changed=false" >> "$GITHUB_OUTPUT"
@@ -202,7 +219,7 @@ jobs:
           # here, before this value is interpolated into any command at all,
           # is cheaper than trusting a second layer to catch what the first
           # one should never have let through.
-          alpine_version=$(printf '%s\n' "$head_alpine" | sed -E 's/^ALPINE_VERSION="([^"]*)"$/\1/')
+          alpine_version=$(printf '%s\n' "$head_alpine" | sed -E 's/^ARG ALPINE_VERSION=(.*)$/\1/')
           case "$alpine_version" in
             '' | *[!0-9.]*)
               echo "::error::ALPINE_VERSION=$alpine_version is not digits and dots only."
@@ -220,11 +237,11 @@ jobs:
         run: |
           set -euo pipefail
           # The script is the trusted copy from the base branch checkout
-          # above; only the --env-file it rewrites, in the worktree, comes
+          # above; only the --dockerfile it rewrites, in the worktree, comes
           # from the pull request's branch.
           python3 scripts/resolve-apk-pins.py \
             --alpine-version "$ALPINE_VERSION" \
-            --env-file ../pr-branch/.env.example \
+            --dockerfile ../pr-branch/Dockerfile \
             | tee resolve-output.txt
           changed=$(head -1 resolve-output.txt)
           echo "$changed" >> "$GITHUB_OUTPUT"
@@ -246,7 +263,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .env.example
+          git add Dockerfile
           # $GITHUB_WORKSPACE, not a relative "../<repo name>": relative to
           # this worktree that happens to work when the checkout step's
           # default path matches the repository's own name, but the

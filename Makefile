@@ -114,26 +114,33 @@ rro: restore_as_root_to_origin
 v:   view
 vr:  view_as_root
 
+# The eight version pins live in the Dockerfile now, as ARG defaults, not in
+# the env file. So this target passes no --build-arg at all by default and the
+# Dockerfile's own defaults apply, which is what keeps 'make build' and a bare
+# 'docker build .' producing the same image.
+#
+# Each $(if ...) below emits its --build-arg only when the matching variable is
+# actually set to something, which is how a one-off override still works:
+#
+#   ALPINE_VERSION=3.25 make build     (command-line variable)
+#   make build ALPINE_VERSION=3.25     (same thing, other spelling)
+#
+# An unset variable expands to empty and $(if ...) drops the flag entirely,
+# rather than passing '--build-arg ALPINE_VERSION=' and building 'alpine:'.
+# That empty-pin failure is why the old guard here refused to build when any of
+# the eight was blank; with the pins in the Dockerfile there is no blank to
+# refuse, so the guard is gone rather than kept as a check on nothing.
 build:
-	@if [ -z "${ALPINE_VERSION}" ] || [ -z "${GOCRYPTFS_VERSION}" ] || [ -z "${BASH_VERSION}" ] || \
-	   [ -z "${LESS_VERSION}" ] || [ -z "${OPENSSH_VERSION}" ] || [ -z "${RSYNC_VERSION}" ] || \
-	   [ -z "${SSHFS_VERSION}" ] || [ -z "${VIM_VERSION}" ]; then \
-		echo "Error: one or more of ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION,"; \
-		echo "OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION, VIM_VERSION is missing or empty in '$(ENV_FILE)'."; \
-		echo "Regenerate '$(ENV_FILE)' from .env.example, which defines all of them, rather than"; \
-		echo "building with an empty apk version pin."; \
-		exit 1; \
-	fi
 	@echo "Building Docker image..."
 	@docker build . \
-		--build-arg ALPINE_VERSION=${ALPINE_VERSION} \
-		--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION} \
-		--build-arg BASH_VERSION=${BASH_VERSION} \
-		--build-arg LESS_VERSION=${LESS_VERSION} \
-		--build-arg OPENSSH_VERSION=${OPENSSH_VERSION} \
-		--build-arg RSYNC_VERSION=${RSYNC_VERSION} \
-		--build-arg SSHFS_VERSION=${SSHFS_VERSION} \
-		--build-arg VIM_VERSION=${VIM_VERSION} \
+		$(if ${ALPINE_VERSION},--build-arg ALPINE_VERSION=${ALPINE_VERSION}) \
+		$(if ${GOCRYPTFS_VERSION},--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION}) \
+		$(if ${BASH_VERSION},--build-arg BASH_VERSION=${BASH_VERSION}) \
+		$(if ${LESS_VERSION},--build-arg LESS_VERSION=${LESS_VERSION}) \
+		$(if ${OPENSSH_VERSION},--build-arg OPENSSH_VERSION=${OPENSSH_VERSION}) \
+		$(if ${RSYNC_VERSION},--build-arg RSYNC_VERSION=${RSYNC_VERSION}) \
+		$(if ${SSHFS_VERSION},--build-arg SSHFS_VERSION=${SSHFS_VERSION}) \
+		$(if ${VIM_VERSION},--build-arg VIM_VERSION=${VIM_VERSION}) \
 		--tag ${DOCKER_IMAGE_TAG_NAME} \
 		--tag ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
 

@@ -1,7 +1,7 @@
 version: 2
 
 # Dependabot handles GitHub Actions and pre-commit hooks.
-# Renovate handles .tool-versions and the version pins in .env.example,
+# Renovate handles .tool-versions and the Alpine version pin in the Dockerfile,
 # see renovate.json5.
 #
 # Both bots run daily. Note that Dependabot's "daily" means weekdays only.

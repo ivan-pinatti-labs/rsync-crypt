@@ -82,43 +82,43 @@ def test_accepts_a_tool_versions_bump():
     assert result.returncode == 0, result.stdout
 
 
-def test_accepts_the_renovate_annotated_alpine_line():
-    # ALPINE_VERSION is the one line in .env.example a renovate: comment
+def test_accepts_the_renovate_annotated_alpine_arg():
+    # ALPINE_VERSION is the one ARG in the Dockerfile a renovate: comment
     # anchors, and it is the only variable Renovate's own manager may bump.
     result = _check(
         _diff(
-            ".env.example",
-            '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="3.25"\n',
+            "Dockerfile",
+            "-ARG ALPINE_VERSION=3.24\n+ARG ALPINE_VERSION=3.25\n",
         )
     )
     assert result.returncode == 0, result.stdout
 
 
-def test_accepts_an_apk_pin_annotated_line():
+def test_accepts_an_apk_pin_annotated_arg():
     # GOCRYPTFS_VERSION carries the distinct `# apk-pin:` marker
     # resolve-apk-pins.yml is anchored to, not `# renovate:`; this is the
     # marker this script's own APK_PIN_ANNOTATION is built to recognize.
     result = _check(
         _diff(
-            ".env.example",
-            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="2.7"\n',
+            "Dockerfile",
+            "-ARG GOCRYPTFS_VERSION=2.6\n+ARG GOCRYPTFS_VERSION=2.7\n",
         )
     )
     assert result.returncode == 0, result.stdout
 
 
-def test_accepts_every_apk_pin_annotated_variable_bumped_together():
+def test_accepts_every_apk_pin_annotated_arg_bumped_together():
     # resolve-apk-pins.yml can touch any subset of the seven in one commit,
     # not just one at a time.
     result = _check(
         _diff(
-            ".env.example",
-            '-BASH_VERSION="5.3"\n+BASH_VERSION="5.4"\n'
-            '-LESS_VERSION="702"\n+LESS_VERSION="703"\n'
-            '-OPENSSH_VERSION="10.3"\n+OPENSSH_VERSION="10.4"\n'
-            '-RSYNC_VERSION="3.5"\n+RSYNC_VERSION="3.6"\n'
-            '-SSHFS_VERSION="3.7"\n+SSHFS_VERSION="3.8"\n'
-            '-VIM_VERSION="9.2"\n+VIM_VERSION="9.3"\n',
+            "Dockerfile",
+            "-ARG BASH_VERSION=5.3\n+ARG BASH_VERSION=5.4\n"
+            "-ARG LESS_VERSION=702\n+ARG LESS_VERSION=703\n"
+            "-ARG OPENSSH_VERSION=10.3\n+ARG OPENSSH_VERSION=10.4\n"
+            "-ARG RSYNC_VERSION=3.5\n+ARG RSYNC_VERSION=3.6\n"
+            "-ARG SSHFS_VERSION=3.7\n+ARG SSHFS_VERSION=3.8\n"
+            "-ARG VIM_VERSION=9.2\n+ARG VIM_VERSION=9.3\n",
         )
     )
     assert result.returncode == 0, result.stdout
@@ -131,9 +131,9 @@ def test_accepts_alpine_and_apk_pin_bumps_together_in_one_diff():
     # more apk-pin: annotated bumps at once.
     result = _check(
         _diff(
-            ".env.example",
-            '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="3.25"\n'
-            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="2.7"\n',
+            "Dockerfile",
+            "-ARG ALPINE_VERSION=3.24\n+ARG ALPINE_VERSION=3.25\n"
+            "-ARG GOCRYPTFS_VERSION=2.6\n+ARG GOCRYPTFS_VERSION=2.7\n",
         )
     )
     assert result.returncode == 0, result.stdout
@@ -146,9 +146,12 @@ def test_accepts_alpine_and_apk_pin_bumps_together_in_one_diff():
 
 def test_refuses_docker_image_tag_version_despite_looking_like_a_pin():
     # DOCKER_IMAGE_TAG_VERSION is a local build tag with no upstream to
-    # track, and no annotation of either kind (renovate: or apk-pin:) above
-    # it. A script that normalized any `*_VERSION="..."` line would wave
-    # this through.
+    # track, it lives in .env.example, and no annotation of either kind
+    # (renovate: or apk-pin:) has ever sat above it. .env.example came off
+    # ALLOWED_PATHS entirely when the eight real pins moved into the
+    # Dockerfile, so this is now refused on the path alone; it stays as a
+    # test because the file returning to the allowlist must not quietly make
+    # this line eligible again.
     result = _check(
         _diff(
             ".env.example",
@@ -156,6 +159,36 @@ def test_refuses_docker_image_tag_version_despite_looking_like_a_pin():
         )
     )
     assert result.returncode == 1, result.stdout
+    assert "not a dependency pin file" in result.stdout
+
+
+def test_refuses_an_unannotated_arg_in_the_dockerfile():
+    # An ARG the Dockerfile does not annotate, in the file that is on the
+    # allowlist: the per-name gate, not the path, is what has to refuse this.
+    # A script that normalized any `ARG *_VERSION=` line would wave it
+    # through, which is exactly the widening the two markers exist to prevent.
+    result = _check(
+        _diff(
+            "Dockerfile",
+            "-ARG UNANNOTATED_VERSION=1.0.0\n+ARG UNANNOTATED_VERSION=1.0.1\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+    assert "was not a version bump" in result.stdout
+
+
+def test_refuses_a_non_pin_line_in_the_dockerfile():
+    # The Dockerfile is on the allowlist for its ARG pins only. Every other
+    # instruction in it is executable content, and a bot editing one is the
+    # shape this whole script exists to catch.
+    result = _check(
+        _diff(
+            "Dockerfile",
+            "-USER 1000\n+USER 0\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+    assert "was not a version bump" in result.stdout
 
 
 def test_refuses_a_pip_pin_in_tests_requirements():
@@ -202,10 +235,14 @@ def test_refuses_a_swapped_name_at_the_same_version():
 
 
 def test_refuses_a_file_outside_the_pin_paths():
+    # The Makefile is the natural neighbour of the Dockerfile here: it also
+    # names these version variables (as optional --build-arg overrides), and
+    # it is not a file any bot manages.
     result = _check(
         _diff(
-            "Dockerfile",
-            "-ARG ALPINE_VERSION\n+ARG ALPINE_VERSION_2\n",
+            "Makefile",
+            "-\t\t--tag ${DOCKER_IMAGE_TAG_NAME} \\\n"
+            "+\t\t--tag ${DOCKER_IMAGE_TAG_NAME}:evil \\\n",
         )
     )
     assert result.returncode == 1
@@ -257,7 +294,7 @@ def test_refuses_output_with_no_file_header():
 
 def test_refuses_a_file_whose_lines_could_not_be_read():
     result = _check(
-        "diff --git a/.env.example b/.env.example\nindex 1111111..2222222 100644\n"
+        "diff --git a/Dockerfile b/Dockerfile\nindex 1111111..2222222 100644\n"
     )
     assert result.returncode == 1
     assert "no readable changed lines" in result.stdout
@@ -278,18 +315,16 @@ def test_counts_an_added_line_that_looks_like_a_file_header():
 
 
 # ---------------------------------------------------------------------------
-# Only a number in a pin position counts as a version, and only on the one
-# annotated .env.example line this script is allowed to touch at all
+# Only a number in a pin position counts as a version, and only on the
+# annotated Dockerfile ARG lines this script is allowed to touch at all
 # ---------------------------------------------------------------------------
 
 
-def test_refuses_a_numeric_change_on_an_unannotated_env_line():
-    # PARANOID_MODE has no renovate: annotation above it, and is not a
-    # version at all; a rule keyed only on "some characters changed inside
-    # quotes" would have accepted this.
-    result = _check(
-        _diff(".env.example", "-PARANOID_MODE=false\n+PARANOID_MODE=true\n")
-    )
+def test_refuses_a_numeric_change_on_an_unannotated_dockerfile_line():
+    # A number changing on a line no marker annotates. A rule keyed only on
+    # "some digits changed" would have accepted this; it has to be a value in
+    # a pin position on an annotated ARG, or it is a structural change.
+    result = _check(_diff("Dockerfile", "-USER 1000\n+USER 1001\n"))
     assert result.returncode == 1
 
 
@@ -356,48 +391,59 @@ def test_refuses_a_github_action_sha_trading_for_a_floating_tag():
 
 
 def test_refuses_an_unannotated_sibling_bumped_alongside_the_annotated_line():
-    # .env.example's other `*_VERSION="..."` lines besides ALPINE_VERSION are
-    # all apk-pin: annotated now (GOCRYPTFS_VERSION, BASH_VERSION,
-    # RSYNC_VERSION and friends), so DOCKER_IMAGE_TAG_VERSION is the one
-    # genuinely unannotated version-shaped sibling left: a local build tag
-    # with no annotation of either kind above it. A diff that bumps the
-    # real, annotated ALPINE_VERSION line cleanly must still be refused if
-    # it smuggles a bump to that unannotated sibling in alongside it:
-    # per-variable-name gating has to hold even when several version-shaped
-    # lines change in the same file at once.
+    # Every `ARG *_VERSION=` line in the Dockerfile is annotated today, by one
+    # marker or the other, so the unannotated sibling here is a hypothetical
+    # one a bot added itself. A diff that bumps the real, annotated
+    # ALPINE_VERSION line cleanly must still be refused if it smuggles a bump
+    # to an unannotated sibling in alongside it: per-name gating has to hold
+    # even when several version-shaped lines change in the same file at once.
     result = _check(
         _diff(
-            ".env.example",
-            '-ALPINE_VERSION="3.24"\n'
-            '+ALPINE_VERSION="3.25"\n'
-            '-DOCKER_IMAGE_TAG_VERSION="1.0.0"\n'
-            '+DOCKER_IMAGE_TAG_VERSION="1.0.1"\n',
+            "Dockerfile",
+            "-ARG ALPINE_VERSION=3.24\n"
+            "+ARG ALPINE_VERSION=3.25\n"
+            "-ARG SMUGGLED_VERSION=1.0.0\n"
+            "+ARG SMUGGLED_VERSION=1.0.1\n",
         )
     )
     assert result.returncode == 1, result.stdout
 
 
-def test_refuses_a_non_version_payload_in_an_annotated_env_line():
-    # ALPINE_VERSION is annotated and eligible for a bump, but the quoted
-    # value still has to be a release on its own; a script that substituted
-    # on any quoted content, version-shaped or not, would wave this through.
+def test_refuses_a_non_version_payload_in_an_annotated_arg():
+    # ALPINE_VERSION is annotated and eligible for a bump, but the value still
+    # has to be a release on its own; a script that substituted on any value,
+    # version-shaped or not, would wave this through.
     result = _check(
         _diff(
-            ".env.example",
-            '-ALPINE_VERSION="3.24"\n+ALPINE_VERSION="$(payload)"\n',
+            "Dockerfile",
+            "-ARG ALPINE_VERSION=3.24\n+ARG ALPINE_VERSION=$(payload)\n",
         )
     )
     assert result.returncode == 1, result.stdout
 
 
-def test_refuses_a_non_version_payload_in_an_apk_pin_annotated_env_line():
+def test_refuses_a_non_version_payload_in_an_apk_pin_annotated_arg():
     # Same requirement, the other marker: apk-pin: annotation makes
     # GOCRYPTFS_VERSION eligible for a bump, not eligible for any edit at
     # all.
     result = _check(
         _diff(
-            ".env.example",
-            '-GOCRYPTFS_VERSION="2.6"\n+GOCRYPTFS_VERSION="$(payload)"\n',
+            "Dockerfile",
+            "-ARG GOCRYPTFS_VERSION=2.6\n+ARG GOCRYPTFS_VERSION=$(payload)\n",
+        )
+    )
+    assert result.returncode == 1, result.stdout
+
+
+def test_refuses_an_annotated_arg_losing_its_default():
+    # `ARG ALPINE_VERSION=3.24` becoming a bare `ARG ALPINE_VERSION` is not a
+    # version bump, it is the pin being deleted: the Dockerfile would then
+    # build `alpine:` unless something passed a --build-arg, which is the
+    # failure mode baking the defaults in was meant to remove.
+    result = _check(
+        _diff(
+            "Dockerfile",
+            "-ARG ALPINE_VERSION=3.24\n+ARG ALPINE_VERSION\n",
         )
     )
     assert result.returncode == 1, result.stdout
