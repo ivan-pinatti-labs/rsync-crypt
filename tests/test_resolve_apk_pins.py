@@ -235,6 +235,38 @@ def test_apply_rewrites_only_the_pins_that_changed(tmp_path):
     assert rewritten.count("# apk-pin: resolved-from=ALPINE_VERSION") == 7
 
 
+def test_apply_preserves_crlf_line_endings(tmp_path):
+    """A CRLF Dockerfile must stay CRLF, changed lines included.
+
+    `Path.read_text()`/`write_text()` go through universal-newline
+    translation, which would rewrite every line in the file to LF the moment
+    there is anything at all to change, not just the two pins actually
+    touched. `apply` opens with `newline=""` instead precisely to avoid that;
+    this pins the CRLF ARG line's regex match too, since `ARG_LINE` is
+    anchored with `$` and a stray `\\r` left on the line (matching only
+    `\\n` off, not `\\r\\n`) would have failed to match at all, silently
+    leaving the old value in place despite `changes` reporting it updated.
+    """
+    path = _write_dockerfile(
+        tmp_path, {"GOCRYPTFS_VERSION": "2.5", "LESS_VERSION": "685"}
+    )
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+
+    changes = resolve_apk_pins.apply(
+        path, resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
+    )
+
+    assert sorted(changes) == [
+        "GOCRYPTFS_VERSION: 2.5 -> 2.6",
+        "LESS_VERSION: 685 -> 702",
+    ]
+    raw = path.read_bytes()
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    assert b"ARG GOCRYPTFS_VERSION=2.6\r\n" in raw
+    assert b"ARG LESS_VERSION=702\r\n" in raw
+    assert b"ARG ALPINE_VERSION=3.24\r\n" in raw
+
+
 def test_apply_raises_if_apk_policy_never_reported_a_package(tmp_path):
     path = _write_dockerfile(tmp_path, {})
     incomplete = resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)

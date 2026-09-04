@@ -198,17 +198,27 @@ def apply(dockerfile: Path, resolved: dict[str, str]) -> list[str]:
             changes.append(f"{var}: {current[var]} -> {new_value}")
 
     if changes:
-        lines = dockerfile.read_text().splitlines(keepends=True)
+        # newline="" on both ends, rather than read_text()/write_text(): those
+        # go through universal-newline translation, which would silently
+        # rewrite a CRLF Dockerfile to LF (every line, not just the ones
+        # touched) the moment there is anything at all to change. Reading raw
+        # keeps each line's original terminator (or lack of one, on the last
+        # line) intact in `line`, so it only has to be split off and put back,
+        # never assumed to be "\n".
+        with dockerfile.open(newline="") as f:
+            lines = f.readlines()
         rewritten = []
         for line in lines:
-            match = ARG_LINE.match(line.rstrip("\n"))
+            stripped = line.rstrip("\r\n")
+            ending = line[len(stripped) :]
+            match = ARG_LINE.match(stripped)
             if match and match.group("name") in new_values:
                 name = match.group("name")
-                newline = "\n" if line.endswith("\n") else ""
-                rewritten.append(f"ARG {name}={new_values[name]}{newline}")
+                rewritten.append(f"ARG {name}={new_values[name]}{ending}")
             else:
                 rewritten.append(line)
-        dockerfile.write_text("".join(rewritten))
+        with dockerfile.open("w", newline="") as f:
+            f.write("".join(rewritten))
 
     return changes
 
