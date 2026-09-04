@@ -180,9 +180,19 @@ def test_env_file_override_is_honoured(build_env_file):
     assert "local/gocryptfs-test" in result.stdout
 
 
-def _build_recipe(env_file, extra_args=()):
-    """The shell text 'make --dry-run build' would run, as one string."""
-    result = run(["make", "--dry-run", "build", f"ENV_FILE={env_file}", *extra_args])
+def _build_recipe(env_file, extra_args=(), env=None):
+    """The shell text 'make --dry-run build' would run, as one string.
+
+    'env', when given, is a full os.environ-shaped mapping for the child
+    process: a shell-environment-style override ('VAR=x make build') has to
+    reach make as a real process environment variable, which a command-line
+    argument in 'extra_args' does not exercise, that being a distinct Make
+    override mechanism ('make build VAR=x') with a different $(origin).
+    """
+    kwargs = {} if env is None else {"env": env}
+    result = run(
+        ["make", "--dry-run", "build", f"ENV_FILE={env_file}", *extra_args], **kwargs
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
 
@@ -261,6 +271,44 @@ def test_build_command_line_override_wins_over_a_legacy_env_pin(
     recipe = _build_recipe(legacy, extra_args=[f"{var}=9.9.9"])
     assert f"--build-arg {var}=9.9.9" in recipe
     assert f"--build-arg {var}=1.1.1" not in recipe
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_shell_environment_override_wins_over_a_legacy_env_pin(
+    build_env_file, tmp_path, var
+):
+    """'VAR=x make build' must win even when ENV_FILE also sets VAR.
+
+    A plain '=' assignment in an included file unconditionally overrides a
+    same-named value already set in the calling shell's environment, unlike
+    a command-line assignment, which no makefile assignment can ever
+    override. Without the pre-include snapshot in the Makefile
+    (_pin_snapshot_<VAR>), 'ALPINE_VERSION=9.9.9 make build' against a
+    legacy env file would silently lose both the caller's 9.9.9 and its
+    "environment" origin the moment ENV_FILE is included, forwarding
+    neither the caller's value nor the file's, just the Dockerfile's own
+    default with no indication anything was overridden at all.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "1.1.1")
+    env = os.environ.copy()
+    env[var] = "9.9.9"
+    recipe = _build_recipe(legacy, env=env)
+    assert f"--build-arg {var}=9.9.9" in recipe
+    assert f"--build-arg {var}=1.1.1" not in recipe
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_drops_an_explicit_but_empty_override(build_env_file, var):
+    """'make build VAR=' must not forward '--build-arg VAR=' with no value.
+
+    An empty command-line override still reports $(origin) as "command
+    line", a qualifying origin on its own; only checking origin and not the
+    value it carries would forward the flag with nothing after the '=',
+    which is the exact 'docker build .' would-build-alpine: failure the old
+    (now removed) blank-pin guard existed to catch.
+    """
+    recipe = _build_recipe(build_env_file, extra_args=[f"{var}="])
+    assert f"--build-arg {var}" not in recipe
 
 
 def test_build_invokes_docker_with_no_pins_configured(build_env_file, tmp_path):
