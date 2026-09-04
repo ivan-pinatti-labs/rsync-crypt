@@ -18,13 +18,16 @@ a full local copy.
 
 ## Key files
 
-- [README.md](README.md): Full documentation including setup, configuration, and usage
+- [README.md](README.md): Overview, requirements, and a no-clone quick start with the published image
+- [docs/USAGE.md](docs/USAGE.md): Building from source, full configuration reference, every make target, tests
+- [docs/SECURITY.md](docs/SECURITY.md): Passphrase file, master key, recovery scenarios, image verification
+- [docs/PODMAN.md](docs/PODMAN.md): Running under Podman, and what rootless does and does not change here
 - [Makefile](Makefile): All user-facing targets (backup, view, restore, build)
 - [scripts/backup.sh](scripts/backup.sh): Encrypts and syncs local data to remote server
 - [scripts/view.sh](scripts/view.sh): Mounts and serves the remote encrypted backup read-only
 - [scripts/restore.sh](scripts/restore.sh): Downloads and decrypts backup to a staging directory
-- [Dockerfile](Dockerfile): Alpine-based image with gocryptfs, rsync, sshfs, openssh
-- [.env.example](.env.example): All configurable variables with example values
+- [Dockerfile](Dockerfile): Alpine-based image with gocryptfs, rsync, sshfs, openssh; also holds every version pin as an ARG default
+- [.env.example](.env.example): All runtime configuration variables with example values
 - [conf/backup-filter-rules.txt](conf/backup-filter-rules.txt): rsync filter rules controlling what gets backed up
 - [CITATION.cff](CITATION.cff): Machine-readable citation metadata
 

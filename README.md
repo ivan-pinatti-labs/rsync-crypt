@@ -148,23 +148,19 @@ push the fix.
 - [About](#about)
 - [How It Works](#how-it-works)
 - [Requirements](#requirements)
-- [Installation](#installation)
-  - [Build from Source](#build-from-source)
-  - [Use the Published Image](#use-the-published-image)
-- [Configuration](#configuration)
-  - [Environment Variables](#environment-variables)
-  - [Multiple Configurations](#multiple-configurations)
-  - [Filter Rules](#filter-rules)
-- [Security and Key Management](#security-and-key-management)
-- [Usage](#usage)
-  - [Build](#build)
-  - [Backup](#backup)
-  - [View](#view)
-- [Make Targets Reference](#make-targets-reference)
-- [Tests](#tests)
-- [Known Issues and Limitations](#known-issues-and-limitations)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
 - [AI Usage and Attribution](#ai-usage-and-attribution)
 - [License](#license)
+
+Full documentation lives under [`docs/`](docs/):
+
+- [Build and Usage](docs/USAGE.md): building from source, the configuration
+  reference, every `make` target, the test suite, known limitations
+- [Security and Key Management](docs/SECURITY.md): the passphrase file, the
+  master key, recovery scenarios, verifying a published image
+- [Running with Podman](docs/PODMAN.md): why, how, and what rootless does and
+  does not buy you here
 
 ---
 
@@ -215,557 +211,159 @@ localhost only, it is not reachable from the network.
 
 ## Requirements
 
-| Requirement   | Version                     |
-| ------------- | --------------------------- |
-| Docker        | any recent version          |
-| GNU Make      | >= 4.x                      |
-| Linux kernel  | >= 5.6 (for FUSE support)   |
-| SSH key pair  | for remote server access    |
-| Remote server | SSH access + enough storage |
+| Requirement       | Version                                            |
+| ----------------- | -------------------------------------------------- |
+| Container runtime | Podman (recommended) or Docker                     |
+| Linux kernel      | >= 5.6 (for FUSE support)                          |
+| SSH key pair      | for remote server access                           |
+| Remote server     | SSH access + enough storage                        |
+| GNU Make          | >= 4.x, for the `make` targets in the full docs    |
 
-> **Note:** rootless Docker is supported and recommended.
+Podman is recommended over Docker: it is daemonless and rootless by default,
+so there is no long-running privileged process and no socket to misconfigure.
+Install `podman-docker` alongside it and every `docker` command in this
+repository works unchanged, with nothing to configure. See
+[docs/PODMAN.md](docs/PODMAN.md) for the reasoning, install commands, and what
+rootless does and does not buy you for the `_as_root` targets.
+
+GNU Make is only needed for the `make` targets documented in
+[docs/USAGE.md](docs/USAGE.md). The Quick Start below is a plain `docker run`
+and needs neither Make nor a clone of this repository.
 
 ---
 
-## Installation
+## Quick Start
 
-### Build from Source
+No clone, no build. Fetch two files, edit one of them, run one command.
+
+### 1. Fetch the config template and the filter rules
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/ivan-pinatti-labs/rsync-crypt.git
-cd rsync-crypt
+mkdir -p rsync-crypt/conf && cd rsync-crypt
 
-# 2. Create your environment file
-cp .env.example .env
+# Your settings, as .env
+curl -fsSL -o .env \
+  https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/main/.env.example
 
-# 3. Edit .env with your settings (see Configuration below)
-$EDITOR .env
-
-# 4. Build the Docker image
-make build
+# Which files get backed up
+curl -fsSL -o conf/backup-filter-rules.txt \
+  https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/main/conf/backup-filter-rules.txt
 ```
 
-### Use the Published Image
+Both work equally well with `wget -O <file> <url>` if you prefer it.
 
-Tagged releases are also built and pushed by `.github/workflows/publish-image.yml` to both
-`ghcr.io/ivan-pinatti-labs/rsync-crypt` and `docker.io/ivanpinatti/rsync-crypt`, as multi-arch
-images (`linux/amd64` and `linux/arm64`). Both registries publish the same digest under the same
-tags, so pick whichever you'd rather pull from:
+### 2. Edit `.env`
 
-- `latest`: always the most recently released version
-- a bare release version, e.g. `1.4.0`: that exact build, never overwritten again
+```bash
+$EDITOR .env
+```
 
-Prefer a pinned version tag over `latest` for anything unattended (a cron job, a scheduled backup):
-it guarantees the same `gocryptfs`, `rsync`, and other `apk`-pinned binaries on every run, instead
-of whatever the most recent release happened to bake in. Use `latest` only when pulling by hand,
-where re-verifying after each pull is easy. Check the
-[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page for the current tag.
+At minimum, set `SSH_KEY_FILE`, `SSH_KNOWN_HOSTS_FILE`,
+`GOCRYPTFS_PASSKEY_FILE`, `BACKUP_SOURCE_FOLDER`, `REMOTE_SERVER` and
+`REMOTE_SERVER_BACKUP_FOLDER`. Use absolute paths: they are mount sources for
+the container, not paths inside it. The full reference for every variable is
+in [docs/USAGE.md](docs/USAGE.md#environment-variables).
 
-Every published image is signed with [cosign](https://github.com/sigstore/cosign) using GitHub
-Actions' keyless signing (no private key to leak or rotate); the signature covers both registries,
-since they share the same digest. Verify a pulled image actually came out of this repository's
-`publish-image.yml` workflow before trusting it:
+Then create the passphrase file that `GOCRYPTFS_PASSKEY_FILE` points at,
+without putting the passphrase in your shell history:
+
+```bash
+set -a; . ./.env; set +a
+( umask 077; IFS= read -rsp 'gocryptfs passphrase: ' pass \
+  && printf '%s' "$pass" > "$GOCRYPTFS_PASSKEY_FILE" && unset pass )
+```
+
+### 3. Back up
+
+`.env` is ordinary shell syntax, so sourcing it is all the wiring this needs.
+This is exactly what the `make backup` target runs, with the same flags,
+mounts and arguments:
+
+```bash
+set -a; . ./.env; set +a
+
+docker run \
+  --name gocryptfs \
+  --user root \
+  --cap-add SYS_ADMIN \
+  --device /dev/fuse \
+  --security-opt apparmor:unconfined \
+  --security-opt label=disable \
+  --entrypoint /bin/bash \
+  --volume "${BACKUP_SOURCE_FOLDER}:/backup/src" \
+  --volume "${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt" \
+  --volume "${SSH_KEY_FILE}:/root/.ssh/id_rsa" \
+  --volume "${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts" \
+  --volume "${GOCRYPTFS_PASSKEY_FILE}:/backup/passfile" \
+  --env "PARANOID_MODE=${PARANOID_MODE}" \
+  --rm \
+  --interactive --tty \
+  ghcr.io/ivan-pinatti-labs/rsync-crypt:latest \
+  /app/backup.sh \
+    "/backup/src" \
+    "/backup/enc" \
+    "${REMOTE_SERVER_BACKUP_FOLDER}" \
+    "/backup/passfile" \
+    "${REMOTE_SERVER}" \
+    "/backup/brave-filter-rules.txt" \
+    "${RSYNC_RATE_LIMIT}" \
+    "${RSYNC_LOOP}" \
+    "${GOCRYPTFS_CIPHER}" \
+    "${GOCRYPTFS_SCRYPT_N}" \
+    "${GOCRYPTFS_ENCRYPT_NAMES}"
+```
+
+On the **first run** gocryptfs prints a **master key** and pauses so you can
+write it down. Store it off-machine. Without it, losing the passphrase file
+means losing the backup permanently: see
+[docs/SECURITY.md](docs/SECURITY.md#the-master-key).
+
+Subsequent runs are incremental; only changed files are transferred.
+
+### Which image, and verifying it
+
+Images are published to two registries as multi-arch builds (`linux/amd64`
+and `linux/arm64`), with the same digest under the same tags on both:
+
+- `ghcr.io/ivan-pinatti-labs/rsync-crypt` (used above)
+- `docker.io/ivanpinatti/rsync-crypt` (alternative, same image)
+
+Tags are `latest` (the most recent release) and a bare release version, e.g.
+`1.5.0` (that exact build, never rebuilt in place). Prefer a pinned version
+for anything unattended, so the same `gocryptfs` and `rsync` binaries run
+every time. Current tags are on the
+[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page.
+
+Every image is signed with [cosign](https://github.com/sigstore/cosign) using
+GitHub Actions' keyless signing, so there is no private key to leak or rotate.
+Verify a pulled image actually came out of this repository's workflow before
+trusting it:
 
 ```bash
 cosign verify \
   --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.4.0
+  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.0
 ```
 
-Only the OS package versions (Alpine, gocryptfs, rsync, sshfs, openssh, and so on) are baked into
-the image at build time, from the `--build-arg` values the `build` target in the `Makefile` passes
-in. Everything specific to your setup, your SSH key, the backup source folder, the filter rules
-file, the remote server, the passphrase file, is never baked in: it lives on your host and is
-mounted into the container at `docker run` time by every `make` target, the same way whether the
-image was built locally or pulled from GHCR or Docker Hub. So using the published image still
-needs a local clone of this repository, with `.env` created and edited as in
-[Build from Source](#build-from-source) above, and the `conf/` files it points to
-(`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST`, `RESTORE_PATHS_FILE`) present at those paths. The
-only step it removes is `make build` itself.
+### What is not covered here
 
-Point `.env` at the published image instead of a locally built one, then use the existing `make`
-targets exactly as documented in [Usage](#usage):
-
-```bash
-# 1. Clone the repository (still needed: it carries the Makefile, .env.example, and conf/ files)
-git clone https://github.com/ivan-pinatti-labs/rsync-crypt.git
-cd rsync-crypt
-
-# 2. Create and edit your environment file, same as building from source
-cp .env.example .env
-$EDITOR .env
-
-# 3. In .env, point the image name and version at the published image instead of a local
-#    build, so every 'make' target's docker run uses it (skip 'make build' entirely).
-#    Either registry works; they publish the same digest under the same tag:
-#      DOCKER_IMAGE_TAG_NAME="ghcr.io/ivan-pinatti-labs/rsync-crypt"
-#      DOCKER_IMAGE_TAG_NAME="docker.io/ivanpinatti/rsync-crypt"  # alternative registry
-#      DOCKER_IMAGE_TAG_VERSION="1.4.0"
-
-# 4. Optional: 'docker run' pulls automatically if the image is not present locally, but
-#    pulling explicitly surfaces an access error before you get partway through the
-#    interactive passphrase prompt.
-docker pull ghcr.io/ivan-pinatti-labs/rsync-crypt:1.4.0
-
-# 5. Run any existing target normally, e.g.
-make backup
-```
+Browsing the decrypted backup over SFTP (`view`), backing up system
+directories (`backup_as_root`), restoring, and building the image from source
+are all in [docs/USAGE.md](docs/USAGE.md). All of them are one `make` target
+each once the repository is cloned, which is the shorter way to drive this
+tool than the `docker run` above.
 
 ---
 
-## Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and fill in the values:
-
-```dotenv
-# Docker image
-DOCKER_IMAGE_TAG_NAME="local/gocryptfs"
-DOCKER_IMAGE_TAG_VERSION="1.0.0"
-ALPINE_VERSION="3.24"
-GOCRYPTFS_VERSION="2.6"
-
-# SSH credentials
-SSH_KEY_FILE="/home/youruser/.ssh/id_ed25519"
-SSH_KNOWN_HOSTS_FILE="/home/youruser/.ssh/known_hosts"
-
-# Passkey: file containing the gocryptfs passphrase (keep this safe!)
-GOCRYPTFS_PASSKEY_FILE="/home/youruser/.gocrypt-passfile"
-
-# Backup source
-BACKUP_SOURCE_FOLDER="/home/youruser"
-BACKUP_FILTER_RULES="./conf/backup-filter-rules.txt"
-
-# Root backup: gocryptfs config preserved across runs
-BACKUP_ENCRYPTION_CONF="/home/youruser/.gocryptfs.reverse.conf"
-
-# Remote server
-REMOTE_SERVER="user@192.168.1.100"
-REMOTE_SERVER_BACKUP_FOLDER="/mnt/backups/youruser"
-
-# Restore
-RESTORE_DESTINATION="/tmp/restore"
-RESTORE_EXCLUDE_LIST="./conf/restore-exclude-list.txt"
-RESTORE_PATHS_FILE="./conf/restore-paths.txt"
-
-# rsync options
-RSYNC_RATE_LIMIT=0          # kbytes/s, 0 = unlimited
-RSYNC_LOOP=true             # retry on failure
-
-# gocryptfs encryption (applied only on first init, stored in config afterwards)
-GOCRYPTFS_ENCRYPT_NAMES=false # false = plaintext names (default), true = scramble filenames (see Known Issues)
-GOCRYPTFS_CIPHER="aes-siv"   # aes-siv, or aes-gcm as an equivalent spelling
-GOCRYPTFS_SCRYPT_N=16         # key derivation cost: 2^N iterations
-
-# Passphrase mode
-PARANOID_MODE=false # true = never store passphrase on disk, gocryptfs prompts interactively
-```
-
-**Variable reference:**
-
-| Variable                      | Description                                                                                                                                                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SSH_KEY_FILE`                | SSH private key used to authenticate to the remote server                                                                                                                                       |
-| `SSH_KNOWN_HOSTS_FILE`        | Known hosts file to verify the remote server fingerprint                                                                                                                                        |
-| `GOCRYPTFS_PASSKEY_FILE`      | File containing the gocryptfs passphrase. Created interactively if it does not exist                                                                                                            |
-| `BACKUP_SOURCE_FOLDER`        | Directory to back up (user backup)                                                                                                                                                              |
-| `BACKUP_FILTER_RULES`         | rsync filter rules file, controls what is included/excluded                                                                                                                                     |
-| `BACKUP_ENCRYPTION_CONF`      | Path where the gocryptfs reverse config is preserved (root backup)                                                                                                                              |
-| `REMOTE_SERVER`               | `user@host` for the SSH backup destination                                                                                                                                                      |
-| `REMOTE_SERVER_BACKUP_FOLDER` | Path on the remote server where the encrypted backup is stored                                                                                                                                  |
-| `RESTORE_DESTINATION`         | Local staging directory for restored files                                                                                                                                                      |
-| `RSYNC_RATE_LIMIT`            | Bandwidth cap in kbytes/s (`0` = no limit)                                                                                                                                                      |
-| `RSYNC_LOOP`                  | `true` to retry rsync automatically on transient errors                                                                                                                                         |
-| `GOCRYPTFS_ENCRYPT_NAMES`     | `false` to keep filenames as plaintext on the remote server (default, required for filter rules to work). `true` scrambles filenames (see [Known Issues](#known-issues-and-limitations))        |
-| `GOCRYPTFS_CIPHER`            | Cipher at first init. Reverse mode implies AES-SIV, so `aes-siv` and `aes-gcm` are equivalent and `xchacha` is rejected with an explanation (see [Known Issues](#known-issues-and-limitations)) |
-| `GOCRYPTFS_SCRYPT_N`          | scrypt key derivation cost exponent (default `16`, meaning 2^16 iterations)                                                                                                                     |
-| `PARANOID_MODE`               | `false` (default). When `true`, the passphrase is never written to disk; gocryptfs prompts interactively on each run. `GOCRYPTFS_PASSKEY_FILE` is ignored. Requires an interactive terminal.    |
-
-### Multiple Configurations
-
-To use a different environment file without modifying `.env`, pass `ENV_FILE` on the command line or
-via the shell environment:
-
-```bash
-# Command-line variable
-make backup ENV_FILE=.env.myconfig
-
-# Shell environment variable
-ENV_FILE=.env.myconfig make backup
-```
-
-Copy `.env.example` to `.env.myconfig` (or `.env.personal`, etc.) and fill in the values for each
-profile. The default is `.env` when `ENV_FILE` is not set, so existing setups are unaffected.
-
-> **Note:** `.env` and `.env.*` are both listed in `.gitignore`, so all profile files are excluded
-> from version control by default.
-
-### Filter Rules
-
-Edit `conf/backup-filter-rules.txt` to control what gets backed up. The file uses rsync filter rule
-syntax (`+` to include, `-` to exclude).
-
-The default rules back up:
-
-- **Chromium-based browsers** (Brave, Chrome, Chromium): bookmarks, preferences, extensions
-- **Firefox**: bookmarks, preferences, extensions, passwords, certificates
-- **Tor Browser**: profile data (bookmarks, prefs, extensions, certificates), excluding the browser
-  binary and cache
-- **VSCode**: user settings, keybindings, snippets, profiles
-- **Lens Desktop**: cluster configs and settings
-- **Spotify**: user preferences only (cached tracks are excluded)
-
-Common exclusions by default: `.cache`, Trash, Docker local data, Flatpak data, `.asdf`, Minikube,
-Steam, Terraform providers.
-
-> **Tip:** The filter file is well commented. Uncomment optional lines to also back up browser
-> history, cookies, session data, or VSCode extensions.
-
-<!-- Separates two adjacent blockquotes. Without it MD028 reads the blank
-    line as being inside one quote. These are two distinct callouts and
-    merging them would bury the second. -->
-
-> **Important:** Filter rules only work when `GOCRYPTFS_ENCRYPT_NAMES=false` (the default). When
-> filename scrambling is enabled, rsync operates on the encrypted virtual directory and sees only
-> ciphertext names, so no pattern in the filter file can match them. See [Known
-> Issues](#known-issues-and-limitations) for details.
-
----
-
-## Security and Key Management
-
-### Files Created on First Run
-
-On the first `make backup`, three key files are created:
-
-| File                  | Default location                                         | Created by                         | Purpose                                                |
-| --------------------- | -------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------ |
-| Passphrase file       | `GOCRYPTFS_PASSKEY_FILE` (set in `.env`)                 | `make backup` (interactive prompt) | Encryption passphrase, required for every operation    |
-| gocryptfs config      | `$BACKUP_SOURCE_FOLDER/.gocryptfs.reverse.conf`          | gocryptfs                          | Encryption parameters (cipher, scrypt cost, name mode) |
-| Config reference copy | `$BACKUP_SOURCE_FOLDER/.gocryptfs.reverse.conf.original` | `backup.sh`                        | Canonical config; restored before every run            |
-
-> **Root backup:** the config is stored at the path set in `BACKUP_ENCRYPTION_CONF` instead of
-> inside `BACKUP_SOURCE_FOLDER`.
-
-### The Passphrase File
-
-`GOCRYPTFS_PASSKEY_FILE` is a plain text file containing your encryption passphrase.
-
-- If the file does not exist when you run `make backup`, you are prompted to type a passphrase and
-  the file is created automatically
-- Permissions are set to `600` automatically
-- Required for every backup, view, and restore operation
-- Do not delete it unless you have the master key safely recorded somewhere else
-
-**Prefer never writing the passphrase to disk?** Set `PARANOID_MODE=true` in your `.env`. The
-passkey file is completely bypassed: `check-passkey` is skipped, no volume is mounted into the
-container, and gocryptfs will prompt you to type the passphrase interactively at startup. Note that
-this mode requires an interactive terminal and cannot be used with cron or other non-interactive
-schedulers.
-
-### The Master Key
-
-During the first `gocryptfs -reverse -init`, gocryptfs generates a random master key and prints it
-to the terminal. The script pauses with a "Press O" prompt so you can write it down.
-
-> **The master key is never written to disk. It is printed once and never again.**
-
-Store it off-machine, separate from the backup destination:
-
-- A password manager entry
-- An offline or encrypted USB drive
-- Paper in a physically secure location
-
-**If you lose the passphrase file and do not have the master key, the encrypted backup is
-permanently unrecoverable.**
-
-With the master key you can still access the backup even without the passphrase file:
-
-```bash
-gocryptfs -masterkey <your-master-key> ...
-```
-
-### The Config File
-
-`.gocryptfs.reverse.conf` stores the encryption parameters set at init time: cipher, scrypt cost,
-and whether filenames are encrypted. It does not contain the encryption key itself.
-
-The `.original` copy is the canonical reference. Before every run, `backup.sh` copies it back to
-`.gocryptfs.reverse.conf` to ensure the config stays consistent. Do not delete the `.original` file.
-
-Back up the `.original` file alongside your passphrase (or passphrase file) to a second location off-machine.
-
-### Recovery Scenarios
-
-| Situation                                  | Recovery                                                                   |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| Passphrase file lost, master key available | Use `gocryptfs -masterkey <key>` to access the backup                      |
-| Passphrase file lost, no master key        | Backup is permanently unrecoverable                                        |
-| `.gocryptfs.reverse.conf` missing          | Restored automatically from `.gocryptfs.reverse.conf.original` on next run |
-| `.gocryptfs.reverse.conf.original` missing | Restore from your off-machine backup of the config file                    |
-
-### What `make clean` Removes
-
-`make clean` permanently deletes:
-
-- The passphrase file (`GOCRYPTFS_PASSKEY_FILE`)
-- Both `.gocryptfs.reverse.conf` files from `BACKUP_SOURCE_FOLDER`
-- The Docker image
-
-After `make clean`, the next `make backup` re-initialises gocryptfs with a new master key. **The
-previous backup on the remote server remains intact and can still be read using the original
-passphrase or master key**, but the fresh local init produces a new config that is incompatible with
-the existing remote backup until a full re-sync completes.
-
----
-
-## Usage
-
-### Build
-
-Build the Docker image (required once, or after any `Dockerfile` change):
-
-```bash
-make build
-```
-
----
-
-### Backup
-
-#### User Backup
-
-Backs up `BACKUP_SOURCE_FOLDER` (your home directory or any folder) to the remote server, encrypted.
-
-```bash
-make backup
-```
-
-On the **first run**, gocryptfs initialises the encrypted view, saves its config to
-`BACKUP_SOURCE_FOLDER`, and prints the **master key** to the terminal. The script pauses so you can
-write it down before continuing. See [Security and Key Management](#security-and-key-management) for
-a full description of what is created and what to back up off-machine.
-
-If `GOCRYPTFS_PASSKEY_FILE` does not exist, you are prompted for a passphrase and the file is
-created automatically at that path.
-
-rsync will keep running (retrying on failure) until a full sync completes. Subsequent runs are
-**incremental**, only changed files are transferred.
-
-#### Root Backup (System Files)
-
-Backs up `/etc`, `/home`, `/opt`, `/root`, and `/srv` as root, encrypted.
-
-```bash
-make backup_as_root
-```
-
-This is useful for backing up system-wide configuration alongside your user data.
-
-#### Combined Build + Backup
-
-```bash
-make bb     # build + user backup
-make bbr    # build + root backup
-```
-
-#### Bandwidth Limiting
-
-Set `RSYNC_RATE_LIMIT` in `.env` (kbytes/s) or override at runtime:
-
-```bash
-RSYNC_RATE_LIMIT=5000 make backup   # limit to ~5 MB/s
-```
-
-#### Paranoid Mode
-
-By default the passphrase is read from `GOCRYPTFS_PASSKEY_FILE` on disk. If you prefer to never
-store the passphrase on disk at all, enable paranoid mode. gocryptfs will prompt you to type it
-interactively on every run and it is never written anywhere.
-
-Enable permanently in `.env`:
-
-```dotenv
-PARANOID_MODE=true
-```
-
-Or override for a single run:
-
-```bash
-PARANOID_MODE=true make backup
-PARANOID_MODE=true make backup_as_root
-```
-
-When paranoid mode is active:
-
-- `GOCRYPTFS_PASSKEY_FILE` is ignored entirely
-- No passkey volume is mounted into the container
-- gocryptfs prompts `Password:` on stdin at startup
-
-> **Note:** Paranoid mode requires an interactive terminal (`--interactive --tty` is already set by
-> all `make` targets). It cannot be used with cron jobs or any non-interactive scheduler.
-
----
-
-### View
-
-The view mode lets you **browse the decrypted remote backup from any GUI file manager** without
-downloading the full backup locally. It is read-only and safe.
-
-```bash
-make view           # browse user backup
-make view_as_root   # browse root/system backup
-```
-
-What happens:
-
-1. `sshfs` mounts the remote encrypted folder directly into the container (no local copy)
-2. `gocryptfs` decrypts it into a read-only virtual mount inside the container
-3. An SFTP server starts inside the container, available at `127.0.0.1:2222`
-4. Your terminal shows the SFTP address and waits, press `Enter` to unmount and exit
-
-#### Connecting Your File Manager
-
-Once `make view` is running, open your file manager and connect to:
-
-```text
-sftp://root@localhost:2222/gocrypt-view/decrypted
-```
-
-| File Manager           | How to connect                     |
-| ---------------------- | ---------------------------------- |
-| GNOME Files / Nautilus | Other Locations, Connect to Server |
-| Thunar                 | Go, Open Location                  |
-| Dolphin                | Network, Add Network Folder        |
-| Any SFTP client        | `sftp root@localhost -p 2222`      |
-
-> **Security note:** The SFTP port is bound to `127.0.0.1` only, it is not reachable from the
-> network. Authentication uses your existing SSH key, no password is required.
-
-When you are done browsing, press **Enter** in the terminal. The view will unmount cleanly and the
-container exits.
-
-#### Paranoid Mode
-
-The same `PARANOID_MODE` flag applies to view:
-
-```bash
-PARANOID_MODE=true make view
-PARANOID_MODE=true make view_as_root
-```
-
-gocryptfs will prompt for the passphrase before mounting the decrypted view. The passphrase is never
-stored on disk.
-
----
-
-## Make Targets Reference
-
-Running `make` with no target displays this reference. It does not require an
-environment file; every target that performs work does.
-
-| Target                           | Shorthand  | Description                                                                                          |
-| -------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `make` / `make help`             | n/a        | Show this reference                                                                                  |
-| `make all`                       | n/a        | Build the image and start a user-backup container                                                    |
-| `make build`                     | n/a        | Build the Docker image                                                                               |
-| `make backup`                    | n/a        | Encrypt and sync user data to remote server                                                          |
-| `make backup_as_root`            | n/a        | Encrypt and sync system dirs to remote server                                                        |
-| `make bb`                        | n/a        | Build + user backup                                                                                  |
-| `make bbr`                       | n/a        | Build + root backup                                                                                  |
-| `make view`                      | `make v`   | Browse decrypted user backup via SFTP                                                                |
-| `make view_as_root`              | `make vr`  | Browse decrypted root backup via SFTP                                                                |
-| `make restore`                   | `make r`   | Restore user backup to staging dir                                                                   |
-| `make restore_to_origin`         | `make ro`  | Restore user backup to original location                                                             |
-| `make restore_as_root`           | `make rr`  | Restore root backup to staging dir                                                                   |
-| `make restore_as_root_to_origin` | `make rro` | Restore root backup to original paths                                                                |
-| `make brr`                       | n/a        | Build + root restore to staging                                                                      |
-| `make run_container`             | n/a        | Start an interactive user-backup container                                                           |
-| `make run_container_as_root`     | n/a        | Start an interactive system-backup container                                                         |
-| `make check-passkey`             | n/a        | Create or verify the passkey file                                                                    |
-| `make clean`                     | n/a        | Remove container, image, passkey, and gocryptfs config files (destructive, prompts for confirmation) |
-
----
-
-## Tests
-
-The suite drives the real Makefile targets. The integration tests start a
-throwaway sshd container that stands in for the remote backup server, run a
-full backup into it, then restore and compare the result against the source.
-
-```bash
-python3 -m venv tests/.venv
-tests/.venv/bin/pip install -r tests/requirements.txt
-tests/.venv/bin/pytest tests
-```
-
-Requirements: Docker and a working `/dev/fuse`.
-
-Test files and everything mounted into a container live under the pytest
-temporary directory, so no real backup, passkey, or config is touched. Two
-Docker resources are created outside it: the `rsync-crypt-test-remote`
-container, removed automatically when the session ends, and the
-`local/gocryptfs-test` image, which is left behind so repeat runs skip the
-build. It is tagged separately from `local/gocryptfs`, so the image a normal
-`make build` produces is never overwritten. Remove it with:
-
-```bash
-docker rmi local/gocryptfs-test
-```
-
-The tests run on every pull request via the `Tests` job.
-
-| File                | Covers                                                        |
-| ------------------- | ------------------------------------------------------------- |
-| `test_makefile.py`  | Help output, `ENV_FILE` handling, `.env.example` completeness |
-| `test_build.py`     | Image builds, required binaries, gocryptfs version pin        |
-| `test_roundtrip.py` | Backup, filter rule exclusions, encryption at rest, restore   |
-
-The suite runs serially: the Makefile names its container `gocryptfs`, so two
-targets cannot run at the same time.
-
----
-
-## Known Issues and Limitations
-
-### Filter Rules Are Incompatible with Filename Encryption
-
-Setting `GOCRYPTFS_ENCRYPT_NAMES=true` causes rsync filter rules to stop working entirely.
-
-**Why:** In gocryptfs reverse mode, the encrypted virtual directory (the one rsync reads from)
-contains scrambled filenames and directory names. A path like
-`.config/BraveSoftware/Brave-Browser/Default/Bookmarks` becomes something like
-`gCqj/UKVCWfRmkXfp/nLpFwA==`. The rsync filter rules in `conf/backup-filter-rules.txt` match on
-human-readable paths, so no rule can ever match a scrambled name. The result is that rsync sees the
-entire encrypted directory as-is, ignores all filter rules, and transfers everything, including
-directories you intended to exclude.
-
-**Current default:** `GOCRYPTFS_ENCRYPT_NAMES=false`. File and directory **contents** are still
-fully encrypted by gocryptfs; only the names and paths are stored in plaintext on the remote server.
-For most home backup scenarios this is an acceptable trade-off: the remote server can see your
-directory structure (revealing which applications you use) but cannot read any file content without
-your passphrase.
-
-**Why not use gocryptfs's own exclude flags?** gocryptfs reverse mode does support
-`-exclude-wildcard` with gitignore-style negation patterns (e.g., `-exclude-wildcard '*'
--exclude-wildcard '!/important'`), which operate on plaintext paths before encryption. However, the
-rsync filter syntax used in this project (specifically the include-first, catch-all-exclude pattern
-used in the browser and Firefox sections) cannot be expressed with exclusion-only patterns alone.
-Supporting this properly would require replacing the rsync filter file with a gocryptfs-native
-exclude file and rearchitecting how filtering is wired through the tool. This is a planned
-improvement for a future version. Upstream tracking:
-[gocryptfs#1000](https://github.com/rfjakob/gocryptfs/issues/1000) proposes a `-filter-from` flag
-with rsync-style first-match-wins semantics that would solve this cleanly.
-
-**If you want scrambled filenames today** and are willing to trade fine-grained filtering for
-privacy: set `GOCRYPTFS_ENCRYPT_NAMES=true` and simplify `conf/backup-filter-rules.txt` to keep only
-the top-level exclusion rules (the `- **/.cache`, `- .local/share/Trash/**`, etc. lines under
-"General exclusions"). Then pass a plain exclude list to gocryptfs's `-exclude-from` flag instead of
-rsync. This requires manual changes to `scripts/backup.sh` and is not currently supported out of the
-box.
+## Documentation
+
+| Document | Covers |
+| -------- | ------ |
+| [Build and Usage](docs/USAGE.md) | Building from source, every configuration variable, all `make` targets, tests, limitations |
+| [Security and Key Management](docs/SECURITY.md) | Passphrase file, master key, config files, recovery, image verification |
+| [Running with Podman](docs/PODMAN.md) | Why Podman, install commands, and rootless caveats specific to this project |
+| [Merge Pipeline](docs/MERGE_PIPELINE.md) | How pull requests are gated, reviewed and merged in this repository |
 
 ---
 
