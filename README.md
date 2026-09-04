@@ -248,9 +248,10 @@ make build
 
 ### Use the Published Image
 
-Tagged releases are also built and pushed by `.github/workflows/publish-image.yml` to
-`ghcr.io/ivan-pinatti-labs/rsync-crypt`, as a multi-arch image (`linux/amd64` and `linux/arm64`).
-Two kinds of tags are published:
+Tagged releases are also built and pushed by `.github/workflows/publish-image.yml` to both
+`ghcr.io/ivan-pinatti-labs/rsync-crypt` and `docker.io/ivanpinatti/rsync-crypt`, as multi-arch
+images (`linux/amd64` and `linux/arm64`). Both registries publish the same digest under the same
+tags, so pick whichever you'd rather pull from:
 
 - `latest`: always the most recently released version
 - a bare release version, e.g. `1.4.0`: that exact build, never overwritten again
@@ -261,10 +262,17 @@ of whatever the most recent release happened to bake in. Use `latest` only when 
 where re-verifying after each pull is easy. Check the
 [Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page for the current tag.
 
-> **Note:** the `ghcr.io/ivan-pinatti-labs/rsync-crypt` package is not yet public. Until the
-> maintainer makes it public, pulling it without access fails with `unauthorized` or `denied:
-> requested access to the resource is denied`. If you hit that, ask the maintainer for access, or
-> use [Build from Source](#build-from-source) above instead.
+Every published image is signed with [cosign](https://github.com/sigstore/cosign) using GitHub
+Actions' keyless signing (no private key to leak or rotate); the signature covers both registries,
+since they share the same digest. Verify a pulled image actually came out of this repository's
+`publish-image.yml` workflow before trusting it:
+
+```bash
+cosign verify \
+  --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.4.0
+```
 
 Only the OS package versions (Alpine, gocryptfs, rsync, sshfs, openssh, and so on) are baked into
 the image at build time, from the `--build-arg` values the `build` target in the `Makefile` passes
@@ -289,8 +297,10 @@ cp .env.example .env
 $EDITOR .env
 
 # 3. In .env, point the image name and version at the published image instead of a local
-#    build, so every 'make' target's docker run uses it (skip 'make build' entirely):
+#    build, so every 'make' target's docker run uses it (skip 'make build' entirely).
+#    Either registry works; they publish the same digest under the same tag:
 #      DOCKER_IMAGE_TAG_NAME="ghcr.io/ivan-pinatti-labs/rsync-crypt"
+#      DOCKER_IMAGE_TAG_NAME="docker.io/ivanpinatti/rsync-crypt"  # alternative registry
 #      DOCKER_IMAGE_TAG_VERSION="1.4.0"
 
 # 4. Optional: 'docker run' pulls automatically if the image is not present locally, but
