@@ -279,10 +279,11 @@ the image at build time, from the `--build-arg` values the `build` target in the
 in. Everything specific to your setup, your SSH key, the backup source folder, the filter rules
 file, the remote server, the passphrase file, is never baked in: it lives on your host and is
 mounted into the container at `docker run` time by every `make` target, the same way whether the
-image was built locally or pulled from GHCR. So using the published image still needs a local clone
-of this repository, with `.env` created and edited as in [Build from Source](#build-from-source)
-above, and the `conf/` files it points to (`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST`,
-`RESTORE_PATHS_FILE`) present at those paths. The only step it removes is `make build` itself.
+image was built locally or pulled from GHCR or Docker Hub. So using the published image still
+needs a local clone of this repository, with `.env` created and edited as in
+[Build from Source](#build-from-source) above, and the `conf/` files it points to
+(`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST`, `RESTORE_PATHS_FILE`) present at those paths. The
+only step it removes is `make build` itself.
 
 Point `.env` at the published image instead of a locally built one, then use the existing `make`
 targets exactly as documented in [Usage](#usage):

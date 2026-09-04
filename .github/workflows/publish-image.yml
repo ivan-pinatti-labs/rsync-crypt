@@ -261,12 +261,35 @@ jobs:
             "${{ env.IMAGE_DOCKERHUB }}@${DIGEST}"
 
       - name: Sync the Docker Hub description from README
-        # Gated the same way ':latest' is (steps.version.outputs above):
-        # only a genuine release, or merge.yml's dispatch standing in for
-        # one, updates the public Docker Hub listing, so an ad hoc
-        # workflow_dispatch test run never overwrites it with content from
-        # a throwaway tag.
-        if: steps.version.outputs.publish_latest == 'true'
+        # Gated on publish_latest the same way ':latest' is, plus a check on
+        # who triggered the run: workflow_dispatch accepts publish_latest
+        # from any caller with write access, so publish_latest alone would
+        # let a human's ad hoc test dispatch (publish_latest=true, no real
+        # release behind it) overwrite the public Docker Hub listing.
+        # merge.yml's own dispatch is the only intended workflow_dispatch
+        # caller for a genuine release, and it authenticates with
+        # GITHUB_TOKEN via 'gh workflow run' (see merge.yml), which always
+        # runs as 'github-actions[bot]' (see coderabbit-review-queue.yml's
+        # comment on the same fact). Requiring that actor for the
+        # workflow_dispatch case, in addition to a native 'release' event,
+        # keeps a manually triggered run from reaching this step even when
+        # it sets publish_latest=true itself.
+        #
+        # That audit's real target is a 'pull_request_target' workflow
+        # trusting 'github.actor' as a stand-in for who authored a PR's HEAD
+        # commit, which is spoofable because a PR's commit history can carry
+        # an earlier, attacker-controlled commit under a later one authored
+        # by the trusted bot. Nothing here derives from PR commit authorship;
+        # this step reacts to a 'workflow_dispatch' API call, where
+        # 'github.actor' is GitHub's own record of which authenticated
+        # identity made that call, not something read out of ref content a
+        # caller controls. Reaching this line already requires write access
+        # to trigger workflow_dispatch at all, and 'github-actions[bot]' is a
+        # reserved identity no such caller can assume by choice, only by
+        # dispatching through GITHUB_TOKEN the way merge.yml does.
+        if: | # zizmor: ignore[bot-conditions]
+          steps.version.outputs.publish_latest == 'true' &&
+          (github.event_name == 'release' || github.actor == 'github-actions[bot]')
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
