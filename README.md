@@ -269,10 +269,12 @@ template, but sourcing any file executes it as shell.
 $EDITOR .env
 ```
 
-At minimum, set `SSH_KEY_FILE`, `SSH_KNOWN_HOSTS_FILE`, `BACKUP_SOURCE_FOLDER`,
-`REMOTE_SERVER` and `REMOTE_SERVER_BACKUP_FOLDER`. Use absolute paths: they are
-mount sources for the container, not paths inside it. The full reference for
-every variable is in [docs/USAGE.md](docs/USAGE.md#environment-variables).
+At minimum, set `SSH_KEY_FILE`, `SSH_KNOWN_HOSTS_FILE`, and `BACKUP_SOURCE_FOLDER` as
+absolute paths: they are mount sources for the container, not paths inside it. Also
+set `REMOTE_SERVER` (the SSH destination, e.g. `user@host`) and
+`REMOTE_SERVER_BACKUP_FOLDER` (the destination path on that remote server, not a local
+mount). The full reference for every variable is in
+[docs/USAGE.md](docs/USAGE.md#environment-variables).
 
 Also set `GOCRYPTFS_PASSKEY_FILE`, unless you set `PARANOID_MODE=true`
 instead: paranoid mode's entire point is that no passphrase ever touches
