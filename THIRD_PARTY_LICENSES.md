@@ -22,9 +22,9 @@ was actually shipped by the time anyone follows it.
 
 The list below is the complete, exact output of `apk info -v` run inside a
 container built from this repository's `Dockerfile` pinned to the versions
-below (`ALPINE_VERSION=3.24`, and the `*_VERSION` build-args in
-`.env.example`), so it includes the Alpine base image's own packages as well
-as everything `apk add` installs, transitively. Every license was read from
+below (`ARG ALPINE_VERSION=3.24`, and the other `*_VERSION` ARG defaults
+alongside it in that same file), so it includes the Alpine base image's own
+packages as well as everything `apk add` installs, transitively. Every license was read from
 Alpine's own package metadata (the `license:` field `apk info -a` reports,
 sourced from each package's `APKBUILD`) for Alpine branch `3.24-stable`, not
 guessed or inferred from the package name.

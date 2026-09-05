@@ -161,26 +161,18 @@ def workspace(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def build_env_file(workspace):
-    """Minimal env file holding only what 'make build' reads."""
+    """Minimal env file holding only what 'make build' reads.
+
+    Which is now just the image name and tag. The eight version pins are ARG
+    defaults in the Dockerfile, not env file settings, so 'make build' passes
+    no --build-arg unless one is overridden on the command line, and an env
+    file naming them would be testing an override rather than the ordinary
+    path. read_dockerfile_arg() below is how a test asserts on one instead.
+    """
     path = workspace["root"] / "env.build"
-    example = (REPO_ROOT / ".env.example").read_text()
-    versions = {
-        var: _read_var(example, var)
-        for var in (
-            "ALPINE_VERSION",
-            "GOCRYPTFS_VERSION",
-            "BASH_VERSION",
-            "LESS_VERSION",
-            "OPENSSH_VERSION",
-            "RSYNC_VERSION",
-            "SSHFS_VERSION",
-            "VIM_VERSION",
-        )
-    }
     path.write_text(
         "\n".join(
-            [f'{var}="{value}"' for var, value in versions.items()]
-            + [
+            [
                 f'DOCKER_IMAGE_TAG_NAME="{IMAGE_NAME}"',
                 f'DOCKER_IMAGE_TAG_VERSION="{IMAGE_VERSION}"',
                 "",
@@ -195,6 +187,14 @@ def _read_var(text, name):
         if line.startswith(f"{name}="):
             return line.split("=", 1)[1].strip().strip('"')
     raise AssertionError(f"{name} not found in .env.example")
+
+
+def read_dockerfile_arg(name):
+    """The default value of an `ARG <name>=<value>` line in the Dockerfile."""
+    for line in (REPO_ROOT / "Dockerfile").read_text().splitlines():
+        if line.startswith(f"ARG {name}="):
+            return line.split("=", 1)[1].strip()
+    raise AssertionError(f"ARG {name} not found in the Dockerfile")
 
 
 @pytest.fixture(scope="session")

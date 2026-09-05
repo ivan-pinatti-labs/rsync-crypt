@@ -140,11 +140,13 @@ jobs:
             | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
 
       - name: Build the image
-        # .env.example already carries every build argument `make build`
-        # reads (ALPINE_VERSION, GOCRYPTFS_VERSION, DOCKER_IMAGE_TAG_NAME,
-        # DOCKER_IMAGE_TAG_VERSION) and nothing else the target touches, so it
-        # is used directly as ENV_FILE rather than assembling a throwaway one
-        # the way tests/conftest.py's build_env_file fixture does for the
-        # pytest suite, which additionally needs a session scoped image tag
-        # that this job has no reason to share.
+        # .env.example carries everything the `build` target reads
+        # (DOCKER_IMAGE_TAG_NAME and DOCKER_IMAGE_TAG_VERSION) and nothing
+        # else it touches, so it is used directly as ENV_FILE rather than
+        # assembling a throwaway one the way tests/conftest.py's
+        # build_env_file fixture does for the pytest suite, which additionally
+        # needs a session scoped image tag that this job has no reason to
+        # share. The eight version pins are ARG defaults in the Dockerfile,
+        # not env file settings, so this builds exactly what a plain
+        # `docker build .` would.
         run: make build ENV_FILE=.env.example

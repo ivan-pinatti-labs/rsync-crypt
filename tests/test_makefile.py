@@ -51,6 +51,20 @@ _VIEW_ARGS = (
     ("literal", "/gocrypt-view/decrypted"),
 )
 
+# The eight versions baked into the image. They are ARG defaults in the
+# Dockerfile, not env file settings, so the 'build' target only ever passes
+# one as --build-arg when a caller sets it explicitly on the command line.
+_BUILD_ARG_VARS = (
+    "ALPINE_VERSION",
+    "GOCRYPTFS_VERSION",
+    "BASH_VERSION",
+    "LESS_VERSION",
+    "OPENSSH_VERSION",
+    "RSYNC_VERSION",
+    "SSHFS_VERSION",
+    "VIM_VERSION",
+)
+
 
 def _env_file_with_overrides(tmp_path, overrides):
     """A full env file derived from .env.example with some values replaced.
@@ -166,53 +180,162 @@ def test_env_file_override_is_honoured(build_env_file):
     assert "local/gocryptfs-test" in result.stdout
 
 
-@pytest.mark.parametrize(
-    "var",
-    [
-        "ALPINE_VERSION",
-        "GOCRYPTFS_VERSION",
-        "BASH_VERSION",
-        "LESS_VERSION",
-        "OPENSSH_VERSION",
-        "RSYNC_VERSION",
-        "SSHFS_VERSION",
-        "VIM_VERSION",
-    ],
-)
-def test_build_refuses_an_empty_apk_version_pin(build_env_file, tmp_path, var):
-    """An empty *_VERSION must fail loudly before it reaches an empty --build-arg.
+def _build_recipe(env_file, extra_args=(), env=None):
+    """The shell text 'make --dry-run build' would run, as one string.
 
-    Without this guard, a blank pin silently becomes `bash~=` inside the
-    Dockerfile's apk add, which fails deep inside the build with no hint that
-    the real problem is the env file, not the Dockerfile.
+    'env', when given, is a full os.environ-shaped mapping for the child
+    process: a shell-environment-style override ('VAR=x make build') has to
+    reach make as a real process environment variable, which a command-line
+    argument in 'extra_args' does not exercise, that being a distinct Make
+    override mechanism ('make build VAR=x') with a different $(origin).
     """
-    text = build_env_file.read_text()
-    original = next(line for line in text.splitlines() if line.startswith(f'{var}="'))
-    blanked = text.replace(original, f'{var}=""')
-    assert blanked != text
+    kwargs = {} if env is None else {"env": env}
+    result = run(
+        ["make", "--dry-run", "build", f"ENV_FILE={env_file}", *extra_args], **kwargs
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result.stdout
 
-    env_file = tmp_path / "env.blank"
-    env_file.write_text(blanked)
 
-    # A stub 'docker' ahead of the real one on PATH, so "docker was never
-    # invoked" is proven by an absent marker file rather than by the absence
-    # of "docker build" in captured output, which @-prefixed recipe lines
-    # never echo either way and would pass even if the guard were removed.
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_passes_no_build_arg_by_default(build_env_file, var):
+    """A plain 'make build' must let the Dockerfile's own ARG defaults apply.
+
+    The eight pins moved out of the env file and into the Dockerfile, so there
+    is nothing left for the target to read; passing '--build-arg VAR=' with an
+    empty value instead would build 'alpine:' and 'bash~=', which is the exact
+    failure the old (now removed) emptiness guard existed to catch. $(if ...)
+    dropping the flag entirely is what makes that unreachable rather than
+    merely refused.
+    """
+    assert f"--build-arg {var}" not in _build_recipe(build_env_file)
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_passes_an_explicit_override_through(build_env_file, var):
+    """'VAR=x make build' (or 'make build VAR=x') must still reach docker.
+
+    Overriding one pin for a single build, without editing the Dockerfile, is
+    the escape hatch that makes baking the defaults in acceptable in the first
+    place, so it is checked for each of the eight rather than assumed to
+    generalize from ALPINE_VERSION.
+    """
+    recipe = _build_recipe(build_env_file, extra_args=[f"{var}=9.9.9"])
+    assert f"--build-arg {var}=9.9.9" in recipe
+
+
+def _legacy_env_file(build_env_file, tmp_path, var, value):
+    """build_env_file plus one leftover pin, as if from before this split.
+
+    Anyone who copied .env.example before the eight pins moved into the
+    Dockerfile still has a line like this sitting in their real .env; the
+    migration cannot reach into an existing file and remove it for them.
+    """
+    path = tmp_path / "env.legacy"
+    path.write_text(build_env_file.read_text() + f"{var}={value}\n")
+    return path
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_ignores_a_legacy_pin_left_in_the_env_file(build_env_file, tmp_path, var):
+    """A pin surviving from before the Dockerfile-ARG split must not forward.
+
+    'make build' passes '--build-arg VAR' as a plain $(if ${VAR},...) test, so
+    to plain Make there is no difference between "the caller set this on the
+    command line" and "this line is still sitting in an old .env file": both
+    ways for ${VAR} to be non-empty. Left unguarded, a caller who has not
+    edited their env file since it carried these eight pins would have every
+    build silently overridden by whatever version their file happened to
+    freeze, defeating the entire point of moving the defaults into the
+    Dockerfile: that a plain 'docker build .' and 'make build' agree. The
+    Makefile's 'pin_override' $(origin)-based check is what closes this: a
+    value read from ENV_FILE reports origin "file", not "command line" or
+    "environment", and only those last two forward.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "9.9.9")
+    assert f"--build-arg {var}" not in _build_recipe(legacy)
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_command_line_override_wins_over_a_legacy_env_pin(
+    build_env_file, tmp_path, var
+):
+    """An explicit override must still work even with a legacy pin present.
+
+    Ignoring ENV_FILE-origin values (the test above) must not also swallow a
+    genuine one-off override typed on the command line in the same run: Make
+    origin reports "command line" for that regardless of what ENV_FILE
+    separately set the same variable to.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "1.1.1")
+    recipe = _build_recipe(legacy, extra_args=[f"{var}=9.9.9"])
+    assert f"--build-arg {var}=9.9.9" in recipe
+    assert f"--build-arg {var}=1.1.1" not in recipe
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_shell_environment_override_wins_over_a_legacy_env_pin(
+    build_env_file, tmp_path, var
+):
+    """'VAR=x make build' must win even when ENV_FILE also sets VAR.
+
+    A plain '=' assignment in an included file unconditionally overrides a
+    same-named value already set in the calling shell's environment, unlike
+    a command-line assignment, which no makefile assignment can ever
+    override. Without the pre-include snapshot in the Makefile
+    (_pin_snapshot_<VAR>), 'ALPINE_VERSION=9.9.9 make build' against a
+    legacy env file would silently lose both the caller's 9.9.9 and its
+    "environment" origin the moment ENV_FILE is included, forwarding
+    neither the caller's value nor the file's, just the Dockerfile's own
+    default with no indication anything was overridden at all.
+    """
+    legacy = _legacy_env_file(build_env_file, tmp_path, var, "1.1.1")
+    env = os.environ.copy()
+    env[var] = "9.9.9"
+    recipe = _build_recipe(legacy, env=env)
+    assert f"--build-arg {var}=9.9.9" in recipe
+    assert f"--build-arg {var}=1.1.1" not in recipe
+
+
+@pytest.mark.parametrize("var", _BUILD_ARG_VARS)
+def test_build_drops_an_explicit_but_empty_override(build_env_file, var):
+    """'make build VAR=' must not forward '--build-arg VAR=' with no value.
+
+    An empty command-line override still reports $(origin) as "command
+    line", a qualifying origin on its own; only checking origin and not the
+    value it carries would forward the flag with nothing after the '=',
+    which is the exact 'docker build .' would-build-alpine: failure the old
+    (now removed) blank-pin guard existed to catch.
+    """
+    recipe = _build_recipe(build_env_file, extra_args=[f"{var}="])
+    assert f"--build-arg {var}" not in recipe
+
+
+def test_build_invokes_docker_with_no_pins_configured(build_env_file, tmp_path):
+    """The default path must actually reach 'docker build', not just look right.
+
+    A stub 'docker' ahead of the real one on PATH, so "docker was invoked" is
+    proven by a marker file rather than by captured output, which @-prefixed
+    recipe lines never echo. This is the positive counterpart to the guard
+    test that used to live here: where that one proved docker was NOT reached
+    with an empty pin, this proves it IS reached now that there are no pins in
+    the env file at all.
+    """
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     marker = tmp_path / "docker-was-invoked"
     fake_docker = fake_bin / "docker"
-    fake_docker.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\nexit 0\n")
+    fake_docker.write_text(
+        f"#!/bin/sh\nprintf '%s\\n' \"$@\" > {shlex.quote(str(marker))}\nexit 0\n"
+    )
     fake_docker.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
 
-    result = run(["make", "build", f"ENV_FILE={env_file}"], env=env)
-    assert result.returncode != 0
-    combined = result.stdout + result.stderr
-    assert var in combined
-    assert "missing or empty" in combined
-    assert not marker.exists(), "docker was invoked despite the missing pin"
+    result = run(["make", "build", f"ENV_FILE={build_env_file}"], env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.exists(), "docker was never invoked"
+    assert "--build-arg" not in marker.read_text()
 
 
 def test_example_env_documents_every_variable_the_makefile_reads():
@@ -229,16 +352,42 @@ def test_example_env_documents_every_variable_the_makefile_reads():
     # Variables the Makefile defines or receives itself, not env file settings.
     internal = {"ENV_FILE", "RESTORE_PATHS", "MAKECMDGOALS", "SHELL"}
 
+    # The eight build-time pins are Dockerfile ARG defaults, and the 'build'
+    # target reads them only as optional command-line overrides ($(if ...) per
+    # pin). Documenting them in .env.example again would put the value in two
+    # places and invite the two copies to disagree, which is what moving them
+    # into the Dockerfile was for. test_build.py's
+    # test_every_version_arg_has_a_default_and_its_annotation is what holds
+    # them to account instead.
+    build_arg_overrides = set(_BUILD_ARG_VARS)
+
     referenced = set()
     for chunk in makefile.split("${")[1:]:
         name = chunk.split("}", 1)[0]
         if name.isupper() and name.replace("_", "").isalnum():
             referenced.add(name)
 
-    missing = sorted(referenced - documented - internal)
+    missing = sorted(referenced - documented - internal - build_arg_overrides)
     assert not missing, (
         f"variables used by the Makefile but absent from .env.example: {missing}"
     )
+
+
+def test_no_build_pin_is_left_in_the_example_env():
+    """The other direction: a pin must not creep back into .env.example.
+
+    Both places would then define the same version, the Makefile would pass
+    the env file's copy as a --build-arg, and the Dockerfile's default would
+    quietly stop being what gets built, which is the split this change closed.
+    """
+    example = (REPO_ROOT / ".env.example").read_text()
+    documented = {
+        line.split("=", 1)[0]
+        for line in example.splitlines()
+        if line and not line.startswith("#") and "=" in line
+    }
+    strays = sorted(documented & set(_BUILD_ARG_VARS))
+    assert not strays, f"build-time pins are back in .env.example: {strays}"
 
 
 def test_no_blanket_error_suppression_in_the_makefile():

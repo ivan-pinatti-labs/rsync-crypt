@@ -12,7 +12,7 @@ The `apk policy` transcript fixtures below are a real capture, taken by
 running scripts/resolve-apk-pins.py's own docker invocation against
 `alpine:3.24` on 2026-09-03: `apk policy bash gocryptfs less openssh rsync
 sshfs vim`. That is also, not coincidentally, the exact Alpine release and
-package set `.env.example` is pinned to today, which is what lets
+package set the `Dockerfile` is pinned to today, which is what lets
 `test_matches_every_current_pin_exactly` assert the resolver reproduces
 every one of the seven live values with no fixture rigged to match.
 """
@@ -71,10 +71,10 @@ vim policy:
     https://dl-cdn.alpinelinux.org/alpine/v3.24/community
 """
 
-# The .env.example precision each variable is pinned at today, read straight
-# off the file rather than hardcoded a second time, so this test cannot drift
-# from what is actually committed.
-CURRENT_PINS = resolve_apk_pins.read_current_pins(REPO_ROOT / ".env.example")
+# The precision each ARG is pinned at today, read straight off the Dockerfile
+# rather than hardcoded a second time, so this test cannot drift from what is
+# actually committed.
+CURRENT_PINS = resolve_apk_pins.read_current_pins(REPO_ROOT / "Dockerfile")
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +164,11 @@ def test_a_non_numeric_version_is_returned_unchanged():
 
 
 # ---------------------------------------------------------------------------
-# apply: rewriting .env.example, and leaving everything else alone
+# apply: rewriting the Dockerfile, and leaving everything else alone
 # ---------------------------------------------------------------------------
 
 
-def _write_env(tmp_path, overrides):
+def _write_dockerfile(tmp_path, overrides):
     base = {
         "BASH_VERSION": "5.3",
         "GOCRYPTFS_VERSION": "2.6",
@@ -179,12 +179,20 @@ def _write_env(tmp_path, overrides):
         "VIM_VERSION": "9.2",
     }
     base.update(overrides)
-    path = tmp_path / ".env.example"
+    path = tmp_path / "Dockerfile"
     lines = [
-        'DOCKER_IMAGE_TAG_VERSION="1.0.0"',
-        'ALPINE_VERSION="3.24"',
-        *[f'{name}="{value}"' for name, value in base.items()],
-        "PARANOID_MODE=false",
+        "# renovate: datasource=docker depName=alpine versioning=docker",
+        "ARG ALPINE_VERSION=3.24",
+        "FROM alpine:${ALPINE_VERSION}",
+        *[
+            line
+            for name, value in base.items()
+            for line in (
+                "# apk-pin: resolved-from=ALPINE_VERSION",
+                f"ARG {name}={value}",
+            )
+        ],
+        "RUN apk add --no-cache bash~=${BASH_VERSION}",
         "",
     ]
     path.write_text("\n".join(lines))
@@ -192,7 +200,7 @@ def _write_env(tmp_path, overrides):
 
 
 def test_apply_reports_no_changes_when_everything_already_matches(tmp_path):
-    path = _write_env(tmp_path, {})
+    path = _write_dockerfile(tmp_path, {})
     before = path.read_text()
     changes = resolve_apk_pins.apply(
         path, resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
@@ -202,7 +210,9 @@ def test_apply_reports_no_changes_when_everything_already_matches(tmp_path):
 
 
 def test_apply_rewrites_only_the_pins_that_changed(tmp_path):
-    path = _write_env(tmp_path, {"GOCRYPTFS_VERSION": "2.5", "LESS_VERSION": "685"})
+    path = _write_dockerfile(
+        tmp_path, {"GOCRYPTFS_VERSION": "2.5", "LESS_VERSION": "685"}
+    )
     changes = resolve_apk_pins.apply(
         path, resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
     )
@@ -211,26 +221,76 @@ def test_apply_rewrites_only_the_pins_that_changed(tmp_path):
         "LESS_VERSION: 685 -> 702",
     ]
     rewritten = path.read_text()
-    assert 'GOCRYPTFS_VERSION="2.6"' in rewritten
-    assert 'LESS_VERSION="702"' in rewritten
-    # Untouched lines, including the unrelated ALPINE_VERSION and
-    # DOCKER_IMAGE_TAG_VERSION pins, must survive byte for byte.
-    assert 'ALPINE_VERSION="3.24"' in rewritten
-    assert 'DOCKER_IMAGE_TAG_VERSION="1.0.0"' in rewritten
-    assert "PARANOID_MODE=false" in rewritten
+    assert "ARG GOCRYPTFS_VERSION=2.6" in rewritten
+    assert "ARG LESS_VERSION=702" in rewritten
+    # Untouched lines, including the unrelated ALPINE_VERSION pin, both
+    # annotation markers and the instructions around them, must survive byte
+    # for byte. ALPINE_VERSION especially: it is the input this resolution is
+    # derived from, and rewriting it would be the resolver overwriting the
+    # very bump that triggered it.
+    assert "ARG ALPINE_VERSION=3.24" in rewritten
+    assert "FROM alpine:${ALPINE_VERSION}" in rewritten
+    assert "RUN apk add --no-cache bash~=${BASH_VERSION}" in rewritten
+    assert "# renovate: datasource=docker depName=alpine versioning=docker" in rewritten
+    assert rewritten.count("# apk-pin: resolved-from=ALPINE_VERSION") == 7
+
+
+def test_apply_preserves_crlf_line_endings(tmp_path):
+    """A CRLF Dockerfile must stay CRLF, changed lines included.
+
+    `Path.read_text()`/`write_text()` go through universal-newline
+    translation, which would rewrite every line in the file to LF the moment
+    there is anything at all to change, not just the two pins actually
+    touched. `apply` opens with `newline=""` instead precisely to avoid that;
+    this pins the CRLF ARG line's regex match too, since `ARG_LINE` is
+    anchored with `$` and a stray `\\r` left on the line (matching only
+    `\\n` off, not `\\r\\n`) would have failed to match at all, silently
+    leaving the old value in place despite `changes` reporting it updated.
+    """
+    path = _write_dockerfile(
+        tmp_path, {"GOCRYPTFS_VERSION": "2.5", "LESS_VERSION": "685"}
+    )
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+
+    changes = resolve_apk_pins.apply(
+        path, resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
+    )
+
+    assert sorted(changes) == [
+        "GOCRYPTFS_VERSION: 2.5 -> 2.6",
+        "LESS_VERSION: 685 -> 702",
+    ]
+    raw = path.read_bytes()
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    assert b"ARG GOCRYPTFS_VERSION=2.6\r\n" in raw
+    assert b"ARG LESS_VERSION=702\r\n" in raw
+    assert b"ARG ALPINE_VERSION=3.24\r\n" in raw
 
 
 def test_apply_raises_if_apk_policy_never_reported_a_package(tmp_path):
-    path = _write_env(tmp_path, {})
+    path = _write_dockerfile(tmp_path, {})
     incomplete = resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
     del incomplete["vim"]
     with pytest.raises(SystemExit):
         resolve_apk_pins.apply(path, incomplete)
 
 
-def test_read_current_pins_raises_on_a_missing_variable(tmp_path):
-    path = tmp_path / ".env.example"
-    path.write_text('BASH_VERSION="5.3"\n')
+def test_read_current_pins_raises_on_a_missing_arg(tmp_path):
+    path = tmp_path / "Dockerfile"
+    path.write_text("ARG BASH_VERSION=5.3\n")
+    with pytest.raises(SystemExit):
+        resolve_apk_pins.read_current_pins(path)
+
+
+def test_read_current_pins_ignores_an_arg_with_no_default(tmp_path):
+    """`ARG NAME` with no `=` is a build argument, not a pin to resolve.
+
+    Rewriting one into `ARG NAME=<version>` would silently give it a default
+    it never had, so the grammar requires the `=` and such a line reads as
+    absent instead.
+    """
+    path = tmp_path / "Dockerfile"
+    path.write_text("ARG GOCRYPTFS_VERSION\n")
     with pytest.raises(SystemExit):
         resolve_apk_pins.read_current_pins(path)
 

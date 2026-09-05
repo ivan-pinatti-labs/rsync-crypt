@@ -2,8 +2,8 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
   // Dependabot handles GitHub Actions and pre-commit hooks, see dependabot.yml.
-  // Renovate handles the asdf tool versions and the Alpine pin in .env.example,
-  // neither of which Dependabot can parse.
+  // Renovate handles the asdf tool versions and the Alpine pin in the
+  // Dockerfile, neither of which Dependabot can parse.
   extends: ["config:recommended"],
 
   // Kept on despite the standing, never-resolving tracking issue it opens.
@@ -11,8 +11,8 @@
   // stopped seeing your dependencies" look identical, and the dashboard is the
   // only place Renovate reports detection errors and rate-limited updates.
   // That matters most for the custom regex manager below, which depends on a
-  // hand-written pattern that will match nothing, silently, if .env.example is
-  // renamed or its `# renovate:` annotation format changes.
+  // hand-written pattern that will match nothing, silently, if the Dockerfile
+  // is renamed or its `# renovate:` annotation format changes.
   dependencyDashboard: true,
 
   timezone: "America/Toronto",
@@ -106,9 +106,9 @@
     // repository's base image moved. `digest` and `pin` are not listed
     // because neither can happen here: `pinDigests` is not enabled, and
     // scripts/assert-pin-only-diff.py's own version grammar for the
-    // annotated `.env.example` line has no shape for a digest to occupy, so
-    // granting automerge to an update type this repository never produces
-    // would document a policy nothing here could ever exercise.
+    // annotated `ARG` line has no shape for a digest to occupy, so granting
+    // automerge to an update type this repository never produces would
+    // document a policy nothing here could ever exercise.
     {
       matchUpdateTypes: ["patch", "minor"],
       automerge: true,
@@ -128,9 +128,19 @@
 
   customManagers: [
     {
-      // Matches the pattern:
+      // Matches the pattern, in the Dockerfile:
       //   # renovate: datasource=<ds> depName=<name> [versioning=<scheme>]
-      //   VAR="<currentValue>"
+      //   ARG VAR=<currentValue>
+      //
+      // This is Renovate's own documented convention for annotating a
+      // Dockerfile ARG (see docs.renovatebot.com/modules/manager/regex/,
+      // "Using regex manager to update Dockerfile ARG"), which is why the
+      // pins moved out of `.env.example` and into the Dockerfile: the file
+      // that actually consumes a version now also declares it, and the
+      // annotation sits in the shape Renovate documents rather than one
+      // invented for an env file. The value is unquoted here, unlike the
+      // `VAR="value"` shape this pattern used to match, so `[^\\s]+` ends the
+      // capture at the end of the line rather than at a closing quote.
       //
       // GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION, OPENSSH_VERSION,
       // RSYNC_VERSION, SSHFS_VERSION and VIM_VERSION are all intentionally
@@ -141,12 +151,13 @@
       // models "the version of this apk package available in Alpine release
       // X", so an independently tracked bump could easily propose a version
       // that does not exist in that release's repo and fail the build. All
-      // seven stay manual, bumped by hand (`apk policy <pkg>` inside the
+      // seven carry a `# apk-pin:` marker instead and are re-resolved by
+      // .github/workflows/resolve-apk-pins.yml (`apk policy <pkg>` inside the
       // target `alpine:${ALPINE_VERSION}`) whenever ALPINE_VERSION moves.
       customType: "regex",
-      managerFilePatterns: ["/^\\.env\\.example$/"],
+      managerFilePatterns: ["/^Dockerfile$/"],
       matchStrings: [
-        '# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+[A-Z0-9_]+="(?<currentValue>[^"]+)"',
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+ARG [A-Z0-9_]+=(?<currentValue>[^\\s]+)",
       ],
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
     },

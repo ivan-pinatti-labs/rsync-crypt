@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Ivan Pinatti
-"""Re-resolve the apk-constrained version pins in `.env.example`.
+"""Re-resolve the apk-constrained version pins in the `Dockerfile`.
 
 `GOCRYPTFS_VERSION`, `BASH_VERSION`, `LESS_VERSION`, `OPENSSH_VERSION`,
 `RSYNC_VERSION`, `SSHFS_VERSION` and `VIM_VERSION` are apk `~=` version
@@ -12,14 +12,19 @@ from, each carrying a `# apk-pin: resolved-from=ALPINE_VERSION` marker (see
 scripts/assert-pin-only-diff.py) instead of Renovate's own `# renovate:`
 marker.
 
+All eight are `ARG NAME=value` defaults in the `Dockerfile` itself. They used
+to be quoted `NAME="value"` lines in `.env.example`, which this script
+rewrote instead; the grammar below is the only thing that changed with them,
+since the Dockerfile writes an unquoted value.
+
 This script is that hand-resolution, automated. Given an Alpine version, it
 runs `apk update && apk policy <pkg>` inside `alpine:<version>` for each of
-the seven packages, and rewrites `.env.example` in place with whatever it
-finds, at the same precision each variable already uses today (an
-`X.Y.Z-rN` apk version truncated to as many `X.Y...` components as the
-current pin has: `LESS_VERSION="702"` keeps one component, `RSYNC_VERSION`
-keeps two, matching `apk policy`'s own precedence order, which lists the
-version that would actually be installed first).
+the seven packages, and rewrites the `Dockerfile` in place with whatever it
+finds, at the same precision each ARG already uses today (an `X.Y.Z-rN` apk
+version truncated to as many `X.Y...` components as the current pin has:
+`ARG LESS_VERSION=702` keeps one component, `ARG RSYNC_VERSION=3.5` keeps
+two, matching `apk policy`'s own precedence order, which lists the version
+that would actually be installed first).
 
 Used by .github/workflows/resolve-apk-pins.yml, which runs it against the
 `alpine:<version>` a Renovate ALPINE_VERSION pull request proposes and pushes
@@ -43,11 +48,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ENV_FILE = REPO_ROOT / ".env.example"
+DOCKERFILE = REPO_ROOT / "Dockerfile"
 
-# apk package name -> the .env.example variable it fills. Alphabetical by
-# package name, which is also the order `apk policy pkg1 pkg2 ...` prints its
-# blocks in, though parse_apk_policy does not depend on that ordering.
+# apk package name -> the Dockerfile ARG it fills. Alphabetical by package
+# name, which is also the order `apk policy pkg1 pkg2 ...` prints its blocks
+# in, though parse_apk_policy does not depend on that ordering.
 PACKAGE_TO_VAR = {
     "bash": "BASH_VERSION",
     "gocryptfs": "GOCRYPTFS_VERSION",
@@ -86,7 +91,11 @@ POLICY_VERSION = re.compile(r"^  (?P<version>\S+):$")
 # both without having to know each package's own suffix vocabulary.
 VERSION_CORE = re.compile(r"^\d+(?:\.\d+)*")
 
-ENV_VAR_LINE = re.compile(r'^(?P<name>[A-Z0-9_]+)="(?P<value>[^"]*)"$')
+# A Dockerfile `ARG NAME=value` default. Anchored end to end, and requiring a
+# value, so a bare `ARG NAME` (a build argument with no default, which this
+# script has nothing to resolve for) is left alone rather than rewritten into
+# one that suddenly has a default.
+ARG_LINE = re.compile(r"^ARG (?P<name>[A-Z0-9_]+)=(?P<value>\S+)$")
 
 
 def parse_apk_policy(output: str) -> dict[str, str]:
@@ -125,18 +134,18 @@ def match_precision(full_version: str, current_pin: str) -> str:
     return ".".join(components[:want])
 
 
-def read_current_pins(env_file: Path) -> dict[str, str]:
-    """Read the seven apk-pinned variables' current values from .env.example."""
+def read_current_pins(dockerfile: Path) -> dict[str, str]:
+    """Read the seven apk-pinned ARGs' current defaults from the Dockerfile."""
     current: dict[str, str] = {}
     wanted = set(PACKAGE_TO_VAR.values())
-    for line in env_file.read_text().splitlines():
-        match = ENV_VAR_LINE.match(line)
+    for line in dockerfile.read_text().splitlines():
+        match = ARG_LINE.match(line)
         if match and match.group("name") in wanted:
             current[match.group("name")] = match.group("value")
     missing = wanted - current.keys()
     if missing:
         raise SystemExit(
-            f"{env_file}: missing expected variable(s): {', '.join(sorted(missing))}"
+            f"{dockerfile}: missing expected ARG(s): {', '.join(sorted(missing))}"
         )
     return current
 
@@ -174,9 +183,9 @@ def resolve_versions(alpine_version: str) -> dict[str, str]:
     return parse_apk_policy(result.stdout)
 
 
-def apply(env_file: Path, resolved: dict[str, str]) -> list[str]:
-    """Rewrite `env_file` with `resolved` values; return a change summary."""
-    current = read_current_pins(env_file)
+def apply(dockerfile: Path, resolved: dict[str, str]) -> list[str]:
+    """Rewrite `dockerfile` with `resolved` values; return a change summary."""
+    current = read_current_pins(dockerfile)
     changes = []
     new_values: dict[str, str] = {}
     for pkg, var in sorted(PACKAGE_TO_VAR.items()):
@@ -189,17 +198,27 @@ def apply(env_file: Path, resolved: dict[str, str]) -> list[str]:
             changes.append(f"{var}: {current[var]} -> {new_value}")
 
     if changes:
-        lines = env_file.read_text().splitlines(keepends=True)
+        # newline="" on both ends, rather than read_text()/write_text(): those
+        # go through universal-newline translation, which would silently
+        # rewrite a CRLF Dockerfile to LF (every line, not just the ones
+        # touched) the moment there is anything at all to change. Reading raw
+        # keeps each line's original terminator (or lack of one, on the last
+        # line) intact in `line`, so it only has to be split off and put back,
+        # never assumed to be "\n".
+        with dockerfile.open(newline="") as f:
+            lines = f.readlines()
         rewritten = []
         for line in lines:
-            match = ENV_VAR_LINE.match(line.rstrip("\n"))
+            stripped = line.rstrip("\r\n")
+            ending = line[len(stripped) :]
+            match = ARG_LINE.match(stripped)
             if match and match.group("name") in new_values:
                 name = match.group("name")
-                newline = "\n" if line.endswith("\n") else ""
-                rewritten.append(f'{name}="{new_values[name]}"{newline}')
+                rewritten.append(f"ARG {name}={new_values[name]}{ending}")
             else:
                 rewritten.append(line)
-        env_file.write_text("".join(rewritten))
+        with dockerfile.open("w", newline="") as f:
+            f.write("".join(rewritten))
 
     return changes
 
@@ -212,15 +231,15 @@ def main() -> int:
         help="Alpine release to resolve the apk pins against, e.g. 3.24",
     )
     parser.add_argument(
-        "--env-file",
+        "--dockerfile",
         type=Path,
-        default=ENV_FILE,
-        help="Path to .env.example (default: repo root's copy)",
+        default=DOCKERFILE,
+        help="Path to the Dockerfile to rewrite (default: repo root's copy)",
     )
     args = parser.parse_args()
 
     resolved = resolve_versions(args.alpine_version)
-    changes = apply(args.env_file, resolved)
+    changes = apply(args.dockerfile, resolved)
 
     if changes:
         print("changed=true")

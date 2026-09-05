@@ -1,6 +1,49 @@
 ENV_FILE ?= .env
 .DEFAULT_GOAL := help
 
+# The eight version pins that live in the Dockerfile now, as ARG defaults,
+# not in the env file (see 'build' below). Listed once, here, and reused by
+# both the pre-include snapshot immediately below and the 'build' recipe
+# itself, so adding a ninth pin only means updating this one list.
+_BUILD_ARG_VARS := ALPINE_VERSION GOCRYPTFS_VERSION BASH_VERSION LESS_VERSION \
+                    OPENSSH_VERSION RSYNC_VERSION SSHFS_VERSION VIM_VERSION
+
+# Expands to $(1)'s value only when $(1) was set to something by the
+# caller, on the command line or in the invoking shell's environment, as
+# opposed to merely being defined in the included ENV_FILE (origin "file"),
+# left unset entirely (origin "undefined"), or set to an empty string on
+# the command line itself ('make build ALPINE_VERSION='). $(origin) alone
+# cannot see the value, only where it came from, hence the trailing
+# $($(1)) check: without it, an explicit-but-empty command-line override
+# would still report a qualifying origin and forward '--build-arg VAR='
+# with nothing after the '=', which is the exact failure the old (removed)
+# emptiness guard existed to catch. $(findstring ...) rather than
+# $(filter ...): $(origin) can return "command line", which $(filter)
+# would split on the space into two separate patterns instead of matching
+# it literally. $(and ...) short-circuits to empty the moment either half
+# is empty, and otherwise expands to its last argument, which is what lets
+# this double as both the yes/no check and the value to forward.
+pin_override = $(and $(or $(findstring command line,$(origin $(1))),$(findstring environment,$(origin $(1)))),$($(1)))
+
+# A snapshot of pin_override's result for each of the eight, taken before
+# ENV_FILE is included below, while $(origin) can still tell a caller's own
+# override apart from the file's. This has to happen first: a plain '='
+# assignment in an included file unconditionally overrides a same-named
+# value already set in the calling shell's environment (a command-line
+# assignment is the one thing no makefile assignment can ever override, but
+# an environment one is not immune the same way). A caller upgrading from
+# before these eight pins moved into the Dockerfile who still has one of
+# them sitting in their real .env would otherwise have
+# 'ALPINE_VERSION=x make build' silently lose both its value and its
+# "environment" origin the moment the file is included: not forwarding x,
+# not forwarding the file's leftover value either (pin_override, evaluated
+# *after* include, correctly refuses a "file" origin), just silently
+# building the Dockerfile's own default instead of what was actually
+# typed. $(eval) here runs immediately, at parse time, which is what makes
+# '_pin_snapshot_<VAR> :=' capture the pre-include state as a fixed string
+# rather than something re-evaluated later against the post-include world.
+$(foreach v,$(_BUILD_ARG_VARS),$(eval _pin_snapshot_$(v) := $(call pin_override,$(v))))
+
 define _missing_env_file_message
 
 Missing ENV_FILE '$(ENV_FILE)'.
@@ -114,26 +157,36 @@ rro: restore_as_root_to_origin
 v:   view
 vr:  view_as_root
 
+# The eight version pins live in the Dockerfile now, as ARG defaults, not in
+# the env file. So this target passes no --build-arg at all by default and the
+# Dockerfile's own defaults apply, which is what keeps 'make build' and a bare
+# 'docker build .' producing the same image.
+#
+# Each $(if ...) below emits its --build-arg from _pin_snapshot_<VAR> (see the
+# top of this file), the pre-include, caller-only snapshot of that pin, not
+# from $(VAR) itself, which is how a one-off override still works:
+#
+#   ALPINE_VERSION=3.20 make build     (command-line variable)
+#   make build ALPINE_VERSION=3.20     (same thing, other spelling)
+#
+# A snapshot that is empty, whether because nothing overrode it or because
+# the override itself was blank ('make build ALPINE_VERSION='), makes $(if
+# ...) drop the flag entirely, rather than passing '--build-arg
+# ALPINE_VERSION=' and building 'alpine:'. That empty-pin failure is why the
+# old guard here refused to build when any of the eight was blank; with the
+# pins in the Dockerfile there is no blank to refuse, so the guard is gone
+# rather than kept as a check on nothing.
 build:
-	@if [ -z "${ALPINE_VERSION}" ] || [ -z "${GOCRYPTFS_VERSION}" ] || [ -z "${BASH_VERSION}" ] || \
-	   [ -z "${LESS_VERSION}" ] || [ -z "${OPENSSH_VERSION}" ] || [ -z "${RSYNC_VERSION}" ] || \
-	   [ -z "${SSHFS_VERSION}" ] || [ -z "${VIM_VERSION}" ]; then \
-		echo "Error: one or more of ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION, LESS_VERSION,"; \
-		echo "OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION, VIM_VERSION is missing or empty in '$(ENV_FILE)'."; \
-		echo "Regenerate '$(ENV_FILE)' from .env.example, which defines all of them, rather than"; \
-		echo "building with an empty apk version pin."; \
-		exit 1; \
-	fi
 	@echo "Building Docker image..."
 	@docker build . \
-		--build-arg ALPINE_VERSION=${ALPINE_VERSION} \
-		--build-arg GOCRYPTFS_VERSION=${GOCRYPTFS_VERSION} \
-		--build-arg BASH_VERSION=${BASH_VERSION} \
-		--build-arg LESS_VERSION=${LESS_VERSION} \
-		--build-arg OPENSSH_VERSION=${OPENSSH_VERSION} \
-		--build-arg RSYNC_VERSION=${RSYNC_VERSION} \
-		--build-arg SSHFS_VERSION=${SSHFS_VERSION} \
-		--build-arg VIM_VERSION=${VIM_VERSION} \
+		$(if $(_pin_snapshot_ALPINE_VERSION),--build-arg ALPINE_VERSION=$(_pin_snapshot_ALPINE_VERSION)) \
+		$(if $(_pin_snapshot_GOCRYPTFS_VERSION),--build-arg GOCRYPTFS_VERSION=$(_pin_snapshot_GOCRYPTFS_VERSION)) \
+		$(if $(_pin_snapshot_BASH_VERSION),--build-arg BASH_VERSION=$(_pin_snapshot_BASH_VERSION)) \
+		$(if $(_pin_snapshot_LESS_VERSION),--build-arg LESS_VERSION=$(_pin_snapshot_LESS_VERSION)) \
+		$(if $(_pin_snapshot_OPENSSH_VERSION),--build-arg OPENSSH_VERSION=$(_pin_snapshot_OPENSSH_VERSION)) \
+		$(if $(_pin_snapshot_RSYNC_VERSION),--build-arg RSYNC_VERSION=$(_pin_snapshot_RSYNC_VERSION)) \
+		$(if $(_pin_snapshot_SSHFS_VERSION),--build-arg SSHFS_VERSION=$(_pin_snapshot_SSHFS_VERSION)) \
+		$(if $(_pin_snapshot_VIM_VERSION),--build-arg VIM_VERSION=$(_pin_snapshot_VIM_VERSION)) \
 		--tag ${DOCKER_IMAGE_TAG_NAME} \
 		--tag ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
 
@@ -215,6 +268,7 @@ backup_as_root:
 		--cap-add SYS_ADMIN \
 		--device /dev/fuse \
 		--security-opt apparmor:unconfined \
+		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume /etc:/backup/src/etc \
 		--volume /home:/backup/src/home \
@@ -347,6 +401,7 @@ restore_as_root_to_origin:
 		--cap-add SYS_ADMIN \
 		--device /dev/fuse \
 		--security-opt apparmor:unconfined \
+		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume /etc:/restore/origin/etc \
 		--volume /home:/restore/origin/home \

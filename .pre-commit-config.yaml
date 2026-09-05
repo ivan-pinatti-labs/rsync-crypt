@@ -100,9 +100,10 @@ repos:
   # That id cannot be passed --ignore-checks: every checklist-* id routes
   # through run-checklist.sh with the checklist name as its first argument, so
   # an args: entry replaces that name instead of reaching the tool. .env.example
-  # quotes its values deliberately, which is 16 QuoteCharacter findings, and
-  # the library documents this local-hook copy as the supported way out. Same
-  # image and flags as checklists/checklist-dev-dotenv.yaml otherwise.
+  # quotes its values deliberately, which is one QuoteCharacter finding per
+  # quoted value (14 today, and it moves with the file), and the library
+  # documents this local-hook copy as the supported way out. Same image and
+  # flags as checklists/checklist-dev-dotenv.yaml otherwise.
   - repo: local
     hooks:
       - id: dotenv-linter

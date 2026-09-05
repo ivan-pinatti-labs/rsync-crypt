@@ -41,17 +41,24 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # The pin surfaces a dependency bot actually touches in this repository.
 # Dependabot manages `.github/workflows/` (Action SHAs) and
 # `.pre-commit-config.yaml` (hook `rev:` pins), see .github/dependabot.yml.
-# Renovate manages `.tool-versions` (the asdf manager) and, inside
-# `.env.example`, only the lines its custom regex manager is anchored to (see
-# below and .github/renovate.json5). `.env.example` also carries a handful of
+# Renovate manages `.tool-versions` (the asdf manager) and, inside the
+# `Dockerfile`, only the `ARG` lines its custom regex manager is anchored to
+# (see below and .github/renovate.json5). The `Dockerfile` also carries seven
 # apk `~=` pins that neither bot manages: .github/workflows/resolve-apk-pins.yml
 # bumps those instead, on the lines its own `# apk-pin:` marker is anchored to
 # (see below), and this script grades that automated commit the same way it
 # grades a bot's. Neither bot touches `tests/requirements.txt`: dependabot.yml
 # enables only the github-actions and pre-commit ecosystems, so a pip pin bump
 # is not a real bot-authored shape here and is deliberately left off this list.
+#
+# `.env.example` used to be on this list and no longer is. Every annotated pin
+# it carried moved into the `Dockerfile`; what is left in it is user
+# configuration (paths, a remote host, an image tag) that no bot has ever
+# bumped and none of these markers annotate. Leaving it listed would widen the
+# allowlist to a file nothing here manages, which is the opposite of what an
+# allowlist is for, so it came off along with the pins.
 ALLOWED_PATHS = (
-    ".env.example",
+    "Dockerfile",
     ".pre-commit-config.yaml",
     ".github/workflows/",
     ".tool-versions",
@@ -100,10 +107,10 @@ FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 
 # The exact shape .github/renovate.json5's custom regex manager is anchored
 # to: a `# renovate: datasource=... depName=...` comment immediately above the
-# `VAR="value"` line it annotates.
+# `ARG NAME=value` line it annotates.
 RENOVATE_ANNOTATION = re.compile(r"^#\s*renovate:")
 
-# The second, distinct marker: a variable resolved automatically by
+# The second, distinct marker: an ARG resolved automatically by
 # .github/workflows/resolve-apk-pins.yml rather than by Renovate. These are
 # apk `~=` version constraints (GOCRYPTFS_VERSION, BASH_VERSION,
 # LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION,
@@ -111,89 +118,100 @@ RENOVATE_ANNOTATION = re.compile(r"^#\s*renovate:")
 # independently; see the customManagers comment in .github/renovate.json5.
 # Deliberately not `# renovate:` with a different datasource tacked on: that
 # shape is exactly what Renovate's own regex would match, which would put
-# these variables right back under Renovate's independent tracking, the
+# these ARGs right back under Renovate's independent tracking, the
 # failure mode they are excluded from Renovate to avoid in the first place.
 # `resolved-from=ALPINE_VERSION` is fixed text, not a placeholder: every one
-# of these seven variables is resolved from ALPINE_VERSION today, and a
+# of these seven ARGs is resolved from ALPINE_VERSION today, and a
 # marker naming a different source variable would not match this pattern,
 # so widening it to a genuinely different upstream later is a deliberate,
 # reviewed change to this script rather than a silent grant.
 APK_PIN_ANNOTATION = re.compile(r"^#\s*apk-pin:\s*resolved-from=ALPINE_VERSION\s*$")
 
-ENV_VAR_LINE = re.compile(r"^(?P<name>[A-Z0-9_]+)=")
-# The full quoted value has to be a real release on its own, anchored end to
-# end, not merely contain one: substituting on a partial match would let
-# `ALPINE_VERSION="3.24"` becoming `ALPINE_VERSION="$(payload)3.24"` read as a
-# clean version bump, since the trailing digits alone would satisfy an
-# unanchored search.
-ENV_VALUE = re.compile(r'="(?P<value>[^"]*)"')
+DOCKERFILE = REPO_ROOT / "Dockerfile"
+
+# A Dockerfile `ARG NAME=value` default line. The `ARG ` prefix is required
+# rather than optional: it is what keeps this from matching a bare
+# `NAME=value` line elsewhere in the file (inside a RUN, say) that no
+# annotation above it was ever meant to cover.
+ARG_LINE = re.compile(r"^ARG (?P<name>[A-Z0-9_]+)=(?P<value>\S*)$")
+# The whole value has to be a real release on its own, anchored end to end by
+# ARG_LINE's own `$`, not merely contain one: substituting on a partial match
+# would let `ARG ALPINE_VERSION=3.24` becoming
+# `ARG ALPINE_VERSION=$(payload)3.24` read as a clean version bump, since the
+# trailing digits alone would satisfy an unanchored search.
+ARG_VALUE = re.compile(r"(?P<prefix>^ARG [A-Z0-9_]+=)\S*$")
 
 
-def _env_vars_annotated_by(
-    annotation: re.Pattern[str], path: Path = REPO_ROOT / ".env.example"
+def _dockerfile_args_annotated_by(
+    annotation: re.Pattern[str], path: Path = DOCKERFILE
 ) -> frozenset[str]:
-    """Return the variable names immediately preceded by `annotation`.
+    """Return the ARG names immediately preceded by `annotation`.
 
-    Read live off this checkout's own `.env.example` (the base branch's
-    copy, since the workflow that runs this script checks that out rather
-    than the pull request's) so the allowed variable set can never drift
-    from what the annotation's owner is actually configured to manage, and
-    so a bot's pull request cannot smuggle in its own annotation comment to
-    widen what it is allowed to touch: the set is fixed by main's copy of
-    the file, not by the diff being graded.
+    Read live off this checkout's own `Dockerfile` (the base branch's copy,
+    since the workflow that runs this script checks that out rather than the
+    pull request's) so the allowed ARG set can never drift from what the
+    annotation's owner is actually configured to manage, and so a bot's pull
+    request cannot smuggle in its own annotation comment to widen what it is
+    allowed to touch: the set is fixed by main's copy of the file, not by the
+    diff being graded.
     """
     names = set()
     previous = ""
     try:
         lines = path.read_text().splitlines()
     except OSError:
-        # No .env.example to read is not this script's problem to solve; an
+        # No Dockerfile to read is not this script's problem to solve; an
         # empty set simply means nothing in the file is treated as a pin,
         # which fails closed rather than open.
         return frozenset()
     for line in lines:
-        var = ENV_VAR_LINE.match(line)
-        if var and annotation.match(previous):
-            names.add(var.group("name"))
+        arg = ARG_LINE.match(line)
+        if arg and annotation.match(previous):
+            names.add(arg.group("name"))
         previous = line
     return frozenset(names)
 
 
-def renovate_annotated_env_vars(
-    path: Path = REPO_ROOT / ".env.example",
-) -> frozenset[str]:
-    """Return the variable names Renovate's custom regex manager may bump."""
-    return _env_vars_annotated_by(RENOVATE_ANNOTATION, path)
+def renovate_annotated_args(path: Path = DOCKERFILE) -> frozenset[str]:
+    """Return the ARG names Renovate's custom regex manager may bump."""
+    return _dockerfile_args_annotated_by(RENOVATE_ANNOTATION, path)
 
 
-def apk_pin_annotated_env_vars(
-    path: Path = REPO_ROOT / ".env.example",
-) -> frozenset[str]:
-    """Return the variable names resolve-apk-pins.yml may bump."""
-    return _env_vars_annotated_by(APK_PIN_ANNOTATION, path)
+def apk_pin_annotated_args(path: Path = DOCKERFILE) -> frozenset[str]:
+    """Return the ARG names resolve-apk-pins.yml may bump."""
+    return _dockerfile_args_annotated_by(APK_PIN_ANNOTATION, path)
 
 
-RENOVATE_ANNOTATED_ENV_VARS = renovate_annotated_env_vars()
-APK_PIN_ANNOTATED_ENV_VARS = apk_pin_annotated_env_vars()
+RENOVATE_ANNOTATED_ARGS = renovate_annotated_args()
+APK_PIN_ANNOTATED_ARGS = apk_pin_annotated_args()
 # The two marker types are semantically distinct (one drives Renovate, the
 # other drives resolve-apk-pins.yml) but grade identically here: either one
-# is enough to let a `VAR="value"` line's value change count as a pin bump.
-PIN_ELIGIBLE_ENV_VARS = RENOVATE_ANNOTATED_ENV_VARS | APK_PIN_ANNOTATED_ENV_VARS
+# is enough to let an `ARG NAME=value` line's value change count as a pin bump.
+PIN_ELIGIBLE_ARGS = RENOVATE_ANNOTATED_ARGS | APK_PIN_ANNOTATED_ARGS
 
 
 def normalize(line: str, path: str = "") -> str:
     """Reduce a line to everything about it that a version bump may not change."""
     if path.endswith(".tool-versions"):
         return TOOL_VERSION_LINE.sub(r"\g<prefix><version>", line)
-    if path.endswith(".env.example"):
-        var = ENV_VAR_LINE.match(line)
-        if var and var.group("name") in PIN_ELIGIBLE_ENV_VARS:
-            value = ENV_VALUE.search(line)
-            if value and re.fullmatch(RELEASE, value.group("value")):
-                return ENV_VALUE.sub('="<version>"', line)
-        # Not an annotated variable, or the quoted value is not a release on
-        # its own: returned unchanged either way, so any such edit shows up
-        # as a structural mismatch instead of being waved through.
+    # Exact equality, not `endswith`: the eligible ARG names above are read
+    # from the repository root's own Dockerfile, so they describe that file
+    # and no other. A `sub/Dockerfile` added later would carry its own,
+    # unrelated ARGs, and grading it against this file's annotations would be
+    # looser than reading its lines raw. It cannot reach here today anyway,
+    # since ALLOWED_PATHS refuses it, but the two checks should not have to
+    # agree for this one to be safe.
+    if path == "Dockerfile":
+        arg = ARG_LINE.match(line)
+        if (
+            arg
+            and arg.group("name") in PIN_ELIGIBLE_ARGS
+            and re.fullmatch(RELEASE, arg.group("value"))
+        ):
+            return ARG_VALUE.sub(r"\g<prefix><version>", line)
+        # Not an annotated ARG, or the value is not a release on its own:
+        # returned unchanged either way, so any such edit shows up as a
+        # structural mismatch instead of being waved through.
         return line
     line = ACTION_SHA.sub(r"\g<prefix><version>", line)
     line = REV_PIN.sub(r"\g<prefix><version>", line)

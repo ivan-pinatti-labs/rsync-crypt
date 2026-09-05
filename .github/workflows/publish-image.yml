@@ -71,10 +71,6 @@ on:
         required: false
         default: false
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 permissions: {}
 
 env:
@@ -85,40 +81,14 @@ env:
   IMAGE_DOCKERHUB: docker.io/ivanpinatti/rsync-crypt
 
 jobs:
-  build-and-push:
-    name: Build and Push
+  resolve-version:
+    name: Resolve the version tag
     runs-on: ubuntu-latest
-    # amd64 alone builds in a couple of minutes; arm64 goes through QEMU
-    # emulation for every apk transaction the Dockerfile runs, which is
-    # noticeably slower for the same image. 30 minutes leaves headroom for
-    # that without masking a genuine hang.
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      # GITHUB_TOKEN scoped to packages: write on this job is sufficient to
-      # push to ghcr.io/ivan-pinatti-labs/rsync-crypt, which lives under
-      # this repository's own owner; no personal access token or other
-      # stored secret is required. The Docker Hub push instead uses the
-      # long-lived DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets below, since
-      # GITHUB_TOKEN has no reach outside github.com.
-      packages: write
-      # Lets cosign request a short-lived Fulcio certificate bound to this
-      # run's own OIDC identity (keyless signing, below), instead of a
-      # stored private signing key.
-      id-token: write
-      # Lets the Docker Scout SARIF upload (below) attach its findings to
-      # this repository's code scanning tab.
-      security-events: write
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
       publish_latest: ${{ steps.version.outputs.publish_latest }}
-      digest: ${{ steps.build.outputs.digest }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
       - name: Determine the version tag
         id: version
         # github-tag-action's default tag_prefix is 'v' and merge.yml does not
@@ -130,6 +100,18 @@ jobs:
         # interpolated directly into the script, so a release tag or a
         # workflow_dispatch input crafted as shell syntax is read as an inert
         # string, not executed.
+        #
+        # This lives in its own job, ahead of build-and-push, specifically so
+        # build-and-push's own concurrency group (below) can key on this
+        # step's normalized output rather than on the raw
+        # github.event.release.tag_name/inputs.tag: those two carry the
+        # version in different shapes ('vX.Y.Z' vs 'X.Y.Z'), so keying
+        # concurrency on the raw value would fail to serialize a 'release'
+        # run against a workflow_dispatch run of what is actually the same
+        # version. A job's own concurrency key can read another job's
+        # output via 'needs', but the top-level, workflow-wide concurrency:
+        # block a single job used to sit under cannot, since it has to
+        # evaluate before any job (this one included) has run.
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
@@ -151,31 +133,58 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
 
-      - name: Read apk version pins from .env.example
-        id: pins
-        # The Dockerfile's ARGs (ALPINE_VERSION, GOCRYPTFS_VERSION,
-        # BASH_VERSION, LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION,
-        # SSHFS_VERSION, VIM_VERSION) are exactly what the Makefile's 'build'
-        # target passes as --build-arg, all sourced from .env.example. Reading
-        # them straight out of that file, rather than re-deriving them or
-        # invoking 'make build' (which has no push or multi-arch support),
-        # keeps this workflow unable to drift from what a local 'make build'
-        # would produce.
-        run: |
-          set -euo pipefail
-          {
-            echo "build_args<<PINS_EOF"
-            for var in ALPINE_VERSION GOCRYPTFS_VERSION BASH_VERSION LESS_VERSION \
-              OPENSSH_VERSION RSYNC_VERSION SSHFS_VERSION VIM_VERSION; do
-              value=$(grep -m1 "^${var}=" .env.example | cut -d'=' -f2- | tr -d '"')
-              if [ -z "$value" ]; then
-                echo "::error::${var} missing or empty in .env.example."
-                exit 1
-              fi
-              echo "${var}=${value}"
-            done
-            echo "PINS_EOF"
-          } >> "$GITHUB_OUTPUT"
+  build-and-push:
+    name: Build and Push
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    # amd64 alone builds in a couple of minutes; arm64 goes through QEMU
+    # emulation for every apk transaction the Dockerfile runs, which is
+    # noticeably slower for the same image. 30 minutes leaves headroom for
+    # that without masking a genuine hang.
+    timeout-minutes: 30
+    # Keyed on the resolved version, not github.ref: the republish guard
+    # below (`docker buildx imagetools inspect`, then build) is a
+    # read-then-act check with no lock of its own, so two runs that both
+    # resolve to the same version need to serialize against each other or
+    # both can pass the "does this tag exist yet" read before either has
+    # pushed, and both then push. github.ref does not protect against that
+    # for workflow_dispatch specifically: it is the ref the workflow was
+    # dispatched *from* (almost always the default branch), completely
+    # independent of the 'tag' input actually being published, so two manual
+    # dispatches of the same tag from two different refs would previously
+    # have raced right past this. Reading needs.resolve-version.outputs.version
+    # rather than the raw github.event.release.tag_name/inputs.tag also
+    # means a 'release' run and a workflow_dispatch run of the same version
+    # ('vX.Y.Z' vs 'X.Y.Z') serialize against each other too, which comparing
+    # the two raw, differently-shaped values here never would have.
+    concurrency:
+      group: ${{ github.workflow }}-${{ needs.resolve-version.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # GITHUB_TOKEN scoped to packages: write on this job is sufficient to
+      # push to ghcr.io/ivan-pinatti-labs/rsync-crypt, which lives under
+      # this repository's own owner; no personal access token or other
+      # stored secret is required. The Docker Hub push instead uses the
+      # long-lived DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets below, since
+      # GITHUB_TOKEN has no reach outside github.com.
+      packages: write
+      # Lets cosign request a short-lived Fulcio certificate bound to this
+      # run's own OIDC identity (keyless signing, below), instead of a
+      # stored private signing key.
+      id-token: write
+      # Lets the Docker Scout SARIF upload (below) attach its findings to
+      # this repository's code scanning tab.
+      security-events: write
+    outputs:
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish_latest: ${{ needs.resolve-version.outputs.publish_latest }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
@@ -203,8 +212,138 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Refuse to republish a version tag that already exists
+        # The incident this exists to stop from recurring: publish-image.yml
+        # was re-dispatched by hand with tag=1.5.0, a version already
+        # released. Nothing about the source tree had changed, but the image
+        # built from it had: the Dockerfile runs `apk update && apk upgrade`
+        # and its `~=` pins constrain a minor version, not an exact one, so
+        # Alpine's mirrors moving underneath an unchanged pin is enough for a
+        # rebuild to be different bytes. Docker Hub refused the overwrite,
+        # because its tag immutability rule (already configured there, regex
+        # '^\d+\.\d+\.\d+$') is exactly this check. GHCR has no equivalent
+        # setting at all and accepted it silently, which left GHCR's 1.5.0
+        # and both registries' 'latest' pointing at a different, unsigned
+        # build than Docker Hub's 1.5.0. See issue #55:
+        # https://github.com/ivan-pinatti-labs/rsync-crypt/issues/55
+        #
+        # So this is GHCR's missing immutability rule, enforced in the one
+        # place that can enforce it for a registry that will not: before the
+        # build, in the workflow that does the pushing. It runs after both
+        # logins on purpose, since `imagetools inspect` needs the same
+        # credentials the push will, and before the build so a refusal costs
+        # nothing but the checkout.
+        #
+        # Only bare semver is gated. '0.0.0-test', '0.0.0-manual' and any
+        # other non-semver tag are meant to be reused, run after run, for
+        # manual validation dispatches, and they are also exactly what Docker
+        # Hub's own immutability regex declines to match, so gating them here
+        # would be this workflow disagreeing with the registry it is
+        # mirroring the rule from.
+        #
+        # Only a workflow_dispatch is gated, for the reason the header
+        # explains at length: a native 'release' event fires for a release
+        # someone published by hand, where re-publishing an existing tag may
+        # well be the intent, and merge.yml's create-tag job mints a version
+        # nothing has used before every time. Note that merge.yml's release
+        # path reaches this workflow as a workflow_dispatch rather than a
+        # 'release' event (GITHUB_TOKEN-created releases start no runs, see
+        # the header), so this check does run for a genuine release. That is
+        # harmless in the ordinary case, since the tag genuinely does not
+        # exist yet, and is a free second opinion on create-tag's uniqueness
+        # if that ever stops being true.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Bare semver only, anchored end to end: '1.5.0' is gated,
+          # '0.0.0-test' and '1.5.0-rc1' are not. grep rather than a case
+          # pattern because a glob cannot require "digits" the way a
+          # character class repetition can, and this is the same shape as
+          # Docker Hub's own immutability regex on purpose.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::notice::${VERSION} is not bare semver, so it is reusable by design."
+            exit 0
+          fi
+
+          # A successful inspect means "this tag exists", unambiguously. A
+          # failed one used to mean "it does not" outright, which was fail
+          # open in the one direction that matters least: Docker Hub still
+          # enforces its own immutability rule server side regardless of what
+          # this step concludes, but GHCR does not, and GHCR not existing is
+          # exactly the incident (#55) this check exists to catch. A
+          # transient GHCR error (a registry blip, a rate limit, a timeout)
+          # read as "absent" would wave through the exact overwrite this step
+          # is for, on the one registry with nothing else standing in the
+          # way.
+          #
+          # So a failure is only ever "absent" once the registry has actually
+          # said so: `imagetools inspect` surfaces a real 404 as
+          # 'MANIFEST_UNKNOWN' or 'manifest unknown' (both registries) or a
+          # plain 'not found', regardless of which one of the two rejected
+          # it. Anything else, an auth hiccup, a timeout, a 5xx, an error
+          # this check does not recognize, is inconclusive rather than
+          # "absent", and 3 attempts with a short backoff exist only to let a
+          # genuinely transient one clear before treating it as a hard
+          # failure, since both logins above already succeeded by the time
+          # this runs and a real auth problem would have failed the job
+          # there instead of arriving here.
+          check_tag() {
+            local image="$1" attempt output
+            for attempt in 1 2 3; do
+              if output=$(docker buildx imagetools inspect "$image" 2>&1); then
+                return 0 # confirmed present
+              fi
+              if printf '%s' "$output" \
+                | grep -qiE 'manifest_unknown|manifest unknown|not found|no such manifest'; then
+                return 1 # confirmed absent
+              fi
+              echo "::warning::Inconclusive inspect of ${image}" \
+                "(attempt ${attempt}/3): ${output}"
+              sleep $((attempt * 5))
+            done
+            echo "::error::Could not confirm whether ${image} exists after" \
+              "3 attempts; last result: ${output}"
+            exit 2
+          }
+
+          published=""
+          for image in "$IMAGE_GHCR" "$IMAGE_DOCKERHUB"; do
+            if check_tag "${image}:${VERSION}"; then
+              published="${published} ${image}:${VERSION}"
+            fi
+          done
+
+          if [ -z "$published" ]; then
+            echo "::notice::${VERSION} is not published on either registry yet."
+            exit 0
+          fi
+
+          # Assembled rather than written as one long line: a GitHub
+          # annotation is a single line, and this file's own 100 column limit
+          # is not somewhere to smuggle an exception.
+          reason="Version ${VERSION} is already published on:${published}."
+          reason="${reason} Rebuilding a released version tag does not reproduce"
+          reason="${reason} the image it already points at, because the"
+          reason="${reason} Dockerfile's apk pins constrain a minor version and"
+          reason="${reason} Alpine's mirrors move within it, so this would"
+          reason="${reason} replace a signed, released image with different"
+          reason="${reason} bytes under the same name. Docker Hub refuses this"
+          reason="${reason} itself; GHCR does not, which is what this check is"
+          reason="${reason} for (issue #55). Publish a new version instead, or"
+          reason="${reason} dispatch with a non-semver tag such as 0.0.0-test"
+          reason="${reason} for a manual validation run."
+          echo "::error::${reason}"
+          exit 1
+
       - name: Derive image tags and labels
         id: meta
+        env:
+          # Aliased to keep the 'tags:' line below under this file's 100
+          # column limit; env.PUBLISH_LATEST is available inside 'with:'
+          # the same way env.IMAGE_GHCR already is.
+          PUBLISH_LATEST: ${{ needs.resolve-version.outputs.publish_latest }}
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           # Both registries, one buildx invocation, one shared digest: the
@@ -217,11 +356,25 @@ jobs:
           # disabled for an ad hoc manual workflow_dispatch test run, so a
           # throwaway test tag is never mistaken for the current release.
           tags: |
-            type=raw,value=latest,enable=${{ steps.version.outputs.publish_latest == 'true' }}
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' }}
+            type=raw,value=${{ needs.resolve-version.outputs.version }}
 
       - name: Build and push
         id: build
+        # No 'build-args:' input, deliberately. Every version this image is
+        # built from (ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION,
+        # LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION,
+        # VIM_VERSION) is an ARG default in the Dockerfile itself, kept
+        # correct by .github/workflows/resolve-apk-pins.yml on every
+        # ALPINE_VERSION bump, so passing them here would only be restating
+        # the file's own defaults back to it and creating a second place they
+        # could drift from. A preceding step used to read all eight out of
+        # .env.example for exactly that; it was removed with the pins.
+        #
+        # This is also what keeps a published image identical to a local
+        # 'make build': that target now passes a --build-arg only for a value
+        # a user explicitly overrode on the command line, and passes none at
+        # all by default, which is the same build this step performs.
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -229,7 +382,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ steps.pins.outputs.build_args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Attaches a Software Bill of Materials and full (every
@@ -288,7 +440,7 @@ jobs:
         # reserved identity no such caller can assume by choice, only by
         # dispatching through GITHUB_TOKEN the way merge.yml does.
         if: | # zizmor: ignore[bot-conditions]
-          steps.version.outputs.publish_latest == 'true' &&
+          needs.resolve-version.outputs.publish_latest == 'true' &&
           (github.event_name == 'release' || github.actor == 'github-actions[bot]')
         # continue-on-error: Docker Hub's description-update endpoint only
         # accepts password-based JWT login, not a Personal Access Token, and
