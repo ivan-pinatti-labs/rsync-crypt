@@ -301,13 +301,16 @@ it stays true for the image you actually run next. See the
 [Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page for
 the current version. Every image is signed with
 [cosign](https://github.com/sigstore/cosign) using GitHub Actions' keyless
-signing, so there is no private key to leak or rotate:
+signing, so there is no private key to leak or rotate. A real release signs
+with the identity of the git tag that triggered it (`refs/tags/vX.Y.Z`), not
+the `main` branch, so verification has to match the tag pattern rather than
+one fixed branch ref:
 
 ```bash
-IMAGE="ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.0"
+IMAGE="ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.2"
 
 cosign verify \
-  --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
+  --certificate-identity-regexp "^https://github\.com/ivan-pinatti-labs/rsync-crypt/\.github/workflows/publish-image\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   "$IMAGE"
 ```

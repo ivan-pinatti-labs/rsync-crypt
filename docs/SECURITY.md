@@ -125,13 +125,15 @@ Every published image is signed with
 signing, so there is no private key to leak or rotate. The signature covers
 both registries, since they publish the same digest. Verify a pulled image
 actually came out of this repository's `publish-image.yml` workflow before
-trusting it:
+trusting it. A real release signs with the identity of the git tag that
+triggered it (`refs/tags/vX.Y.Z`), not the `main` branch, so verification has
+to match the tag pattern rather than one fixed branch ref:
 
 ```bash
 cosign verify \
-  --certificate-identity "https://github.com/ivan-pinatti-labs/rsync-crypt/.github/workflows/publish-image.yml@refs/heads/main" \
+  --certificate-identity-regexp "^https://github\.com/ivan-pinatti-labs/rsync-crypt/\.github/workflows/publish-image\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.0
+  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.2
 ```
 
 Prefer a pinned version tag over `latest` for anything unattended (a cron job,
