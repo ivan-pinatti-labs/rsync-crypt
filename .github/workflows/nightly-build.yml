@@ -1,0 +1,192 @@
+name: Nightly Build
+
+# Rebuilds the image from the same Dockerfile ARG defaults publish-image.yml
+# uses for a real release, no version bumps: the point is to force a fresh
+# `apk update && apk upgrade` inside the build (see Dockerfile) so whatever
+# Alpine has newly published within the existing `~=` pins lands in a
+# published image within a day, instead of waiting for the next release.
+# Pushes only a mutable 'nightly' tag; never 'latest' and never a version
+# tag, so nothing this workflow does can be mistaken for a release or
+# interfere with the version-tag immutability publish-image.yml enforces.
+#
+# 'nightly' is deliberately outside Docker Hub's tag immutability rule for
+# this repository (regex '^\d+\.\d+\.\d+$', see publish-image.yml's
+# "Refuse to republish a version tag that already exists" step): it has no
+# digits at all, so it cannot match that pattern under any anchoring, and
+# stays mutable, overwritten in place every run, the way a rolling tag is
+# supposed to work.
+#
+# Docker Scout and Trivy both scan the pushed image, same as
+# publish-image.yml, but neither blocks here: Trivy is report-only (no
+# 'exit-code'), unlike its blocking counterpart in publish-image.yml. A
+# scheduled job failing every night on an upstream CVE nobody can fix from
+# this side, with no pull request to block, would just be noise; a genuine
+# new finding still surfaces via the SARIF upload to the Security tab. See
+# docs/SECURITY.md for the accepted-risk CVEs '.trivyignore' already keeps
+# quiet, on the release gate and here alike.
+#
+# No Docker Hub README sync and no version-tag republish guard: both are
+# release-specific (the guard exists only to protect a version tag's
+# immutability, and 'nightly' is deliberately not one; the README describes
+# the project, not a nightly build of it) and neither applies to a tag that
+# is meant to be overwritten every night.
+#
+# Steps are duplicated from publish-image.yml's build-and-push job rather
+# than factored into a shared reusable workflow. That refactor would touch
+# the release pipeline for a purely additive nightly job, which is a bigger
+# change than this workflow needs.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  IMAGE_GHCR: ghcr.io/ivan-pinatti-labs/rsync-crypt
+  IMAGE_DOCKERHUB: docker.io/ivanpinatti/rsync-crypt
+
+jobs:
+  nightly-build:
+    name: Nightly Build and Push
+    runs-on: ubuntu-latest
+    # Same headroom as publish-image.yml's build-and-push: amd64 builds in a
+    # couple of minutes, arm64 goes through QEMU emulation for every apk
+    # transaction and is noticeably slower.
+    timeout-minutes: 30
+    # A scheduled run and a manual workflow_dispatch landing at the same time
+    # would otherwise both build and push the same 'nightly' tag
+    # concurrently; cancel-in-progress here is safe (unlike
+    # publish-image.yml's version-tag build, which never cancels) because
+    # there is no version-tag immutability at stake, only whichever push
+    # lands last.
+    concurrency:
+      group: ${{ github.workflow }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      # Scoped to this repository's own owner, same as publish-image.yml.
+      packages: write
+      # Keyless cosign signing (below), same as publish-image.yml.
+      id-token: write
+      # Docker Scout's and Trivy's SARIF uploads (below) attach to this
+      # repository's code scanning tab.
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Derive image tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.IMAGE_GHCR }}
+            ${{ env.IMAGE_DOCKERHUB }}
+          # 'nightly' only. No 'latest', no version tag, ever, from this
+          # workflow.
+          tags: |
+            type=raw,value=nightly
+
+      - name: Build and push
+        id: build
+        # No 'build-args:' input, same as publish-image.yml and for the same
+        # reason: every version this image is built from is an ARG default in
+        # the Dockerfile itself. This step forces the rebuild; the freshness
+        # comes entirely from the Dockerfile's own `apk update && apk
+        # upgrade` picking up whatever Alpine has published since the image
+        # was last built, not from any version bump here.
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the published images
+        # Keyless signing, same as publish-image.yml: a short-lived Fulcio
+        # certificate bound to this run's own OIDC identity, no stored
+        # signing key. Both registries share the one digest the single
+        # buildx invocation above minted.
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes \
+            "${{ env.IMAGE_GHCR }}@${DIGEST}" \
+            "${{ env.IMAGE_DOCKERHUB }}@${DIGEST}"
+
+      - name: Scan the nightly image for known vulnerabilities (Docker Scout)
+        # Report-only, same as publish-image.yml's own Scout step: no
+        # 'exit-code' input, so a finding here never fails this job. Scanned
+        # against the Docker Hub ref, same reasoning as publish-image.yml:
+        # that is where 'docker scout' attributes CVE data by default.
+        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        with:
+          command: cves
+          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          sarif-file: scout-results.sarif
+
+      - name: Upload the Docker Scout scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: scout-results.sarif
+
+      - name: Scan the nightly image with Trivy
+        # Report-only here too: no 'exit-code'. See this file's header for
+        # why a nightly, unattended scan should surface findings rather than
+        # hard-fail on one. Same '.trivyignore' as the blocking gate in
+        # publish-image.yml and the local pre-push hook, so the known
+        # upstream gocryptfs CVEs (docs/SECURITY.md) stay quiet here too; a
+        # genuinely new finding still shows up in this run's SARIF upload.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+      - name: Upload the Trivy scan to code scanning
+        # Distinct 'category' from the Scout upload above, same reasoning as
+        # publish-image.yml: keeps the two scanners' findings for this digest
+        # as separate Security tab entries instead of one overwriting the
+        # other.
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
