@@ -56,13 +56,16 @@ jobs:
     timeout-minutes: 30
     # A scheduled run and a manual workflow_dispatch landing at the same time
     # would otherwise both build and push the same 'nightly' tag
-    # concurrently; cancel-in-progress here is safe (unlike
-    # publish-image.yml's version-tag build, which never cancels) because
-    # there is no version-tag immutability at stake, only whichever push
-    # lands last.
+    # concurrently; queue them instead of cancelling one. A cancelled run can
+    # land between 'Build and push' (which already moved 'nightly') and
+    # 'Sign the published images' or the scan uploads, leaving 'nightly'
+    # pointing at an unsigned, unscanned image if the run that replaces it
+    # then fails. There is no version-tag immutability at stake here, only
+    # which push lands last, but "last" still has to mean a run that
+    # finished, not one that got cut off mid-sequence.
     concurrency:
       group: ${{ github.workflow }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     permissions:
       contents: read
       # Scoped to this repository's own owner, same as publish-image.yml.
@@ -173,9 +176,16 @@ jobs:
         # publish-image.yml and the local pre-push hook, so the known
         # upstream gocryptfs CVEs (docs/SECURITY.md) stay quiet here too; a
         # genuinely new finding still shows up in this run's SARIF upload.
+        #
+        # 'version:' pinned explicitly to match the local pre-push hook
+        # ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml) and
+        # publish-image.yml's own Trivy steps, rather than relying on this
+        # action's own default, which (at the commit pinned below) is an
+        # older Trivy release.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH

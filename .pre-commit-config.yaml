@@ -134,16 +134,27 @@ repos:
       # server-side gate for anyone who bypasses or skips this hook (a
       # `--no-verify` push, a fresh clone with hooks not installed yet).
       #
-      # Scoped to Dockerfile and Makefile only: those are the only two files
-      # that can change what actually gets built (build args, base image,
-      # apk pins) or how (the `make build` invocation this mirrors). Every
-      # other file in the repo can change without the image itself changing,
-      # so there is no reason to pay for a rebuild-and-scan on, say, a docs
-      # or workflow-only push.
+      # Scoped to the Dockerfile's own inputs: Makefile (the `make build`
+      # invocation this mirrors, and the only other file that can change
+      # build args), and scripts/ and files/bash/, which the Dockerfile
+      # COPYs directly into the image. There is no .dockerignore narrowing
+      # that build context, so any file under either directory can change
+      # what actually ships. Every other file in the repo can change
+      # without the image itself changing, so there is no reason to pay for
+      # a rebuild-and-scan on, say, a docs or workflow-only push.
+      #
+      # cleanup()'s own `|| true` on the image-removal command is not the
+      # general error suppression this file otherwise avoids: it runs only
+      # in a `trap ... EXIT` handler whose job is best-effort teardown, after
+      # the hook's real pass/fail outcome is already decided by whatever ran
+      # before it. Without it, `set -e` would abort cleanup() the moment
+      # `rmi -f` returns non-zero (the image already gone, a daemon hiccup)
+      # and skip `rm -f "${tarball}"` right after it, leaking a full image
+      # archive into the system temp directory on every such run.
       - id: trivy-image-scan
         name: trivy image scan (aquasecurity/trivy)
         language: system
-        files: "^(Dockerfile|Makefile)$"
+        files: "^(Dockerfile|Makefile|scripts/|files/bash/)"
         pass_filenames: false
         stages: [pre-push]
         entry: >-
@@ -155,7 +166,10 @@ repos:
           };
           tag="rsync-crypt:pre-push-trivy-scan-$$";
           tarball="$(mktemp)";
-          cleanup() { "${runtime}" rmi -f "${tag}" >/dev/null 2>&1; rm -f "${tarball}"; };
+          cleanup() {
+          "${runtime}" rmi -f "${tag}" >/dev/null 2>&1 || true;
+          rm -f "${tarball}";
+          };
           trap cleanup EXIT;
           "${runtime}" build -t "${tag}" .;
           "${runtime}" save -o "${tarball}" "${tag}";

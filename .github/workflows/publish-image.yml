@@ -347,7 +347,11 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           # Both registries, one buildx invocation, one shared digest: the
-          # tags below fan out across both automatically.
+          # tags below fan out across both automatically. This step's own
+          # 'tags:' output is the *public* tag list: it names what the image
+          # gets promoted to once the Trivy gate below passes, not what the
+          # build step pushes to directly (see "Build and push to a staging
+          # tag" for why those are different).
           images: |
             ${{ env.IMAGE_GHCR }}
             ${{ env.IMAGE_DOCKERHUB }}
@@ -359,8 +363,26 @@ jobs:
             type=raw,value=latest,enable=${{ env.PUBLISH_LATEST == 'true' }}
             type=raw,value=${{ needs.resolve-version.outputs.version }}
 
-      - name: Build and push
+      - name: Build and push to a staging tag
         id: build
+        # Pushes to ':staging' on each registry, not to 'latest' or the
+        # version tag from the 'meta' step above. Those public tags are only
+        # created once the Trivy gate below passes (see "Promote the scanned
+        # image to its public tags"); pushing them here, before any scan has
+        # run, would mean a CRITICAL/HIGH finding fails this job only after
+        # the vulnerable image is already live and pullable under its real
+        # name. Docker Scout stays report-only regardless, so this
+        # restructuring is entirely about making the Trivy 'exit-code: 1'
+        # gate below actually gate something.
+        #
+        # ':staging' is a fixed, always-overwritten name on purpose, the same
+        # shape as nightly-build.yml's ':nightly': neither matches Docker
+        # Hub's version-tag immutability regex ('^\d+\.\d+\.\d+$', see the
+        # republish guard above), so both stay mutable, and GHCR enforces no
+        # immutability at all. The 'concurrency:' group above (keyed on the
+        # resolved version) already serializes runs, so two versions never
+        # race to overwrite it at once.
+        #
         # No 'build-args:' input, deliberately. Every version this image is
         # built from (ALPINE_VERSION, GOCRYPTFS_VERSION, BASH_VERSION,
         # LESS_VERSION, OPENSSH_VERSION, RSYNC_VERSION, SSHFS_VERSION,
@@ -380,7 +402,13 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.IMAGE_GHCR }}:staging
+            ${{ env.IMAGE_DOCKERHUB }}:staging
+          # Labels still reflect the real, final tags/version (from 'meta'
+          # above), not ':staging': OCI annotations like
+          # org.opencontainers.image.version describe what this image *is*,
+          # independent of which registry tags currently point at it.
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -388,9 +416,141 @@ jobs:
           # platform, every build stage) SLSA provenance to the pushed
           # manifest, so a puller, or Docker Scout below, can inspect what
           # went into the image and how it was built, rather than just
-          # trusting the tag.
+          # trusting the tag. 'docker buildx imagetools create' (the
+          # promotion step below) copies this manifest list as-is, SBOM and
+          # provenance attestations included, so promoting never has to
+          # regenerate either.
           sbom: true
           provenance: mode=max
+
+      - name: Scan the staging image for known vulnerabilities (Docker Scout)
+        # Report-only: no 'exit-code' input is set, so a finding here never
+        # fails this job; this is visibility (the SARIF upload below,
+        # surfaced in this repository's code scanning tab), not a release
+        # gate. Docker Scout's own Dashboard health-score badge was retired
+        # 2026-07-01 (see docs.docker.com's "Deprecated and retired Docker
+        # products and features"), so code scanning is the durable place
+        # this scan's findings show up; the 'docker/scout-action' CI action
+        # itself is explicitly unaffected by that retirement. Scanned
+        # against the Docker Hub ':staging' ref specifically because that is
+        # where 'docker scout' attributes CVE data by default; the two
+        # registries share the same digest either way, and that digest is
+        # the same one that gets promoted to the public tags below,
+        # regardless of which tag currently names it.
+        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        with:
+          command: cves
+          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          sarif-file: scout-results.sarif
+
+      - name: Upload the vulnerability scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: scout-results.sarif
+
+      - name: Scan the staging image with Trivy (report)
+        # Same digest, same registry ref, same '.trivyignore' the local
+        # pre-push hook (.pre-commit-config.yaml's trivy-image-scan) enforces
+        # against a locally built image; this is the same check run again
+        # here as the blocking backstop for anyone who bypassed or skipped
+        # that hook (a '--no-verify' push, a fresh clone with hooks not
+        # installed yet).
+        #
+        # This step is report-only on purpose (no 'exit-code'), and runs
+        # before the blocking step below: SARIF upload happens either way,
+        # so a genuine finding still reaches the Security tab even if the
+        # blocking step below then fails the job on it. A single
+        # 'aquasecurity/trivy-action' invocation cannot both emit SARIF and
+        # fail the job on a different format's output, so this is split into
+        # two runs the same way Docker Scout above is split from the
+        # 'exit-code' gate a plain CVE scan would otherwise need elsewhere.
+        #
+        # 'version:' is pinned explicitly rather than left to the action's
+        # own default: the exact commit this action is pinned to below
+        # defaults to an older Trivy release than the local pre-push hook
+        # uses ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml),
+        # and relying on two different Trivy versions to agree on findings
+        # against the same '.trivyignore' is exactly the kind of drift this
+        # explicit pin avoids.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+      - name: Upload the Trivy scan to code scanning
+        # Distinct 'category' from the Scout upload above (which takes the
+        # default), so the two scanners' findings for the same digest land
+        # as separate entries in the Security tab instead of one overwriting
+        # the other.
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+      - name: Scan the staging image with Trivy (gate)
+        # Blocking: 'exit-code: 1' fails this job on an unignored
+        # CRITICAL/HIGH finding, unlike the Docker Scout step and the report
+        # step above. This is the CI-side backstop for the local pre-push
+        # hook; see that hook's comment in .pre-commit-config.yaml for why
+        # the same scan also runs there, before a push can even happen.
+        # '.trivyignore' documents why each currently-ignored CVE is there;
+        # see docs/SECURITY.md for the full reasoning.
+        #
+        # Everything after this step (promotion, signing, the Docker Hub
+        # description sync) only runs if this step passes: a finding here
+        # stops the image from ever reaching 'latest' or its version tag,
+        # rather than merely failing the job after the fact. Same explicit
+        # 'version:' pin as the report step above, for the same reason.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+      - name: Promote the scanned image to its public tags
+        # Reached only if the blocking Trivy scan above passed. Aliases the
+        # exact digest both scanners just read (never rebuilt, never
+        # re-pushed) under the public tags 'meta' computed earlier ('latest'
+        # when appropriate, and the version tag always), one registry at a
+        # time since each 'imagetools create' call promotes tags within a
+        # single registry against a source digest already in that same
+        # registry. This is a manifest-level operation: it copies the
+        # existing multi-platform manifest list, SBOM and provenance
+        # attestations included, under the new tag names, without touching
+        # any image bytes.
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          GHCR_IMAGE: ${{ env.IMAGE_GHCR }}
+          DOCKERHUB_IMAGE: ${{ env.IMAGE_DOCKERHUB }}
+          PUBLIC_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          ghcr_tags=()
+          dockerhub_tags=()
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            case "$ref" in
+              "${GHCR_IMAGE}":*) ghcr_tags+=(--tag "$ref") ;;
+              "${DOCKERHUB_IMAGE}":*) dockerhub_tags+=(--tag "$ref") ;;
+              *)
+                echo "::error::Unrecognized tag from 'meta': ${ref}"
+                exit 1
+                ;;
+            esac
+          done <<<"${PUBLIC_TAGS}"
+          docker buildx imagetools create "${ghcr_tags[@]}" \
+            "${GHCR_IMAGE}@${DIGEST}"
+          docker buildx imagetools create "${dockerhub_tags[@]}" \
+            "${DOCKERHUB_IMAGE}@${DIGEST}"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -404,6 +564,13 @@ jobs:
         # pulled image back against this exact workflow's identity. Both
         # registries share the one digest the single buildx invocation
         # above minted, so one 'cosign sign' call covers both refs.
+        #
+        # Runs after promotion, not the staging push: signing is an
+        # attestation that this digest is the real published release, which
+        # is only true once it has cleared the Trivy gate and actually been
+        # promoted. The digest itself does not change between the staging
+        # push and promotion, so this signs the exact bytes that were
+        # scanned.
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
@@ -451,9 +618,9 @@ jobs:
         # actual account password as a CI secret to work around it would be a
         # strictly worse security posture than the PAT already in use, so
         # this step is left to fail with a 403 and the job carries on: image
-        # signing (above) and the vulnerability scan plus verify matrix
-        # (below) must never be blocked by a Docker Hub listing that failed
-        # to refresh. v1.5.0's publish run
+        # signing (above) and the verify matrix (below) must never be blocked
+        # by a Docker Hub listing that failed to refresh. v1.5.0's publish
+        # run
         # (https://github.com/ivan-pinatti-labs/rsync-crypt/actions/runs/33903867494)
         # hit exactly this in production, which is what surfaced the gap.
         continue-on-error: true
@@ -463,81 +630,6 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ivanpinatti/rsync-crypt
           readme-filepath: ./README.md
-
-      - name: Scan the Docker Hub image for known vulnerabilities
-        # Report-only: no 'exit-code' input is set, so a finding here never
-        # fails this job or blocks a publish; this is visibility (the SARIF
-        # upload below, surfaced in this repository's code scanning tab),
-        # not a release gate. Docker Scout's own Dashboard health-score
-        # badge was retired 2026-07-01 (see docs.docker.com's "Deprecated
-        # and retired Docker products and features"), so code scanning is
-        # the durable place this scan's findings show up; the
-        # 'docker/scout-action' CI action itself is explicitly unaffected by
-        # that retirement. Scanned against the Docker Hub ref specifically
-        # because that is where 'docker scout' attributes CVE data by
-        # default; the two registries share the same digest either way.
-        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
-        with:
-          command: cves
-          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
-          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
-          sarif-file: scout-results.sarif
-
-      - name: Upload the vulnerability scan to code scanning
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
-        with:
-          sarif_file: scout-results.sarif
-
-      - name: Scan the published image with Trivy (report)
-        # Same digest, same registry ref, same '.trivyignore' the local
-        # pre-push hook (.pre-commit-config.yaml's trivy-image-scan) enforces
-        # against a locally built image; this is the same check run again
-        # here as the blocking backstop for anyone who bypassed or skipped
-        # that hook (a '--no-verify' push, a fresh clone with hooks not
-        # installed yet).
-        #
-        # This step is report-only on purpose (no 'exit-code'), and runs
-        # before the blocking step below: SARIF upload happens either way,
-        # so a genuine finding still reaches the Security tab even if the
-        # blocking step below then fails the job on it. A single
-        # 'aquasecurity/trivy-action' invocation cannot both emit SARIF and
-        # fail the job on a different format's output, so this is split into
-        # two runs the same way Docker Scout above is split from the
-        # 'exit-code' gate a plain CVE scan would otherwise need elsewhere.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
-
-      - name: Upload the Trivy scan to code scanning
-        # Distinct 'category' from the Scout upload above (which takes the
-        # default), so the two scanners' findings for the same digest land
-        # as separate entries in the Security tab instead of one overwriting
-        # the other.
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy
-
-      - name: Scan the published image with Trivy (gate)
-        # Blocking: 'exit-code: 1' fails this job on an unignored
-        # CRITICAL/HIGH finding, unlike the Docker Scout step and the report
-        # step above. This is the CI-side backstop for the local pre-push
-        # hook; see that hook's comment in .pre-commit-config.yaml for why
-        # the same scan also runs there, before a push can even happen.
-        # '.trivyignore' documents why each currently-ignored CVE is there;
-        # see docs/SECURITY.md for the full reasoning.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          trivyignores: .trivyignore
 
   verify:
     name: Verify Published Image (${{ matrix.registry }})
