@@ -6,13 +6,15 @@
 # checklist-git-commit-msg runs at the commit-msg git stage rather than
 # pre-commit, so default_install_hook_types wires both stages up. Every other
 # hook is pinned to stages: [pre-commit] so it does not also re-run,
-# redundantly, during that commit-msg invocation.
+# redundantly, during that commit-msg invocation. trivy-image-scan (below)
+# runs at pre-push instead, for the same reason: it builds the image before
+# scanning it, and that is too slow to run on every commit.
 #
 # There is deliberately no `ci:` block. That block configures pre-commit.ci,
 # whose autofix_prs would commit and push fixes back to a pull request branch.
 # CI here is a gate: a hook that finds something fixable fails the run and the
 # author fixes it. See "CI never autofixes" in CLAUDE.md.
-default_install_hook_types: [pre-commit, commit-msg]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   - repo: https://github.com/ivan-pinatti-labs/pre-commit-checklists
     rev: v2.2.5
@@ -121,3 +123,61 @@ repos:
           docker.io/dotenvlinter/dotenv-linter:4.0.0 check --skip-updates
           --ignore-checks QuoteCharacter "$@"
           ' --
+
+      # Builds the image locally and scans it with Trivy before it can be
+      # pushed. pre-push, not pre-commit: a full multi-stage image build is
+      # too slow to run on every commit, and Dockerfile/Makefile (the only
+      # two files this scopes to) change far less often than the files the
+      # other hooks above run against on every commit. This is a local
+      # backstop for whoever is about to push; .github/workflows/publish-image.yml
+      # runs the same scan, with the same .trivyignore, as the blocking
+      # server-side gate for anyone who bypasses or skips this hook (a
+      # `--no-verify` push, a fresh clone with hooks not installed yet).
+      #
+      # Scoped to the Dockerfile's own inputs: Makefile (the `make build`
+      # invocation this mirrors, and the only other file that can change
+      # build args), and scripts/ and files/bash/, which the Dockerfile
+      # COPYs directly into the image. There is no .dockerignore narrowing
+      # that build context, so any file under either directory can change
+      # what actually ships. Every other file in the repo can change
+      # without the image itself changing, so there is no reason to pay for
+      # a rebuild-and-scan on, say, a docs or workflow-only push.
+      #
+      # cleanup()'s own `|| true` on the image-removal command is not the
+      # general error suppression this file otherwise avoids: it runs only
+      # in a `trap ... EXIT` handler whose job is best-effort teardown, after
+      # the hook's real pass/fail outcome is already decided by whatever ran
+      # before it. Without it, `set -e` would abort cleanup() the moment
+      # `rmi -f` returns non-zero (the image already gone, a daemon hiccup)
+      # and skip `rm -f "${tarball}"` right after it, leaking a full image
+      # archive into the system temp directory on every such run.
+      - id: trivy-image-scan
+        name: trivy image scan (aquasecurity/trivy)
+        language: system
+        files: "^(Dockerfile|Makefile|scripts/|files/bash/)"
+        pass_filenames: false
+        stages: [pre-push]
+        entry: >-
+          bash -c '
+          set -euo pipefail;
+          runtime=$(command -v docker || command -v podman) || {
+          echo "trivy-image-scan needs docker or podman on PATH." >&2;
+          exit 1;
+          };
+          tag="rsync-crypt:pre-push-trivy-scan-$$";
+          tarball="$(mktemp)";
+          cleanup() {
+          "${runtime}" rmi -f "${tag}" >/dev/null 2>&1 || true;
+          rm -f "${tarball}";
+          };
+          trap cleanup EXIT;
+          "${runtime}" build -t "${tag}" .;
+          "${runtime}" save -o "${tarball}" "${tag}";
+          "${runtime}" run --rm
+          -v "${tarball}:/image.tar:ro,Z"
+          -v "$(pwd)/.trivyignore:/work/.trivyignore:ro,Z"
+          -w /work
+          docker.io/aquasec/trivy:0.74.0 image
+          --severity CRITICAL,HIGH --exit-code 1
+          --ignorefile /work/.trivyignore --input /image.tar
+          '

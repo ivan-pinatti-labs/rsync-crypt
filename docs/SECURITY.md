@@ -142,6 +142,68 @@ a scheduled backup): it guarantees the same `gocryptfs`, `rsync`, and other
 release happened to bake in. A released version tag is never rebuilt in place;
 `publish-image.yml` refuses to republish one.
 
+**The `nightly` tag is the one exception to "pin a version tag," and it cuts
+the other way.** `.github/workflows/nightly-build.yml` rebuilds the image
+every night from the same Dockerfile ARG defaults as the latest release, no
+version bump, purely to force a fresh `apk update && apk upgrade` and pick up
+whatever Alpine has newly published within the existing pins. It is
+overwritten in place every run and never promoted to `latest` or a version
+tag. Use it to see whether a fix has already landed upstream, or to get the
+freshest packages for a throwaway environment; do not point anything
+unattended or production at it; the guidance above (pin a version tag) is
+still what backs an actual backup schedule.
+
+---
+
+## Image Vulnerability Scanning
+
+Every published image, `nightly` included, is scanned by both
+[Docker Scout](https://docs.docker.com/scout/) and
+[Trivy](https://trivy.dev/), in three places: locally before a push
+(`.pre-commit-config.yaml`'s `trivy-image-scan`, a `pre-push` hook, since a
+full image build is too slow to run on every commit) and again in CI
+(`.github/workflows/publish-image.yml` for a release, `nightly-build.yml` for
+the nightly rebuild). Docker Scout is report-only everywhere it runs, its
+findings surfaced through this repository's code scanning tab rather than as
+a release gate (see that step's own comment for why, including the retired
+Dashboard health-score badge). Trivy is the blocking check on a release: an
+unignored `CRITICAL` or `HIGH` finding fails both the local pre-push hook and
+the CI job. On the nightly rebuild Trivy runs report-only instead, same as
+Scout, since a scheduled job hard-failing every night on an upstream CVE
+nobody can fix from this side, with no pull request to block, would only be
+noise; a genuinely new finding still shows up in that run's SARIF upload.
+
+### Accepted-risk CVEs
+
+`.trivyignore` at the repository root lists CVE IDs that Trivy's blocking gate
+would otherwise fail on, with no fix available on our side. All of them
+today trace to gocryptfs, the only Go binary in this image: its upstream
+release still pins `golang.org/x/crypto` v0.33.0 and was built with Go
+1.26.3, both flagged for multiple CVEs. gocryptfs's own `master` branch has
+already bumped past both, but no release has shipped with that bump yet, so
+there is nothing to upgrade to. `.trivyignore`'s own header comment carries
+the full reasoning, including a wrinkle worth knowing before touching that
+file: a plain `trivy image` scan of this image does not actually surface
+these CVEs, because Trivy tracks gocryptfs purely as the Alpine `apk` package
+once it is installed and does not separately analyze a binary a distro
+package manager already owns. Docker Scout's SBOM-based scan does surface
+them, which is how they were first found; the entries in `.trivyignore` are
+kept as the canonical accepted-risk record regardless, documented here so the
+reasoning has one home instead of being re-derived every time someone asks
+why a CVE is on that list.
+
+Do not add a new entry to `.trivyignore` without the same rigor: confirm it
+against a live `trivy image` run (or `trivy rootfs` against the binary
+directly, per the note above) or a current Docker Scout scan of the actual
+image, not a copy from an advisory feed or an older list.
+
+A CVE in a transitive base-layer package (util-linux's `libblkid`/`libmount`
+were the case that motivated all of this: Alpine's own security update fixes
+them, and a rebuild of this image picks that fix up automatically) generally
+should **not** go in `.trivyignore`. Ignoring it would hide the day the fix
+actually lands; letting the scan keep failing until the next rebuild is the
+point.
+
 ---
 
 ## What `make clean` Removes

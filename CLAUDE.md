@@ -353,6 +353,36 @@ finding per quoted value (14 today, and it moves with the file).
 its first argument, so an `args:` entry replaces that name instead of reaching
 the tool. The library documents the local-hook copy as the supported way out.
 
+### `.trivyignore` entries need a live scan, not a copied list
+
+Every CVE ID in `.trivyignore` traces to gocryptfs's vendored
+`golang.org/x/crypto` and Go stdlib versions, upstream and unfixed until
+gocryptfs itself ships a release off its `master` branch (see
+docs/SECURITY.md's "Accepted-risk CVEs"). Confirm a new entry against a live
+`trivy image` run or a current Docker Scout scan of the actual image before
+adding it, never against an advisory feed or a prior list on faith: the list
+this file shipped with was built that way and turned up both extra and
+missing CVE IDs compared to an initial guess based on Docker Scout's UI
+alone.
+
+The same live check surfaced a real gap worth knowing before debugging one
+like it again: a plain `trivy image` scan of this image does not detect
+these CVEs at all. Trivy tracks gocryptfs purely as the Alpine `apk` package
+once it is installed and does not separately run its `gobinary` analyzer
+against a binary a distro package manager already owns, so the vendored
+dependency versions baked into the binary itself never surface through
+`trivy image`. `trivy rootfs` against the binary extracted from the image
+does run that analyzer and is what actually confirms a given CVE ID belongs
+in this file. Docker Scout's SBOM-based scan surfaces them regardless of
+this gap, which is how they were found in the first place.
+
+A CVE in a transitive base-layer package, the way util-linux's
+`libblkid`/`libmount` CVEs were, should generally **not** go in
+`.trivyignore`. Those are fixed by an Alpine security update already
+published upstream; the Dockerfile's `apk update && apk upgrade` picks the
+fix up on the next rebuild, so the scan failing until that rebuild happens is
+the mechanism working, not a false positive to silence.
+
 ### Parallel agents need separate worktrees
 
 More than one agent working in this repository at the same time must each get
