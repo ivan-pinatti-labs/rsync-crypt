@@ -151,8 +151,13 @@ jobs:
             "${{ env.IMAGE_GHCR }}@${DIGEST}" \
             "${{ env.IMAGE_DOCKERHUB }}@${DIGEST}"
 
-      - name: Scan the nightly image for known vulnerabilities (Docker Scout)
-        # Report-only, same as publish-image.yml's own Scout step: no
+      # Same per-platform reasoning as publish-image.yml: this push is one
+      # multi-platform (linux/amd64, linux/arm64) manifest list, and both
+      # scanners default to a single platform when pointed at a
+      # multi-platform ref with no platform selected, which would leave an
+      # arm64-only finding out of every report below.
+      - name: Scan the nightly image for known vulnerabilities (Docker Scout, amd64)
+        # Report-only, same as publish-image.yml's own Scout steps: no
         # 'exit-code' input, so a finding here never fails this job. Scanned
         # against the Docker Hub ref, same reasoning as publish-image.yml:
         # that is where 'docker scout' attributes CVE data by default.
@@ -160,16 +165,40 @@ jobs:
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          platform: linux/amd64
           dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
-          sarif-file: scout-results.sarif
+          sarif-file: scout-results-amd64.sarif
 
-      - name: Upload the Docker Scout scan to code scanning
+      - name: Upload the Docker Scout (amd64) scan to code scanning
+        # Every SARIF upload from here down gets its own 'category', same
+        # reasoning as publish-image.yml: one analysis per category per
+        # commit is how code scanning dedupes, so without distinct
+        # categories each later upload would silently replace an earlier
+        # one on this run's commit instead of appearing alongside it.
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          sarif_file: scout-results.sarif
+          sarif_file: scout-results-amd64.sarif
+          category: scout-amd64
 
-      - name: Scan the nightly image with Trivy
+      - name: Scan the nightly image for known vulnerabilities (Docker Scout, arm64)
+        # Same as the amd64 step above, targeting the other platform.
+        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        with:
+          command: cves
+          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          platform: linux/arm64
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          sarif-file: scout-results-arm64.sarif
+
+      - name: Upload the Docker Scout (arm64) scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: scout-results-arm64.sarif
+          category: scout-arm64
+
+      - name: Scan the nightly image with Trivy (amd64)
         # Report-only here too: no 'exit-code'. See this file's header for
         # why a nightly, unattended scan should surface findings rather than
         # hard-fail on one. Same '.trivyignore' as the blocking gate in
@@ -181,22 +210,42 @@ jobs:
         # ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml) and
         # publish-image.yml's own Trivy steps, rather than relying on this
         # action's own default, which (at the commit pinned below) is an
-        # older Trivy release.
+        # older Trivy release. 'TRIVY_PLATFORM' selects which platform of
+        # the manifest list Trivy resolves; there is no dedicated action
+        # input for it, but Trivy's own CLI reads the environment variable
+        # directly.
+        env:
+          TRIVY_PLATFORM: linux/amd64
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
           version: v0.74.0
           format: sarif
-          output: trivy-results.sarif
+          output: trivy-results-amd64.sarif
           severity: CRITICAL,HIGH
           trivyignores: .trivyignore
 
-      - name: Upload the Trivy scan to code scanning
-        # Distinct 'category' from the Scout upload above, same reasoning as
-        # publish-image.yml: keeps the two scanners' findings for this digest
-        # as separate Security tab entries instead of one overwriting the
-        # other.
+      - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          sarif_file: trivy-results.sarif
-          category: trivy
+          sarif_file: trivy-results-amd64.sarif
+          category: trivy-amd64
+
+      - name: Scan the nightly image with Trivy (arm64)
+        # Same as the amd64 step above, targeting the other platform.
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
+          format: sarif
+          output: trivy-results-arm64.sarif
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+      - name: Upload the Trivy (arm64) scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-results-arm64.sarif
+          category: trivy-arm64

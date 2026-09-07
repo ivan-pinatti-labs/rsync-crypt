@@ -423,7 +423,20 @@ jobs:
           sbom: true
           provenance: mode=max
 
-      - name: Scan the staging image for known vulnerabilities (Docker Scout)
+      # The build above pushes one multi-platform (linux/amd64,
+      # linux/arm64) manifest list. Every scan step from here down runs
+      # once per platform, explicitly: Docker Scout and Trivy both default
+      # to inspecting a single platform (effectively linux/amd64) when
+      # pointed at a multi-platform ref with no platform selected, which
+      # would let a CRITICAL/HIGH finding that exists only in the arm64
+      # build bypass every gate below silently. 'docker/scout-action' has a
+      # 'platform:' input for this; 'aquasecurity/trivy-action' has none,
+      # so its steps set 'TRIVY_PLATFORM' instead, which Trivy's own CLI
+      # reads directly (confirmed against this exact pinned action commit:
+      # the same digest resolves a different image ID per platform with
+      # that variable set, so it is genuinely selecting the manifest, not a
+      # no-op).
+      - name: Scan the staging image for known vulnerabilities (Docker Scout, amd64)
         # Report-only: no 'exit-code' input is set, so a finding here never
         # fails this job; this is visibility (the SARIF upload below,
         # surfaced in this repository's code scanning tab), not a release
@@ -441,22 +454,50 @@ jobs:
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          platform: linux/amd64
           dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
-          sarif-file: scout-results.sarif
+          sarif-file: scout-results-amd64.sarif
 
-      - name: Upload the vulnerability scan to code scanning
+      - name: Upload the Docker Scout (amd64) scan to code scanning
+        # Every SARIF upload from here down gets its own 'category': one
+        # analysis per category per commit is how code scanning dedupes, so
+        # without a distinct category per platform (and per scanner) each
+        # later upload would silently replace an earlier one on the same
+        # commit instead of appearing alongside it.
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          sarif_file: scout-results.sarif
+          sarif_file: scout-results-amd64.sarif
+          category: scout-amd64
 
-      - name: Scan the staging image with Trivy (report)
+      - name: Scan the staging image for known vulnerabilities (Docker Scout, arm64)
+        # Same as the amd64 step above, targeting the other platform in the
+        # manifest list.
+        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        with:
+          command: cves
+          image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          platform: linux/arm64
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          sarif-file: scout-results-arm64.sarif
+
+      - name: Upload the Docker Scout (arm64) scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: scout-results-arm64.sarif
+          category: scout-arm64
+
+      - name: Scan the staging image with Trivy (report, amd64)
         # Same digest, same registry ref, same '.trivyignore' the local
         # pre-push hook (.pre-commit-config.yaml's trivy-image-scan) enforces
         # against a locally built image; this is the same check run again
         # here as the blocking backstop for anyone who bypassed or skipped
         # that hook (a '--no-verify' push, a fresh clone with hooks not
-        # installed yet).
+        # installed yet). The local hook only ever scans a single-platform
+        # image (whatever `docker build` produces on the machine running
+        # it), which is exactly why both platforms need their own check
+        # here rather than assuming local coverage extends to arm64.
         #
         # This step is report-only on purpose (no 'exit-code'), and runs
         # before the blocking step below: SARIF upload happens either way,
@@ -474,39 +515,72 @@ jobs:
         # and relying on two different Trivy versions to agree on findings
         # against the same '.trivyignore' is exactly the kind of drift this
         # explicit pin avoids.
+        env:
+          TRIVY_PLATFORM: linux/amd64
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
           version: v0.74.0
           format: sarif
-          output: trivy-results.sarif
+          output: trivy-results-amd64.sarif
           severity: CRITICAL,HIGH
           trivyignores: .trivyignore
 
-      - name: Upload the Trivy scan to code scanning
-        # Distinct 'category' from the Scout upload above (which takes the
-        # default), so the two scanners' findings for the same digest land
-        # as separate entries in the Security tab instead of one overwriting
-        # the other.
+      - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          sarif_file: trivy-results.sarif
-          category: trivy
+          sarif_file: trivy-results-amd64.sarif
+          category: trivy-amd64
 
-      - name: Scan the staging image with Trivy (gate)
+      - name: Scan the staging image with Trivy (report, arm64)
+        # Same as the amd64 report step above, targeting the other platform.
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
+          format: sarif
+          output: trivy-results-arm64.sarif
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+      - name: Upload the Trivy (arm64) scan to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-results-arm64.sarif
+          category: trivy-arm64
+
+      - name: Scan the staging image with Trivy (gate, amd64)
         # Blocking: 'exit-code: 1' fails this job on an unignored
-        # CRITICAL/HIGH finding, unlike the Docker Scout step and the report
-        # step above. This is the CI-side backstop for the local pre-push
-        # hook; see that hook's comment in .pre-commit-config.yaml for why
-        # the same scan also runs there, before a push can even happen.
-        # '.trivyignore' documents why each currently-ignored CVE is there;
-        # see docs/SECURITY.md for the full reasoning.
+        # CRITICAL/HIGH finding, unlike the Docker Scout steps and the
+        # report steps above. This is the CI-side backstop for the local
+        # pre-push hook; see that hook's comment in .pre-commit-config.yaml
+        # for why the same scan also runs there, before a push can even
+        # happen. '.trivyignore' documents why each currently-ignored CVE is
+        # there; see docs/SECURITY.md for the full reasoning.
         #
-        # Everything after this step (promotion, signing, the Docker Hub
-        # description sync) only runs if this step passes: a finding here
-        # stops the image from ever reaching 'latest' or its version tag,
-        # rather than merely failing the job after the fact. Same explicit
-        # 'version:' pin as the report step above, for the same reason.
+        # Everything after both gate steps (promotion, signing, the Docker
+        # Hub description sync) only runs if both pass: a finding in either
+        # platform stops the image from ever reaching 'latest' or its
+        # version tag, rather than merely failing the job after the fact.
+        # Same explicit 'version:' pin as the report steps above, for the
+        # same reason.
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+          version: v0.74.0
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+      - name: Scan the staging image with Trivy (gate, arm64)
+        # Same as the amd64 gate step above, targeting the other platform.
+        env:
+          TRIVY_PLATFORM: linux/arm64
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
