@@ -78,9 +78,10 @@
 # which is the point of running these scans at all.
 #
 # Adding a new entry here requires the same rigor as this list: confirm it
-# against a live `trivy image` (or `trivy rootfs` against the extracted
-# binary, per the note above) run or a current Docker Scout scan of the
-# actual image, not a copy-paste from an advisory feed or a prior list.
+# against a live `trivy rootfs` run over the extracted binary, or a current
+# Docker Scout scan of the actual image, not a copy-paste from an advisory
+# feed or a prior list. Not `trivy image`: per the note above it produces none
+# of these findings, so it cannot confirm that a CVE belongs in this file.
 #
 # The Go stdlib section this file used to carry (CVE-2026-27145, 33818,
 # 39821, 39822, 42504, 46600, 56853, 56858, 56859, 56860, 56862, all flagged

@@ -125,23 +125,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Scan the published binary unfiltered, for a reproduction signal
+      - name: Extract the published binary for both platforms
         # The 'nightly' tag, not 'latest': nightly-build.yml rebuilds it every
         # night from the same Dockerfile ARG defaults as the latest release,
         # so it carries whatever apk (and therefore whatever gocryptfs build)
         # Alpine currently publishes within the pins. That is the freshest
         # answer available to "does this CVE still reproduce", which is the
         # only question this scan is asked.
+        #
+        # Both platforms, each into its own subdirectory, because 'nightly' is
+        # a multi-platform manifest list and an unqualified 'docker create'
+        # resolves only the runner's own architecture (amd64). Scanning that
+        # alone would make the audit's authoritative CVE set amd64-only, so an
+        # entry whose finding exists only on arm64 would look stale, get
+        # recommended for removal, and take the arm64 release gate down with it
+        # the next time someone acted on that advice. The single 'trivy rootfs'
+        # run below walks both subdirectories, and the audit script unions the
+        # CVE IDs across every result in the report, so the merge needs no
+        # separate step.
         env:
           IMAGE_REF: ghcr.io/ivan-pinatti-labs/rsync-crypt:nightly
         run: |
           set -euo pipefail
           rm -rf gobinary
-          mkdir -p gobinary
-          docker pull --quiet "${IMAGE_REF}"
-          container="$(docker create "${IMAGE_REF}")"
-          docker cp "${container}:/usr/bin/gocryptfs" gobinary/gocryptfs
-          docker rm -f "${container}" >/dev/null
+          for platform in linux/amd64 linux/arm64; do
+            arch="${platform#linux/}"
+            mkdir -p "gobinary/${arch}"
+            docker pull --quiet --platform "${platform}" "${IMAGE_REF}"
+            container="$(docker create --platform "${platform}" "${IMAGE_REF}")"
+            docker cp "${container}:/usr/bin/gocryptfs" \
+              "gobinary/${arch}/gocryptfs"
+            docker rm -f "${container}" >/dev/null
+          done
 
       - name: Collect the unfiltered findings
         # Deliberately no 'trivyignores:' input and no 'exit-code': this scan

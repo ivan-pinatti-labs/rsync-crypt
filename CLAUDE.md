@@ -358,9 +358,13 @@ the tool. The library documents the local-hook copy as the supported way out.
 Every CVE ID in `.trivyignore.yaml` traces to gocryptfs's vendored
 `golang.org/x/crypto`, upstream and unfixed until gocryptfs itself ships a
 release off its `master` branch (see docs/SECURITY.md's "Accepted-risk
-CVEs"). Confirm a new entry against a live `trivy image` run or a current
-Docker Scout scan of the actual image before adding it, never against an
-advisory feed or a prior list on faith: the list this file shipped with was
+CVEs"). Confirm a new entry against a live `trivy rootfs` run over the binary
+extracted from the image, or a current Docker Scout scan of that image, before
+adding it, never against an advisory feed or a prior list on faith. Not
+`trivy image`: as the next paragraph explains, it cannot produce these
+findings at all, so it can never confirm that a CVE belongs in this file (it
+stays the right tool for a base-layer CVE, which is exactly what does *not*
+belong there). The list this file shipped with was
 built that way and turned up both extra and missing CVE IDs compared to an
 initial guess based on Docker Scout's UI alone. A Go-stdlib section this
 file used to carry was removed the same way, on the same rigor: every one of

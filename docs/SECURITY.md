@@ -192,10 +192,12 @@ kept as the canonical accepted-risk record regardless, documented here so
 the reasoning has one home instead of being re-derived every time someone
 asks why a CVE is on that list.
 
-Do not add a new entry to `.trivyignore.yaml` without the same rigor:
-confirm it against a live `trivy image` run (or `trivy rootfs` against the
-binary directly, per the note above) or a current Docker Scout scan of the
-actual image, not a copy from an advisory feed or an older list.
+Do not add a new entry to `.trivyignore.yaml` without the same rigor: confirm
+it against a live `trivy rootfs` run over the binary extracted from the image,
+or a current Docker Scout scan of that image, not a copy from an advisory feed
+or an older list. A `trivy image` run cannot confirm membership here, since it
+does not produce these findings at all; it remains the right check for a
+base-layer CVE, which is precisely the kind that should not be in this file.
 
 A CVE in a transitive base-layer package (util-linux's `libblkid`/`libmount`
 were the case that motivated all of this: Alpine's own security update fixes

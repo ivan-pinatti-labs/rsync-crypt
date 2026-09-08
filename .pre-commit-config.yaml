@@ -158,15 +158,24 @@ repos:
       # findings no gate ever produces, and an expiry lapses with nothing
       # failing. See docs/SECURITY.md's "Every entry expires".
       #
-      # cleanup()'s own `|| true` on the image-removal command is not the
-      # general error suppression this file otherwise avoids: it runs only
-      # in a `trap ... EXIT` handler whose job is best-effort teardown, after
+      # The container the extraction creates is removed by cleanup(), not
+      # inline after the copy, because `docker create` leaves it in the
+      # `created` state and an inline removal is skipped entirely when the
+      # copy fails. Unlike CI, where the whole runner is discarded straight
+      # afterwards, this runs on a developer machine, so every failed push
+      # would strand another container. `container` is initialised empty and
+      # tested before use so `set -u` cannot trip on a failure that happens
+      # before it is assigned.
+      #
+      # cleanup()'s own `|| true` on the removal commands is not the general
+      # error suppression this file otherwise avoids: it runs only in a
+      # `trap ... EXIT` handler whose job is best-effort teardown, after
       # the hook's real pass/fail outcome is already decided by whatever ran
       # before it. Without it, `set -e` would abort cleanup() the moment
-      # `rmi -f` returns non-zero (the image already gone, a daemon hiccup)
-      # and skip the `rm` calls right after it, leaking a full image archive
-      # and the extracted binary into the system temp directory on every
-      # such run.
+      # `rm -f` or `rmi -f` returns non-zero (the container or image already
+      # gone, a daemon hiccup) and skip the `rm` calls right after it,
+      # leaking a full image archive and the extracted binary into the system
+      # temp directory on every such run.
       - id: trivy-image-scan
         name: trivy image scan (aquasecurity/trivy)
         language: system
@@ -183,7 +192,11 @@ repos:
           tag="rsync-crypt:pre-push-trivy-scan-$$";
           tarball="$(mktemp)";
           bin_dir="$(mktemp -d)";
+          container="";
           cleanup() {
+          if [ -n "${container}" ]; then
+          "${runtime}" rm -f "${container}" >/dev/null 2>&1 || true;
+          fi;
           "${runtime}" rmi -f "${tag}" >/dev/null 2>&1 || true;
           rm -f "${tarball}";
           rm -rf "${bin_dir}";
@@ -201,7 +214,6 @@ repos:
           container="$("${runtime}" create "${tag}")";
           "${runtime}" cp "${container}:/usr/bin/gocryptfs"
           "${bin_dir}/gocryptfs";
-          "${runtime}" rm -f "${container}" >/dev/null;
           "${runtime}" run --rm
           -v "${bin_dir}:/scan:ro,Z"
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
