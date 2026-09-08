@@ -420,7 +420,7 @@ jobs:
           # independent of which registry tags currently point at it.
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            APK_CACHE_BUST=${{ github.run_id }}
+            APK_CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Attaches a Software Bill of Materials and full (every
