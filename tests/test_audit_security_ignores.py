@@ -103,10 +103,21 @@ def test_load_alert_rule_ids_reads_a_plain_json_array(tmp_path):
     assert audit.load_alert_rule_ids(path) == {"CVE-2025-22869", "CVE-2026-1"}
 
 
-def test_load_alert_rule_ids_reads_paginated_ndjson(tmp_path):
+def test_load_alert_rule_ids_reads_paginated_pages_on_separate_lines(tmp_path):
     path = tmp_path / "alerts.json"
     path.write_text(
         '[{"rule": {"id": "CVE-2025-22869"}}]\n[{"rule": {"id": "CVE-2026-1"}}]\n'
+    )
+    assert audit.load_alert_rule_ids(path) == {"CVE-2025-22869", "CVE-2026-1"}
+
+
+def test_load_alert_rule_ids_reads_paginated_pages_with_no_separator(tmp_path):
+    # `gh help api`: "--paginate" writes one JSON array per page with no
+    # guaranteed separator between them, so two pages can land back to back
+    # on the same line with nothing between the closing and opening bracket.
+    path = tmp_path / "alerts.json"
+    path.write_text(
+        '[{"rule": {"id": "CVE-2025-22869"}}][{"rule": {"id": "CVE-2026-1"}}]'
     )
     assert audit.load_alert_rule_ids(path) == {"CVE-2025-22869", "CVE-2026-1"}
 

@@ -147,9 +147,11 @@ def parse_ignorefile(text: str) -> list[IgnoreEntry]:
 def load_alert_rule_ids(path: Path | None) -> set[str]:
     """The set of `rule.id` values across a `gh api` alert-list JSON dump.
 
-    Accepts both a plain JSON array (`gh api ... > file.json`) and the
-    newline-delimited pages `gh api --paginate` can produce, since a hand run
-    of the usage example above may use either.
+    Accepts a plain JSON array (`gh api ... > file.json`) and whatever
+    `gh api --paginate` produces: per `gh help api`, "each page is a
+    separate JSON array", written back to back with no guaranteed
+    separator between them, so this reads the file as a stream of
+    consecutive JSON documents rather than assuming one page per line.
     """
     if path is None:
         return set()
@@ -164,22 +166,23 @@ def load_alert_rule_ids(path: Path | None) -> set[str]:
 
 
 def _iter_json_chunks(text: str) -> list[list[dict]]:
-    text = text.strip()
-    if not text:
-        return []
-    try:
-        data = json.loads(text)
-        return [data] if isinstance(data, list) else [[data]]
-    except json.JSONDecodeError:
-        pass
-    # --paginate emits one JSON array per page, one page per line.
+    """Split a `gh api [--paginate]` dump into its top-level JSON values.
+
+    Each value is normally a JSON array (one page of alerts); a lone object
+    is wrapped in a list so callers can iterate uniformly either way.
+    """
+    decoder = json.JSONDecoder()
     chunks = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        data = json.loads(line)
+    idx = 0
+    length = len(text)
+    while idx < length:
+        while idx < length and text[idx].isspace():
+            idx += 1
+        if idx >= length:
+            break
+        data, end = decoder.raw_decode(text, idx)
         chunks.append(data if isinstance(data, list) else [data])
+        idx = end
     return chunks
 
 
