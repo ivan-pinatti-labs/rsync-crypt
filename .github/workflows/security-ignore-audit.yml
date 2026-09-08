@@ -58,6 +58,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      # Lets the two fetch steps below call
+      # repos/OWNER/REPO/code-scanning/alerts with the workflow token.
+      # Read-only: this workflow only ever lists alerts, never dismisses,
+      # reopens, or uploads one.
+      security-events: read
       # Lets the "Open, update, or close the tracking issue" step below
       # search, create, comment on, reopen, and close exactly one issue.
       # Nothing here reaches code, a pull request, or a code scanning alert
@@ -116,7 +121,7 @@ jobs:
           # can return a near match on title, so the exact title is also
           # checked before trusting a result.
           existing_number=$(gh issue list --search "in:title \"${title}\"" \
-            --state all --json number,title --jq \
+            --state all --limit 100 --json number,title --jq \
             ".[] | select(.title == \"${title}\") | .number" | head -1)
 
           if [ "$NEEDS_ISSUE" = "true" ]; then
