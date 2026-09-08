@@ -62,10 +62,13 @@
 # "Dismissal guidelines" for why a sub-gate or no-alternative finding stays
 # open instead of being swept into this file to make the tab look clean.
 #
-# These entries are kept here anyway, as the canonical accepted-risk record,
-# in case Trivy's detection scope changes (a future version that does scan
-# apk-owned Go binaries, or a `--pkg-types` change) or a downstream
-# `trivy image` invocation with different flags does surface them.
+# That detection gap is why both gates run a second, blocking `trivy rootfs`
+# scan against the extracted binary, on top of their `trivy image` scan: see
+# publish-image.yml's "Scan the gocryptfs binary with Trivy (gate, amd64)" and
+# .pre-commit-config.yaml's `trivy-image-scan`. The entries below therefore
+# suppress a finding a gate really does produce, which is what gives their
+# `expired_at` dates teeth. Against a `trivy image`-only gate they would have
+# been inert, and an expiry on an inert entry enforces nothing at all.
 #
 # Do NOT add util-linux (libblkid/libmount) CVEs here. Those are a
 # transitive base-layer package fixed upstream by Alpine (util-linux

@@ -8,11 +8,19 @@ Every accepted-risk entry in `.trivyignore.yaml` carries an `expired_at`
 date, which is what actually forces a re-decision (see docs/SECURITY.md's
 "Every entry expires"). This script is the early warning ahead of that: it
 flags an entry that is approaching or past its expiry, and an entry whose
-CVE ID no longer shows up as an open finding at all (meaning the underlying
-issue was fixed upstream and the entry is now suppressing nothing). It also
-flags the other direction: a dismissed code scanning alert with no matching
+CVE ID no longer reproduces at all (meaning the underlying issue was fixed
+upstream and the entry is now suppressing nothing). It also flags the other
+direction: a dismissed code scanning alert with no matching
 `.trivyignore.yaml` entry, which is the "two halves of one decision" drifting
 apart that docs/SECURITY.md's "Dismissal guidelines" warns against.
+
+Reproduction is judged from `--unfiltered-findings`, a Trivy JSON report the
+caller produced with no ignore file, and not from code scanning alert state.
+Alert state cannot answer the question: the SARIF those alerts come from
+already had `.trivyignore.yaml` applied, so an ignored CVE is missing from it
+because it is ignored. Reading that absence as "fixed upstream" is circular,
+and would have this script recommend dropping the very entries doing the
+suppressing.
 
 This never edits `.trivyignore.yaml`, never dismisses or reopens an alert,
 and never fails a build. It only produces a report; whoever reads the
@@ -144,6 +152,28 @@ def parse_ignorefile(text: str) -> list[IgnoreEntry]:
     return entries
 
 
+def load_unfiltered_finding_ids(path: Path | None) -> set[str] | None:
+    """CVE IDs from a `trivy --format json` report run with no ignore file.
+
+    Returns None when no report was supplied, which is what tells the caller
+    to fall back to inferring reproduction from alert state. That fallback is
+    strictly worse and the workflow always passes a report: an alert list is
+    built from SARIF that already had `.trivyignore.yaml` applied, so an
+    ignored CVE is missing from it because it is ignored, not because it
+    stopped reproducing. Only an unfiltered scan can tell those apart.
+    """
+    if path is None:
+        return None
+    data = json.loads(path.read_text())
+    ids: set[str] = set()
+    for result in data.get("Results") or []:
+        for vuln in result.get("Vulnerabilities") or []:
+            cve_id = vuln.get("VulnerabilityID")
+            if cve_id:
+                ids.add(cve_id)
+    return ids
+
+
 def load_alert_rule_ids(path: Path | None) -> set[str]:
     """The set of `rule.id` values across a `gh api` alert-list JSON dump.
 
@@ -199,14 +229,23 @@ def evaluate_entries(
     open_ids: set[str],
     dismissed_ids: set[str],
     today: date,
+    unfiltered_ids: set[str] | None = None,
 ) -> list[EntryStatus]:
     statuses = []
     for entry in entries:
         days_to_expiry = (entry.expired_at - today).days if entry.expired_at else 10**9
+        if unfiltered_ids is not None:
+            # An unfiltered scan was supplied, so it is the authority on
+            # whether the finding is still there. Alert state says only
+            # whether GitHub currently displays it, which for an ignored CVE
+            # is a different question entirely.
+            reproduces = entry.id in unfiltered_ids
+        else:
+            reproduces = entry.id in open_ids or entry.id in dismissed_ids
         statuses.append(
             EntryStatus(
                 entry=entry,
-                reproduces=entry.id in open_ids or entry.id in dismissed_ids,
+                reproduces=reproduces,
                 dismissed_on_github=entry.id in dismissed_ids,
                 days_to_expiry=days_to_expiry,
             )
@@ -278,9 +317,9 @@ def render_report(
     section(
         "No longer reproducing (candidate for removal)",
         [
-            f"`{s.entry.id}` has no open or dismissed code scanning alert; "
-            "the finding may be fixed upstream. Confirm against a live scan "
-            "before removing, per docs/SECURITY.md."
+            f"`{s.entry.id}` no longer reproduces, so the entry is now "
+            "suppressing nothing and looks fixed upstream. Confirm against a "
+            "live scan and remove it, per docs/SECURITY.md."
             for s in stale
         ],
     )
@@ -324,6 +363,16 @@ def main() -> int:
     parser.add_argument("--open-alerts", type=Path, default=None)
     parser.add_argument("--dismissed-alerts", type=Path, default=None)
     parser.add_argument(
+        "--unfiltered-findings",
+        type=Path,
+        default=None,
+        help=(
+            "A `trivy --format json` report produced with no ignore file. "
+            "When given, it decides whether an entry still reproduces, "
+            "instead of inferring it from already-filtered alert state."
+        ),
+    )
+    parser.add_argument(
         "--warn-days",
         type=int,
         default=DEFAULT_WARN_DAYS,
@@ -346,7 +395,9 @@ def main() -> int:
     open_ids = load_alert_rule_ids(args.open_alerts)
     dismissed_ids = load_alert_rule_ids(args.dismissed_alerts)
 
-    statuses = evaluate_entries(entries, open_ids, dismissed_ids, today)
+    unfiltered_ids = load_unfiltered_finding_ids(args.unfiltered_findings)
+
+    statuses = evaluate_entries(entries, open_ids, dismissed_ids, today, unfiltered_ids)
     unmatched_dismissals = find_unmatched_dismissals(entries, dismissed_ids)
     needs_issue, report = render_report(
         statuses, unmatched_dismissals, today, args.warn_days

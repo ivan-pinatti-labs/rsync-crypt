@@ -143,14 +143,30 @@ repos:
       # without the image itself changing, so there is no reason to pay for
       # a rebuild-and-scan on, say, a docs or workflow-only push.
       #
+      # Two scans, not one, and the second is not redundant. `trivy image`
+      # tracks gocryptfs purely as the Alpine apk package that installed it
+      # and never runs its gobinary analyzer against a binary a distro
+      # package manager already owns, so it produces no gobinary target at
+      # all and reports none of the vendored golang.org/x/crypto CVEs that
+      # .trivyignore.yaml actually lists. Verified 2026-09-08 against the
+      # published v1.6.1 image with this same pinned Trivy version:
+      # `trivy image` reported 0 CRITICAL/HIGH, and `trivy rootfs` against
+      # the binary extracted from that same image reported exactly the 12
+      # entries that file carries. So the `rootfs` scan below is the only
+      # thing here that can see them, which is also what makes their
+      # `expired_at` dates mean anything: without it those entries suppress
+      # findings no gate ever produces, and an expiry lapses with nothing
+      # failing. See docs/SECURITY.md's "Every entry expires".
+      #
       # cleanup()'s own `|| true` on the image-removal command is not the
       # general error suppression this file otherwise avoids: it runs only
       # in a `trap ... EXIT` handler whose job is best-effort teardown, after
       # the hook's real pass/fail outcome is already decided by whatever ran
       # before it. Without it, `set -e` would abort cleanup() the moment
       # `rmi -f` returns non-zero (the image already gone, a daemon hiccup)
-      # and skip `rm -f "${tarball}"` right after it, leaking a full image
-      # archive into the system temp directory on every such run.
+      # and skip the `rm` calls right after it, leaking a full image archive
+      # and the extracted binary into the system temp directory on every
+      # such run.
       - id: trivy-image-scan
         name: trivy image scan (aquasecurity/trivy)
         language: system
@@ -166,9 +182,11 @@ repos:
           };
           tag="rsync-crypt:pre-push-trivy-scan-$$";
           tarball="$(mktemp)";
+          bin_dir="$(mktemp -d)";
           cleanup() {
           "${runtime}" rmi -f "${tag}" >/dev/null 2>&1 || true;
           rm -f "${tarball}";
+          rm -rf "${bin_dir}";
           };
           trap cleanup EXIT;
           "${runtime}" build -t "${tag}" .;
@@ -179,5 +197,16 @@ repos:
           -w /work
           docker.io/aquasec/trivy:0.74.0 image
           --severity CRITICAL,HIGH --exit-code 1
-          --ignorefile /work/.trivyignore.yaml --input /image.tar
+          --ignorefile /work/.trivyignore.yaml --input /image.tar;
+          container="$("${runtime}" create "${tag}")";
+          "${runtime}" cp "${container}:/usr/bin/gocryptfs"
+          "${bin_dir}/gocryptfs";
+          "${runtime}" rm -f "${container}" >/dev/null;
+          "${runtime}" run --rm
+          -v "${bin_dir}:/scan:ro,Z"
+          -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
+          -w /work
+          docker.io/aquasec/trivy:0.74.0 rootfs
+          --scanners vuln --severity CRITICAL,HIGH --exit-code 1
+          --ignorefile /work/.trivyignore.yaml /scan
           '

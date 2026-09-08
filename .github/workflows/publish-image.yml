@@ -601,6 +601,81 @@ jobs:
           exit-code: "1"
           trivyignores: .trivyignore.yaml
 
+      # The two gate steps above scan the image; neither one can see the CVEs
+      # '.trivyignore.yaml' actually lists. Trivy tracks gocryptfs purely as
+      # the Alpine apk package that installed it and never runs its gobinary
+      # analyzer against a binary a distro package manager already owns, so a
+      # 'trivy image' run of this image produces no gobinary target at all and
+      # reports none of the vendored golang.org/x/crypto findings. Verified
+      # 2026-09-08 against the published v1.6.1 image with the same pinned
+      # Trivy version below: 'trivy image' reported 0 CRITICAL/HIGH, while
+      # 'trivy rootfs' against the binary extracted from that same image
+      # reported exactly the 12 entries '.trivyignore.yaml' carries.
+      #
+      # That gap is what makes the steps below load-bearing rather than
+      # redundant. Without them every entry in '.trivyignore.yaml' would be
+      # suppressing a finding no gate ever produces, so its 'expired_at' would
+      # lapse with nothing failing and nothing forcing the re-decision that
+      # field exists to force. See docs/SECURITY.md's "Every entry expires".
+      - name: Extract the gocryptfs binary from the staging image (amd64)
+        # No cleanup trap on the created container: a failure here fails the
+        # job, and the runner is torn down straight afterwards either way, so
+        # there is nothing to leak and no reason for the '|| true' that
+        # guarding a removal would otherwise need.
+        env:
+          IMAGE_REF: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          rm -rf gobinary-amd64
+          mkdir -p gobinary-amd64
+          container="$(docker create --platform linux/amd64 "${IMAGE_REF}")"
+          docker cp "${container}:/usr/bin/gocryptfs" gobinary-amd64/gocryptfs
+          docker rm -f "${container}" >/dev/null
+
+      - name: Scan the gocryptfs binary with Trivy (gate, amd64)
+        # Blocking, same as the image gates above: an unignored CRITICAL/HIGH
+        # in the binary's vendored dependencies stops the promotion below.
+        # 'scanners: vuln' keeps this to vulnerabilities; the secret and
+        # misconfiguration scanners have nothing to say about a stripped Go
+        # binary and would only add runtime.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: gobinary-amd64
+          version: v0.74.0
+          scanners: vuln
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+
+      - name: Extract the gocryptfs binary from the staging image (arm64)
+        # 'docker create' plus 'docker cp' only reads bytes out of the image;
+        # nothing from the arm64 filesystem is executed here, so this needs no
+        # QEMU emulation despite naming the other platform.
+        env:
+          IMAGE_REF: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          rm -rf gobinary-arm64
+          mkdir -p gobinary-arm64
+          container="$(docker create --platform linux/arm64 "${IMAGE_REF}")"
+          docker cp "${container}:/usr/bin/gocryptfs" gobinary-arm64/gocryptfs
+          docker rm -f "${container}" >/dev/null
+
+      - name: Scan the gocryptfs binary with Trivy (gate, arm64)
+        # Same as the amd64 gobinary gate above, targeting the other platform.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: gobinary-arm64
+          version: v0.74.0
+          scanners: vuln
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+
       - name: Promote the scanned image to its public tags
         # Reached only if the blocking Trivy scan above passed. Aliases the
         # exact digest both scanners just read (never rebuilt, never

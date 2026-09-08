@@ -63,6 +63,12 @@ jobs:
       # Read-only: this workflow only ever lists alerts, never dismisses,
       # reopens, or uploads one.
       security-events: read
+      # Lets the unfiltered reproduction scan below pull the published
+      # 'nightly' image from GHCR. Read-only: this workflow never pushes,
+      # tags, or deletes a package. Granted explicitly rather than relying on
+      # the package being anonymously pullable, so making it private later
+      # does not silently break the audit.
+      packages: read
       # Lets the "Open, update, or close the tracking issue" step below
       # search, create, comment on, reopen, and close exactly one issue.
       # Nothing here reaches code, a pull request, or a code scanning alert
@@ -92,6 +98,66 @@ jobs:
           gh api "repos/${REPO}/code-scanning/alerts?state=dismissed&per_page=100" \
             --paginate > dismissed-alerts.json
 
+      # The two alert lists above cannot answer "does this entry still
+      # reproduce?" on their own, and it took a review catching it to notice
+      # why. Both `publish-image.yml` and `nightly-build.yml` apply
+      # `.trivyignore.yaml` before uploading their Trivy SARIF, so a CVE this
+      # repository ignores is filtered out of the very upload the alert list
+      # is built from. Asking that list whether an ignored CVE still
+      # reproduces is circular: it is absent because it is ignored, and the
+      # audit would read that absence as "fixed upstream, drop the entry" and
+      # open a tracking issue saying so. The dismissed-alert list papers over
+      # it today only because Docker Scout also reports these CVEs and Scout
+      # does not read `.trivyignore.yaml`; an entry only Trivy ever detected
+      # would be misreported outright.
+      #
+      # So the reproduction signal comes from a scan this job runs itself,
+      # with no ignore file at all. `trivy rootfs` against the gocryptfs
+      # binary extracted from the published `nightly` image is what actually
+      # sees these findings (`trivy image` does not: see that scan's comment
+      # in publish-image.yml), and running it unfiltered is the only way to
+      # learn that a CVE has genuinely stopped reproducing rather than merely
+      # stopped being reported.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan the published binary unfiltered, for a reproduction signal
+        # The 'nightly' tag, not 'latest': nightly-build.yml rebuilds it every
+        # night from the same Dockerfile ARG defaults as the latest release,
+        # so it carries whatever apk (and therefore whatever gocryptfs build)
+        # Alpine currently publishes within the pins. That is the freshest
+        # answer available to "does this CVE still reproduce", which is the
+        # only question this scan is asked.
+        env:
+          IMAGE_REF: ghcr.io/ivan-pinatti-labs/rsync-crypt:nightly
+        run: |
+          set -euo pipefail
+          rm -rf gobinary
+          mkdir -p gobinary
+          docker pull --quiet "${IMAGE_REF}"
+          container="$(docker create "${IMAGE_REF}")"
+          docker cp "${container}:/usr/bin/gocryptfs" gobinary/gocryptfs
+          docker rm -f "${container}" >/dev/null
+
+      - name: Collect the unfiltered findings
+        # Deliberately no 'trivyignores:' input and no 'exit-code': this scan
+        # exists to report what is still there, ignore list included, and must
+        # never fail the audit on a finding the audit's whole job is to
+        # describe.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: gobinary
+          version: v0.74.0
+          scanners: vuln
+          format: json
+          output: unfiltered-findings.json
+          severity: CRITICAL,HIGH
+
       - name: Run the audit
         id: audit
         run: |
@@ -100,6 +166,7 @@ jobs:
             --ignorefile .trivyignore.yaml \
             --open-alerts open-alerts.json \
             --dismissed-alerts dismissed-alerts.json \
+            --unfiltered-findings unfiltered-findings.json \
             | tee audit-output.txt
           head -1 audit-output.txt >> "$GITHUB_OUTPUT"
           tail -n +2 audit-output.txt > audit-report.md

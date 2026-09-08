@@ -149,6 +149,80 @@ def test_evaluate_entries_flags_expired_and_reproducing():
     assert by_id["CVE-C"].dismissed_on_github is False
 
 
+TRIVY_REPORT = """\
+{
+  "Results": [
+    {
+      "Target": "bin/gocryptfs",
+      "Type": "gobinary",
+      "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-A", "Severity": "HIGH"},
+        {"VulnerabilityID": "CVE-B", "Severity": "CRITICAL"}
+      ]
+    },
+    {"Target": "no vulnerabilities key at all", "Type": "gobinary"}
+  ]
+}
+"""
+
+
+def test_load_unfiltered_finding_ids_reads_a_trivy_report(tmp_path):
+    path = tmp_path / "unfiltered.json"
+    path.write_text(TRIVY_REPORT)
+    assert audit.load_unfiltered_finding_ids(path) == {"CVE-A", "CVE-B"}
+
+
+def test_load_unfiltered_finding_ids_of_none_is_none():
+    # None, not an empty set: an empty set would mean "nothing reproduces",
+    # which would mark every entry stale. None means "no signal supplied".
+    assert audit.load_unfiltered_finding_ids(None) is None
+
+
+def test_load_unfiltered_finding_ids_handles_a_clean_report(tmp_path):
+    path = tmp_path / "clean.json"
+    path.write_text('{"Results": []}')
+    assert audit.load_unfiltered_finding_ids(path) == set()
+
+
+def test_unfiltered_scan_overrides_alert_state():
+    """An unfiltered scan decides reproduction, not the alert lists.
+
+    This is the circularity the audit exists to avoid: both CI workflows
+    apply `.trivyignore.yaml` before uploading their SARIF, so an ignored CVE
+    is absent from the alert lists because it is ignored. Reading that
+    absence as "fixed upstream" would recommend deleting a live suppression.
+    """
+    entries = [
+        audit.IgnoreEntry("CVE-STILL-THERE", date(2027, 1, 1), "s"),
+        audit.IgnoreEntry("CVE-GONE", date(2027, 1, 1), "s"),
+    ]
+    # Neither CVE appears in either alert list, which is exactly what an
+    # ignore-filtered upload produces. The scan is what tells them apart.
+    statuses = audit.evaluate_entries(
+        entries,
+        open_ids=set(),
+        dismissed_ids=set(),
+        today=date(2026, 6, 1),
+        unfiltered_ids={"CVE-STILL-THERE"},
+    )
+    by_id = {s.entry.id: s for s in statuses}
+
+    assert by_id["CVE-STILL-THERE"].reproduces is True
+    assert by_id["CVE-GONE"].reproduces is False
+
+
+def test_absent_unfiltered_scan_falls_back_to_alert_state():
+    entries = [audit.IgnoreEntry("CVE-A", date(2027, 1, 1), "s")]
+    statuses = audit.evaluate_entries(
+        entries,
+        open_ids={"CVE-A"},
+        dismissed_ids=set(),
+        today=date(2026, 6, 1),
+        unfiltered_ids=None,
+    )
+    assert statuses[0].reproduces is True
+
+
 def test_find_unmatched_dismissals():
     entries = [audit.IgnoreEntry("CVE-A", date(2026, 1, 1), "s")]
     result = audit.find_unmatched_dismissals(

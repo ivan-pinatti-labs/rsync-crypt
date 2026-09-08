@@ -219,6 +219,26 @@ suppressing the same finding forever. Renewing an entry means picking a new
 above, exactly as if it were a new entry; it does not mean bumping the date
 and moving on.
 
+**That only works because a scan exists that can see these CVEs at all**, and
+it is worth being precise about which one, because the obvious answer is
+wrong. `trivy image` does not detect them: Trivy tracks gocryptfs purely as
+the Alpine `apk` package that installed it and never runs its `gobinary`
+analyzer against a binary a distro package manager already owns, so an image
+scan produces no `gobinary` target and reports none of the vendored
+`golang.org/x/crypto` findings. Measured against the published v1.6.1 image
+with the pinned Trivy version, `trivy image` reports zero CRITICAL/HIGH while
+`trivy rootfs` against the binary extracted from that same image reports all
+twelve.
+
+So both gates (`publish-image.yml` and the local pre-push hook) run a second,
+blocking `trivy rootfs` scan against `/usr/bin/gocryptfs` extracted from the
+image they just built, per platform in CI. Without it every entry in
+`.trivyignore.yaml` would be suppressing a finding no gate ever produces,
+`expired_at` would lapse with nothing failing, and this whole section would
+describe an enforcement mechanism that does not enforce. An ignore list whose
+entries are inert is worse than no ignore list, because it reads as though
+something is being held back when nothing is.
+
 Expiry dates are not decorative and should not be copied from one entry to
 the next without thought. Tie each one to something real: a release window
 upstream is expected to clear the finding in, or, when that window cannot be

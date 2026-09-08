@@ -380,6 +380,26 @@ does run that analyzer and is what actually confirms a given CVE ID belongs
 in this file. Docker Scout's SBOM-based scan surfaces them regardless of
 this gap, which is how they were found in the first place.
 
+That gap nearly shipped a self-defeating ignore list, and the shape of the
+mistake is worth remembering. The `expired_at` migration was written and
+documented as "an expiry makes the gate fail, which forces a re-decision"
+while both gates still ran `trivy image` only. Since `trivy image` never
+produces these findings, expiring an entry would have changed nothing: the
+gate would keep passing, and the documentation would have been promising an
+enforcement that could not fire. A CodeRabbit review caught it before merge.
+Both gates now run a blocking `trivy rootfs` scan against the extracted
+binary as well, which is what makes the expiry real. The general lesson: when
+adding a suppression with an expiry, first confirm that some gate actually
+produces the finding being suppressed, because an expiry on an inert entry is
+worse than no expiry, it reads like a control while enforcing nothing.
+
+For the same reason `.github/workflows/security-ignore-audit.yml` judges
+"does this still reproduce?" from its own unfiltered `trivy rootfs` run, never
+from code scanning alert state. Both CI workflows apply `.trivyignore.yaml`
+before uploading their SARIF, so an ignored CVE is missing from the alert
+list *because* it is ignored; reading that absence as "fixed upstream" is
+circular and would have the audit recommend deleting live suppressions.
+
 A CVE in a transitive base-layer package, the way util-linux's
 `libblkid`/`libmount` CVEs were, should generally **not** go in
 `.trivyignore.yaml`. Those are fixed by an Alpine security update already
