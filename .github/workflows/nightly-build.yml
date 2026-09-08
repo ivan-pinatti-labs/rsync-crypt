@@ -117,12 +117,15 @@ jobs:
 
       - name: Build and push
         id: build
-        # No 'build-args:' input, same as publish-image.yml and for the same
-        # reason: every version this image is built from is an ARG default in
-        # the Dockerfile itself. This step forces the rebuild; the freshness
-        # comes entirely from the Dockerfile's own `apk update && apk
-        # upgrade` picking up whatever Alpine has published since the image
-        # was last built, not from any version bump here.
+        # No version pins in 'build-args:', same as publish-image.yml and for
+        # the same reason: every version this image is built from is an ARG
+        # default in the Dockerfile itself. APK_CACHE_BUST is the one
+        # build-arg passed here, and it is the entire point of this workflow:
+        # without it, 'cache-from: type=gha' below reuses the apk layer from
+        # the last build whenever the Dockerfile hasn't changed, which is
+        # every night, and this "nightly rebuild" would silently keep
+        # shipping whatever apk versions were current the first time it ran.
+        # See the ARG's own comment in the Dockerfile.
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -130,6 +133,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APK_CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           sbom: true

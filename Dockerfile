@@ -57,8 +57,31 @@ ARG SSHFS_VERSION=3.7
 # apk-pin: resolved-from=ALPINE_VERSION
 ARG VIM_VERSION=9.2
 
+# BuildKit caches this RUN layer by its exact command text and build context,
+# with no notion that "apk upgrade" means something different today than it
+# did when the layer was last cached. A rebuild with an unchanged Dockerfile
+# (a scheduled nightly, or a release that bumps nothing in this file) hits
+# that cache and skips the layer entirely, silently shipping whatever apk
+# versions were current the last time it actually ran, not whatever Alpine
+# has published since. This is exactly what happened to v1.6.0: the layer
+# cache-hit in ~2 seconds (confirmed from the build log, far too fast for a
+# real apk fetch) and shipped util-linux 2.42.1-r0 days after Alpine's
+# security fix (2.42.3-r1) was already published.
+#
+# APK_CACHE_BUST breaks that cache hit on demand. It has no effect on the
+# packages installed; it only appears inside a `:` no-op so changing its
+# value changes the layer's cache key without changing what the command
+# does. `docker build .` and `make build` get the default (0) and keep
+# normal caching for fast local iteration. publish-image.yml and
+# nightly-build.yml pass a fresh value (the workflow run id) on every
+# invocation, so every published or nightly image re-resolves apk packages
+# against Alpine's live repo instead of trusting a cached layer's idea of
+# "current".
+ARG APK_CACHE_BUST=0
+
 RUN apk update \
     && apk upgrade \
+    && : "cache-bust=${APK_CACHE_BUST}" \
     && apk add --no-cache \
         bash~=${BASH_VERSION} \
         gocryptfs~=${GOCRYPTFS_VERSION} \
