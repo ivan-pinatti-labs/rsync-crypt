@@ -1,0 +1,183 @@
+# Accepted-risk CVEs for this image's Trivy scans (local pre-push hook and
+# CI, both --severity CRITICAL,HIGH). See docs/SECURITY.md's "Accepted-risk
+# CVEs" section for the full reasoning; the short version is below.
+#
+# YAML format (Trivy's `.trivyignore.yaml`, still marked experimental
+# upstream but verified against the exact pinned version below), not the
+# plain-list `.trivyignore` this file used to be. The reason for the move is
+# `expired_at`: a plain-list entry suppresses a CVE forever, with nothing
+# forcing anyone to look at it again. Every entry below carries an
+# `expired_at` date instead. Once that date passes, Trivy stops honoring the
+# entry, the CRITICAL/HIGH gate fails on the next scan, and whoever hits that
+# failure has to make a real decision: renew the entry with a new date and an
+# updated `statement`, or close it out because gocryptfs has finally shipped
+# a fix. See docs/SECURITY.md's "Dismissal guidelines" for what a renewal or
+# a new entry has to satisfy before it goes back in this file.
+#
+# Verified against `docker.io/aquasec/trivy:0.74.0`, the exact version pinned
+# in .pre-commit-config.yaml, publish-image.yml and nightly-build.yml: a
+# local scan against a throwaway image confirmed `expired_at` in the future
+# suppresses a finding and `expired_at` in the past does not, and confirmed
+# `aquasecurity/trivy-action`'s `trivyignores:` input (pinned to v0.36.0,
+# well past the v0.34.2 release that added YAML detection by file extension)
+# passes a `.yaml`-suffixed path straight through to `TRIVY_IGNOREFILE`
+# rather than flattening it into the old plain-list format.
+#
+# `.github/workflows/security-ignore-audit.yml` re-checks every entry below
+# on a schedule and opens or updates a tracking issue when one is stale (no
+# longer reproducing) or approaching/past its `expired_at`. It never edits
+# this file or the CRITICAL/HIGH gate itself: see "CI never autofixes" in
+# CLAUDE.md. The `expired_at` mechanism above is what actually enforces
+# re-review if that workflow is ever broken or ignored; the audit workflow
+# is the early warning, not the enforcement.
+#
+# gocryptfs is the only Go binary in this image, installed via `apk add
+# gocryptfs~=${GOCRYPTFS_VERSION}` (see Dockerfile). Its upstream release
+# (v2.6.1, the latest as of this writing) still pins golang.org/x/crypto
+# v0.33.0 and was built with Go 1.26.3; gocryptfs's `master` branch has
+# already bumped to x/crypto v0.52.0 and Go 1.25.0, but no release has
+# shipped with that bump yet. All CVE IDs below are upstream, in gocryptfs's
+# own vendored dependencies, with no fix available on our side until
+# gocryptfs cuts a release off that branch. docs/SECURITY.md's "Why not build
+# gocryptfs from source" spells out the trade-off that makes that the
+# accepted position rather than something to route around.
+#
+# Docker Scout's SBOM-based scan (see .github/workflows/publish-image.yml)
+# flags these. A plain `trivy image` scan of this image currently does NOT:
+# Trivy tracks gocryptfs purely as the Alpine apk package
+# (gocryptfs 2.6.1-r5) once it is apk-installed, and does not separately run
+# its gobinary analyzer against a binary a distro package manager already
+# owns, so the vendored x/crypto/stdlib versions embedded in the binary
+# itself never surface through `trivy image`. Confirmed 2026-09-06 by
+# extracting /usr/bin/gocryptfs from the built image and scanning it
+# directly with `trivy rootfs`, which does run the gobinary analyzer and
+# reports exactly the CVE IDs listed below for golang.org/x/crypto v0.33.0
+# and stdlib v1.26.3, plus a handful of MEDIUM/UNKNOWN-severity findings
+# (CVE-2026-39833, CVE-2026-39834, CVE-2026-56855, CVE-2026-78662, and
+# others) that fall outside the CRITICAL,HIGH gate this repo enforces and so
+# are not listed here. Those, and the fuse CVE-2019-14860 Docker Scout also
+# reports (alert #57; `fuse 2.9.9-r7` is the only version Alpine 3.24
+# offers, so there is nothing to upgrade to regardless), are deliberately
+# left open on the Security tab rather than added here: see docs/SECURITY.md's
+# "Dismissal guidelines" for why a sub-gate or no-alternative finding stays
+# open instead of being swept into this file to make the tab look clean.
+#
+# That detection gap is why both gates run a second, blocking `trivy rootfs`
+# scan against the extracted binary, on top of their `trivy image` scan: see
+# publish-image.yml's "Scan the gocryptfs binary with Trivy (gate, amd64)" and
+# .pre-commit-config.yaml's `trivy-image-scan`. The entries below therefore
+# suppress a finding a gate really does produce, which is what gives their
+# `expired_at` dates teeth. Against a `trivy image`-only gate they would have
+# been inert, and an expiry on an inert entry enforces nothing at all.
+#
+# Do NOT add util-linux (libblkid/libmount) CVEs here. Those are a
+# transitive base-layer package fixed upstream by Alpine (util-linux
+# 2.42.3-r1 on the 3.24 branch as of this writing); the Dockerfile's
+# `apk update && apk upgrade` picks the fix up on every rebuild, so they
+# should keep failing a scan against a stale image until it is rebuilt,
+# which is the point of running these scans at all.
+#
+# Adding a new entry here requires the same rigor as this list: confirm it
+# against a live `trivy rootfs` run over the extracted binary, or a current
+# Docker Scout scan of the actual image, not a copy-paste from an advisory
+# feed or a prior list. Not `trivy image`: per the note above it produces none
+# of these findings, so it cannot confirm that a CVE belongs in this file.
+#
+# The Go stdlib section this file used to carry (CVE-2026-27145, 33818,
+# 39821, 39822, 42504, 46600, 56853, 56858, 56859, 56860, 56862, all flagged
+# against gocryptfs's build-time Go 1.26.3) is gone as of this migration:
+# every one of those alert numbers now shows `state: fixed` in this
+# repository's code scanning history, confirmed 2026-09-08 against a live
+# scan, not carried forward on faith. That means the shipped gocryptfs
+# binary is no longer built with the flagged Go version, so nothing in this
+# file suppresses a finding that would actually reproduce today. Keeping a
+# non-reproducing entry here would be exactly the "ignored forever, nobody
+# re-checks it" failure mode this migration exists to close off; removing it
+# is the audit acting as intended, once, by hand, ahead of the scheduled
+# workflow.
+#
+# All twelve entries below share one root cause (gocryptfs v2.6.1's vendored
+# golang.org/x/crypto v0.33.0) and one resolution condition (gocryptfs ships
+# a release off `master`, which already carries v0.52.0), so they share one
+# `expired_at`: 2026-12-07, a 90-day review window from when this migration
+# landed (2026-09-08). That is a deliberate re-review cadence, not a bet on
+# gocryptfs's own release date: its last two releases landed a month apart
+# and the two before that over a year apart, too irregular to predict, so
+# the date below forces a look regardless of whether upstream has shipped by
+# then. If master's fix has landed in a release, drop the entry instead of
+# renewing it, per the header above.
+
+vulnerabilities:
+  # golang.org/x/crypto (embedded in gocryptfs, pinned to v0.33.0 upstream)
+  - id: CVE-2025-22869
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2025-47913
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39828
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39829
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39830
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39831
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39832
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-39835
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-42508
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-46595
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-46597
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07
+  - id: CVE-2026-56854
+    statement: >-
+      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
+      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
+      when one does, or on review at expiry.
+    expired_at: 2026-12-07

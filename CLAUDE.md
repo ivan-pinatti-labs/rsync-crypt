@@ -353,17 +353,25 @@ finding per quoted value (14 today, and it moves with the file).
 its first argument, so an `args:` entry replaces that name instead of reaching
 the tool. The library documents the local-hook copy as the supported way out.
 
-### `.trivyignore` entries need a live scan, not a copied list
+### `.trivyignore.yaml` entries need a live scan, not a copied list
 
-Every CVE ID in `.trivyignore` traces to gocryptfs's vendored
-`golang.org/x/crypto` and Go stdlib versions, upstream and unfixed until
-gocryptfs itself ships a release off its `master` branch (see
-docs/SECURITY.md's "Accepted-risk CVEs"). Confirm a new entry against a live
-`trivy image` run or a current Docker Scout scan of the actual image before
-adding it, never against an advisory feed or a prior list on faith: the list
-this file shipped with was built that way and turned up both extra and
-missing CVE IDs compared to an initial guess based on Docker Scout's UI
-alone.
+Every CVE ID in `.trivyignore.yaml` traces to gocryptfs's vendored
+`golang.org/x/crypto`, upstream and unfixed until gocryptfs itself ships a
+release off its `master` branch (see docs/SECURITY.md's "Accepted-risk
+CVEs"). Confirm a new entry against a live `trivy rootfs` run over the binary
+extracted from the image, or a current Docker Scout scan of that image, before
+adding it, never against an advisory feed or a prior list on faith. Not
+`trivy image`: as the next paragraph explains, it cannot produce these
+findings at all, so it can never confirm that a CVE belongs in this file (it
+stays the right tool for a base-layer CVE, which is exactly what does *not*
+belong there). The list this file shipped with was
+built that way and turned up both extra and missing CVE IDs compared to an
+initial guess based on Docker Scout's UI alone. A Go-stdlib section this
+file used to carry was removed the same way, on the same rigor: every one of
+those CVE IDs came back `state: fixed` in this repository's own code
+scanning history, meaning the shipped gocryptfs binary is no longer built
+with the flagged Go version, so the entries were suppressing nothing that
+still reproduces.
 
 The same live check surfaced a real gap worth knowing before debugging one
 like it again: a plain `trivy image` scan of this image does not detect
@@ -376,12 +384,47 @@ does run that analyzer and is what actually confirms a given CVE ID belongs
 in this file. Docker Scout's SBOM-based scan surfaces them regardless of
 this gap, which is how they were found in the first place.
 
+That gap nearly shipped a self-defeating ignore list, and the shape of the
+mistake is worth remembering. The `expired_at` migration was written and
+documented as "an expiry makes the gate fail, which forces a re-decision"
+while both gates still ran `trivy image` only. Since `trivy image` never
+produces these findings, expiring an entry would have changed nothing: the
+gate would keep passing, and the documentation would have been promising an
+enforcement that could not fire. A CodeRabbit review caught it before merge.
+Both gates now run a blocking `trivy rootfs` scan against the extracted
+binary as well, which is what makes the expiry real. The general lesson: when
+adding a suppression with an expiry, first confirm that some gate actually
+produces the finding being suppressed, because an expiry on an inert entry is
+worse than no expiry, it reads like a control while enforcing nothing.
+
+For the same reason `.github/workflows/security-ignore-audit.yml` judges
+"does this still reproduce?" from its own unfiltered `trivy rootfs` run, never
+from code scanning alert state. Both CI workflows apply `.trivyignore.yaml`
+before uploading their SARIF, so an ignored CVE is missing from the alert
+list *because* it is ignored; reading that absence as "fixed upstream" is
+circular and would have the audit recommend deleting live suppressions.
+
 A CVE in a transitive base-layer package, the way util-linux's
 `libblkid`/`libmount` CVEs were, should generally **not** go in
-`.trivyignore`. Those are fixed by an Alpine security update already
+`.trivyignore.yaml`. Those are fixed by an Alpine security update already
 published upstream; the Dockerfile's `apk update && apk upgrade` picks the
 fix up on the next rebuild, so the scan failing until that rebuild happens is
 the mechanism working, not a false positive to silence.
+
+Every entry carries an `expired_at` date (the file is YAML specifically for
+this field) and a `statement` saying what would resolve it. This is not
+optional formatting: an ignore-list entry with no expiry is an
+indefinitely-suppressed CVE, which is its own security problem regardless of
+how well-reasoned the original acceptance was.
+`.github/workflows/security-ignore-audit.yml` re-checks every entry on a
+schedule and opens or updates a tracking issue when one is stale or
+approaching expiry, but the workflow is a warning system, not the
+enforcement: `expired_at` failing the CRITICAL/HIGH gate is what actually
+forces a re-decision if the workflow itself is ever broken or its issue
+ignored. See docs/SECURITY.md's "Dismissal guidelines" for what qualifies a
+CVE for dismissal at all (a sub-gate finding or a no-upgrade-path one, the
+worked examples there, generally does not) and for why a GitHub dismissal
+and an ignore-list entry have to move together.
 
 ### Parallel agents need separate worktrees
 

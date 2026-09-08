@@ -1,0 +1,244 @@
+---
+name: Security Ignore Audit
+
+# Re-checks `.trivyignore.yaml` and this repository's dismissed code scanning
+# alerts against a fresh signal every week, and opens or updates one tracking
+# issue when something needs a human decision. This is the early warning the
+# owner asked for alongside `.trivyignore.yaml`'s own `expired_at` field (see
+# docs/SECURITY.md's "Every entry expires"): `expired_at` is what actually
+# forces the CRITICAL/HIGH gate to fail once an entry goes stale, even if this
+# workflow is broken, disabled, or its issue goes unread. This workflow is
+# just the thing that notices first, on a schedule, instead of waiting for
+# someone to hit the failed gate.
+#
+# "A fresh signal" here means this repository's own code scanning alert
+# state, not a scan this workflow runs itself. `nightly-build.yml` already
+# scans the default branch with both Docker Scout and Trivy every night and
+# uploads the results as SARIF; re-running that scan here, just to read the
+# same answer a different way, would rebuild the whole multi-platform image
+# for no reason. Reading `gh api .../code-scanning/alerts` instead gets the
+# same freshness (at most a day old) for the cost of two API calls. See
+# `docs/SECURITY.md`'s "Code scanning alerts do not carry architecture or
+# version" for the one thing that signal still cannot tell you (which
+# platform a given instance came from); it does not matter here, since
+# `scripts/audit-security-ignores.py` only needs to know whether a CVE ID is
+# open, dismissed, or neither.
+#
+# Every decision `scripts/audit-security-ignores.py` makes from those two
+# alert lists is documented in that script's own header and exercised with no
+# network access at all in tests/test_audit_security_ignores.py. This
+# workflow is deliberately thin: fetch, run the script, and act on its
+# `needs_issue=`/report split the same way resolve-apk-pins.yml's own steps
+# consume scripts/resolve-apk-pins.py's `changed=` line.
+#
+# This never writes to `.trivyignore.yaml`, never dismisses or reopens a code
+# scanning alert, and never fails the job on what it finds: it only opens,
+# updates, or closes the one tracking issue below. See "CI never autofixes"
+# in CLAUDE.md; resolve-apk-pins.yml is documented there as the one exception
+# to that policy, and this is not a second one, since nothing here commits,
+# pushes, or changes what any gate enforces.
+on:
+  schedule:
+    # Monday, after nightly-build.yml's own 03:00 UTC run has had time to
+    # finish and upload a fresh SARIF for the default branch. Weekly, not
+    # nightly: `expired_at` entries are reviewed on the order of months (see
+    # .trivyignore.yaml), and a dismissed alert or a stale entry does not
+    # newly appear or disappear on any faster cadence than that, so a nightly
+    # run here would only restate the same finding six more times before
+    # anyone acts on it.
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Audit ignore-list entries and dismissed alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Lets the two fetch steps below call
+      # repos/OWNER/REPO/code-scanning/alerts with the workflow token.
+      # Read-only: this workflow only ever lists alerts, never dismisses,
+      # reopens, or uploads one.
+      security-events: read
+      # Lets the unfiltered reproduction scan below pull the published
+      # 'nightly' image from GHCR. Read-only: this workflow never pushes,
+      # tags, or deletes a package. Granted explicitly rather than relying on
+      # the package being anonymously pullable, so making it private later
+      # does not silently break the audit.
+      packages: read
+      # Lets the "Open, update, or close the tracking issue" step below
+      # search, create, comment on, reopen, and close exactly one issue.
+      # Nothing here reaches code, a pull request, or a code scanning alert
+      # itself.
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch open code scanning alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/code-scanning/alerts?state=open&per_page=100" \
+            --paginate > open-alerts.json
+
+      - name: Fetch dismissed code scanning alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/code-scanning/alerts?state=dismissed&per_page=100" \
+            --paginate > dismissed-alerts.json
+
+      # The two alert lists above cannot answer "does this entry still
+      # reproduce?" on their own, and it took a review catching it to notice
+      # why. Both `publish-image.yml` and `nightly-build.yml` apply
+      # `.trivyignore.yaml` before uploading their Trivy SARIF, so a CVE this
+      # repository ignores is filtered out of the very upload the alert list
+      # is built from. Asking that list whether an ignored CVE still
+      # reproduces is circular: it is absent because it is ignored, and the
+      # audit would read that absence as "fixed upstream, drop the entry" and
+      # open a tracking issue saying so. The dismissed-alert list papers over
+      # it today only because Docker Scout also reports these CVEs and Scout
+      # does not read `.trivyignore.yaml`; an entry only Trivy ever detected
+      # would be misreported outright.
+      #
+      # So the reproduction signal comes from a scan this job runs itself,
+      # with no ignore file at all. `trivy rootfs` against the gocryptfs
+      # binary extracted from the published `nightly` image is what actually
+      # sees these findings (`trivy image` does not: see that scan's comment
+      # in publish-image.yml), and running it unfiltered is the only way to
+      # learn that a CVE has genuinely stopped reproducing rather than merely
+      # stopped being reported.
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract the published binary for both platforms
+        # The 'nightly' tag, not 'latest': nightly-build.yml rebuilds it every
+        # night from the same Dockerfile ARG defaults as the latest release,
+        # so it carries whatever apk (and therefore whatever gocryptfs build)
+        # Alpine currently publishes within the pins. That is the freshest
+        # answer available to "does this CVE still reproduce", which is the
+        # only question this scan is asked.
+        #
+        # Both platforms, each into its own subdirectory, because 'nightly' is
+        # a multi-platform manifest list and an unqualified 'docker create'
+        # resolves only the runner's own architecture (amd64). Scanning that
+        # alone would make the audit's authoritative CVE set amd64-only, so an
+        # entry whose finding exists only on arm64 would look stale, get
+        # recommended for removal, and take the arm64 release gate down with it
+        # the next time someone acted on that advice. The single 'trivy rootfs'
+        # run below walks both subdirectories, and the audit script unions the
+        # CVE IDs across every result in the report, so the merge needs no
+        # separate step.
+        env:
+          IMAGE_REF: ghcr.io/ivan-pinatti-labs/rsync-crypt:nightly
+        run: |
+          set -euo pipefail
+          rm -rf gobinary
+          for platform in linux/amd64 linux/arm64; do
+            arch="${platform#linux/}"
+            mkdir -p "gobinary/${arch}"
+            docker pull --quiet --platform "${platform}" "${IMAGE_REF}"
+            container="$(docker create --platform "${platform}" "${IMAGE_REF}")"
+            docker cp "${container}:/usr/bin/gocryptfs" \
+              "gobinary/${arch}/gocryptfs"
+            docker rm -f "${container}" >/dev/null
+          done
+
+      - name: Collect the unfiltered findings
+        # Deliberately no 'trivyignores:' input and no 'exit-code': this scan
+        # exists to report what is still there, ignore list included, and must
+        # never fail the audit on a finding the audit's whole job is to
+        # describe.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: rootfs
+          scan-ref: gobinary
+          version: v0.74.0
+          scanners: vuln
+          format: json
+          output: unfiltered-findings.json
+          severity: CRITICAL,HIGH
+
+      - name: Run the audit
+        id: audit
+        run: |
+          set -euo pipefail
+          python3 scripts/audit-security-ignores.py \
+            --ignorefile .trivyignore.yaml \
+            --open-alerts open-alerts.json \
+            --dismissed-alerts dismissed-alerts.json \
+            --unfiltered-findings unfiltered-findings.json \
+            | tee audit-output.txt
+          head -1 audit-output.txt >> "$GITHUB_OUTPUT"
+          tail -n +2 audit-output.txt > audit-report.md
+
+      - name: Open, update, or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NEEDS_ISSUE: ${{ steps.audit.outputs.needs_issue }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Security ignore-list audit"
+          marker="<!-- security-ignore-audit -->"
+
+          # state=all: a previously closed tracking issue is reused rather
+          # than starting a new thread if something regresses later. --search
+          # can return a near match on title, so the exact title is also
+          # checked before trusting a result.
+          existing_number=$(gh issue list --search "in:title \"${title}\"" \
+            --state all --limit 100 --json number,title --jq \
+            ".[] | select(.title == \"${title}\") | .number" | head -1)
+
+          if [ "$NEEDS_ISSUE" = "true" ]; then
+            {
+              echo "$marker"
+              echo
+              echo "Audit run: $RUN_URL"
+              echo
+              cat audit-report.md
+            } > issue-body.md
+
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" = "CLOSED" ]; then
+                gh issue reopen "$existing_number"
+              fi
+              gh issue comment "$existing_number" --body-file issue-body.md
+              echo "::notice::Updated #$existing_number with the current findings."
+            else
+              gh issue create --title "$title" --body-file issue-body.md
+              echo "::notice::Opened a new tracking issue."
+            fi
+          else
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" != "CLOSED" ]; then
+                clean_message="Clean run ($RUN_URL): every ignore-list entry is in"
+                clean_message="${clean_message} sync, reproducing, and not near its expiry."
+                clean_message="${clean_message} Closing."
+                gh issue comment "$existing_number" \
+                  --body "$marker"$'\n\n'"$clean_message"
+                gh issue close "$existing_number"
+                echo "::notice::Closed #$existing_number; nothing needs attention."
+              fi
+            else
+              echo "::notice::Nothing needs attention; no tracking issue open."
+            fi
+          fi

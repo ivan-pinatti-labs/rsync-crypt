@@ -22,7 +22,7 @@ name: Nightly Build
 # scheduled job failing every night on an upstream CVE nobody can fix from
 # this side, with no pull request to block, would just be noise; a genuine
 # new finding still surfaces via the SARIF upload to the Security tab. See
-# docs/SECURITY.md for the accepted-risk CVEs '.trivyignore' already keeps
+# docs/SECURITY.md for the accepted-risk CVEs '.trivyignore.yaml' already keeps
 # quiet, on the release gate and here alike.
 #
 # No Docker Hub README sync and no version-tag republish guard: both are
@@ -206,7 +206,7 @@ jobs:
       - name: Scan the nightly image with Trivy (amd64)
         # Report-only here too: no 'exit-code'. See this file's header for
         # why a nightly, unattended scan should surface findings rather than
-        # hard-fail on one. Same '.trivyignore' as the blocking gate in
+        # hard-fail on one. Same '.trivyignore.yaml' as the blocking gate in
         # publish-image.yml and the local pre-push hook, so the known
         # upstream gocryptfs CVEs (docs/SECURITY.md) stay quiet here too; a
         # genuinely new finding still shows up in this run's SARIF upload.
@@ -228,7 +228,7 @@ jobs:
           format: sarif
           output: trivy-results-amd64.sarif
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
@@ -247,7 +247,7 @@ jobs:
           format: sarif
           output: trivy-results-arm64.sarif
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (arm64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
