@@ -175,34 +175,160 @@ noise; a genuinely new finding still shows up in that run's SARIF upload.
 
 ### Accepted-risk CVEs
 
-`.trivyignore` at the repository root lists CVE IDs that Trivy's blocking gate
-would otherwise fail on, with no fix available on our side. All of them
-today trace to gocryptfs, the only Go binary in this image: its upstream
-release still pins `golang.org/x/crypto` v0.33.0 and was built with Go
-1.26.3, both flagged for multiple CVEs. gocryptfs's own `master` branch has
-already bumped past both, but no release has shipped with that bump yet, so
-there is nothing to upgrade to. `.trivyignore`'s own header comment carries
-the full reasoning, including a wrinkle worth knowing before touching that
-file: a plain `trivy image` scan of this image does not actually surface
-these CVEs, because Trivy tracks gocryptfs purely as the Alpine `apk` package
-once it is installed and does not separately analyze a binary a distro
-package manager already owns. Docker Scout's SBOM-based scan does surface
-them, which is how they were first found; the entries in `.trivyignore` are
-kept as the canonical accepted-risk record regardless, documented here so the
-reasoning has one home instead of being re-derived every time someone asks
-why a CVE is on that list.
+`.trivyignore.yaml` at the repository root lists CVE IDs that Trivy's
+blocking gate would otherwise fail on, with no fix available on our side.
+All of them today trace to gocryptfs, the only Go binary in this image: its
+upstream release still pins `golang.org/x/crypto` v0.33.0, flagged for
+multiple CVEs. gocryptfs's own `master` branch has already bumped past it,
+but no release has shipped with that bump yet, so there is nothing to
+upgrade to. `.trivyignore.yaml`'s own header comment carries the full
+reasoning, including a wrinkle worth knowing before touching that file: a
+plain `trivy image` scan of this image does not actually surface these
+CVEs, because Trivy tracks gocryptfs purely as the Alpine `apk` package once
+it is installed and does not separately analyze a binary a distro package
+manager already owns. Docker Scout's SBOM-based scan does surface them,
+which is how they were first found; the entries in `.trivyignore.yaml` are
+kept as the canonical accepted-risk record regardless, documented here so
+the reasoning has one home instead of being re-derived every time someone
+asks why a CVE is on that list.
 
-Do not add a new entry to `.trivyignore` without the same rigor: confirm it
-against a live `trivy image` run (or `trivy rootfs` against the binary
-directly, per the note above) or a current Docker Scout scan of the actual
-image, not a copy from an advisory feed or an older list.
+Do not add a new entry to `.trivyignore.yaml` without the same rigor:
+confirm it against a live `trivy image` run (or `trivy rootfs` against the
+binary directly, per the note above) or a current Docker Scout scan of the
+actual image, not a copy from an advisory feed or an older list.
 
 A CVE in a transitive base-layer package (util-linux's `libblkid`/`libmount`
 were the case that motivated all of this: Alpine's own security update fixes
 them, and a rebuild of this image picks that fix up automatically) generally
-should **not** go in `.trivyignore`. Ignoring it would hide the day the fix
-actually lands; letting the scan keep failing until the next rebuild is the
-point.
+should **not** go in `.trivyignore.yaml`. Ignoring it would hide the day the
+fix actually lands; letting the scan keep failing until the next rebuild is
+the point.
+
+### Every entry expires
+
+The file is YAML, not a plain CVE list, specifically for the `expired_at`
+field Trivy's YAML ignore format supports (confirmed against the exact
+pinned Trivy version, v0.74.0, and the exact pinned `aquasecurity/trivy-action`
+release both CI workflows and the local pre-push hook use). Every entry
+carries an `expired_at` date and a `statement` explaining what would resolve
+it. Once that date passes, Trivy stops honoring the entry: the CVE reappears
+in the scan, the CRITICAL/HIGH gate fails, and the next person to touch this
+repository is forced to make a real decision instead of the entry quietly
+suppressing the same finding forever. Renewing an entry means picking a new
+`expired_at` and confirming the finding still reproduces per the rigor
+above, exactly as if it were a new entry; it does not mean bumping the date
+and moving on.
+
+Expiry dates are not decorative and should not be copied from one entry to
+the next without thought. Tie each one to something real: a release window
+upstream is expected to clear the finding in, or, when that window cannot be
+predicted (gocryptfs's own release cadence has ranged from a month to over a
+year between releases), a fixed re-review interval that forces a look
+regardless. Either way, the `statement` field has to say which, so the
+person who hits the expiry knows whether they are checking for a shipped fix
+or just re-affirming the risk.
+
+`.github/workflows/security-ignore-audit.yml` runs on a schedule and checks
+every entry against this repository's own code scanning history: whether it
+still reproduces, and how close it is to its `expired_at`. It opens or
+updates a single tracking issue when something needs attention. It is a
+warning system, not the enforcement; `expired_at` is what actually forces
+the re-decision if that workflow is ever broken, disabled, or its issue
+ignored. It also never edits `.trivyignore.yaml` or the alerts it audits:
+see "CI never autofixes" in `CLAUDE.md`.
+
+### Why not build gocryptfs from source
+
+The Dockerfile installs gocryptfs from Alpine's own package repository
+(`apk add gocryptfs~=${GOCRYPTFS_VERSION}`), not by compiling gocryptfs's
+`master` branch. `master` already carries the fix for every CVE in
+`.trivyignore.yaml`: it has moved past the vendored `golang.org/x/crypto`
+version the Alpine package still ships. Building from source would clear
+most of the accepted-risk list immediately.
+
+That trade is deliberate, not an oversight. The Alpine package is built,
+tested, and signed as part of a distribution release process this project
+did not do itself; a source build of an arbitrary upstream commit would ship
+a binary nobody but this pipeline has ever tested, with no distribution
+maintainer standing behind it. The CVEs in `.trivyignore.yaml` are a known,
+bounded, documented cost with an expiry forcing periodic re-review. An
+unsigned, untested binary that happens to have fewer known CVEs today is an
+unbounded, undocumented one: it trades a finding the security tooling can
+see and track for a class of risk the tooling has no way to see at all.
+Given that choice, the tracked and expiring cost is the one worth taking.
+
+This is why the CVEs in `.trivyignore.yaml` are unfixable from this side
+for as long as it holds, and why they are accepted risk rather than a bug to
+route around by quietly switching to a source build the next time this list
+gets long. If that trade-off is ever revisited, it should be revisited
+explicitly, here, not by a Dockerfile change nobody connects back to this
+reasoning.
+
+### Code scanning alerts do not carry architecture or version
+
+Every published image is multi-platform (`linux/amd64` and `linux/arm64`),
+and both Docker Scout and Trivy scan each platform separately, uploading
+each as its own SARIF category (`scout-amd64`/`scout-arm64`,
+`trivy-amd64`/`trivy-arm64`) so both platforms' findings reach the Security
+tab. GitHub's code scanning alert, however, is keyed on the finding's rule
+and location, not on the category the SARIF came in under: a Docker
+Scout finding for a given CVE reports the same location
+(the package as it exists in the image, not a per-architecture path) for
+`linux/amd64` and `linux/arm64` alike, so both platforms' instances land on
+one alert. The same is true across the release and nightly workflows'
+separate analyses, and across every image version any of them has ever
+scanned: one alert accumulates instances from every ref, category, and
+workflow run that ever reproduced it, with no field on the alert itself
+saying which platform or version any single instance came from. That
+information exists (each instance's `ref` and `category`, readable through
+the `code-scanning/alerts/<n>/instances` API), but nothing in the Security
+tab's own UI surfaces it.
+
+This was investigated as part of the ignore-list migration above and found
+not worth working around. Making it visible would require Docker Scout's
+SARIF to emit a distinct `location` per architecture, which it does not,
+and the only way to force one from this side is to rewrite the SARIF after
+the scan (for example, `jq`-ing a fake path segment onto the finding's
+`artifactLocation.uri` before upload) so GitHub treats the two platforms as
+different locations. That is a bigger hack than the problem is worth: it
+would show a file path that doesn't exist to make an alert list a
+platform, and no fingerprint games change what the alert already tells you
+if you read the instance list instead of the summary. The honest answer is
+that the Security tab's alert list is the wrong place to ask "does this
+affect arm64," and the `instances` API is the right one; this repository is
+not going to bend the SARIF to fix a UI limitation.
+
+### Dismissal guidelines
+
+A finding qualifies for dismissal only when it has a written accepted-risk
+record behind it, in this file's "Accepted-risk CVEs" section above or
+somewhere equivalent, before the dismissal happens, never as a bare API call
+with no documentation to point at. The dismissal comment on the GitHub alert
+should cite that record directly (which file, which section) so a reader
+lands on the reasoning, not just the word "won't fix". A dismissal and a
+`.trivyignore.yaml` entry are two halves of one decision: dismissing an
+alert without a matching ignore-list entry, or adding an ignore-list entry
+without dismissing the alert it corresponds to, leaves the two disagreeing
+about whether a given CVE is accepted risk, which is exactly the drift
+`security-ignore-audit.yml` checks for.
+
+What does **not** qualify for dismissal:
+
+- A finding below the CRITICAL/HIGH gate this repository enforces, or one
+  with no accepted-risk record yet. Sub-gate findings and a genuinely
+  unfixable one-off (this repository's `fuse` package has exactly one
+  version available in the pinned Alpine release, so a CVE against it has no
+  upgrade path either) still stay open until someone actually assesses them
+  and writes down why, even when the assessment will likely end in "accept
+  it". Dismissing a CVE nobody has individually looked at, just to make the
+  Security tab read clean, is the failure mode this whole scheme exists to
+  prevent: it grants blanket acceptance to risk nobody evaluated.
+- A CVE in a transitive base-layer package that the base image's own next
+  rebuild will fix (see "Accepted-risk CVEs" above). Dismissing it hides the
+  day the fix actually lands instead of letting the scan confirm it.
+- Anything without an `expired_at` and a `statement` describing what would
+  resolve it. An ignore-list entry with no expiry is exactly the
+  indefinitely-suppressed CVE this whole mechanism exists to rule out.
 
 ---
 

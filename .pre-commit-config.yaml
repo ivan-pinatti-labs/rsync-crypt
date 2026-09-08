@@ -130,7 +130,7 @@ repos:
       # two files this scopes to) change far less often than the files the
       # other hooks above run against on every commit. This is a local
       # backstop for whoever is about to push; .github/workflows/publish-image.yml
-      # runs the same scan, with the same .trivyignore, as the blocking
+      # runs the same scan, with the same .trivyignore.yaml, as the blocking
       # server-side gate for anyone who bypasses or skips this hook (a
       # `--no-verify` push, a fresh clone with hooks not installed yet).
       #
@@ -175,9 +175,9 @@ repos:
           "${runtime}" save -o "${tarball}" "${tag}";
           "${runtime}" run --rm
           -v "${tarball}:/image.tar:ro,Z"
-          -v "$(pwd)/.trivyignore:/work/.trivyignore:ro,Z"
+          -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
           docker.io/aquasec/trivy:0.74.0 image
           --severity CRITICAL,HIGH --exit-code 1
-          --ignorefile /work/.trivyignore --input /image.tar
+          --ignorefile /work/.trivyignore.yaml --input /image.tar
           '

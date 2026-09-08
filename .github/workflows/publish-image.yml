@@ -500,7 +500,7 @@ jobs:
           category: scout-arm64
 
       - name: Scan the staging image with Trivy (report, amd64)
-        # Same digest, same registry ref, same '.trivyignore' the local
+        # Same digest, same registry ref, same '.trivyignore.yaml' the local
         # pre-push hook (.pre-commit-config.yaml's trivy-image-scan) enforces
         # against a locally built image; this is the same check run again
         # here as the blocking backstop for anyone who bypassed or skipped
@@ -524,7 +524,7 @@ jobs:
         # defaults to an older Trivy release than the local pre-push hook
         # uses ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml),
         # and relying on two different Trivy versions to agree on findings
-        # against the same '.trivyignore' is exactly the kind of drift this
+        # against the same '.trivyignore.yaml' is exactly the kind of drift this
         # explicit pin avoids.
         env:
           TRIVY_PLATFORM: linux/amd64
@@ -535,7 +535,7 @@ jobs:
           format: sarif
           output: trivy-results-amd64.sarif
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
@@ -554,7 +554,7 @@ jobs:
           format: sarif
           output: trivy-results-arm64.sarif
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (arm64) scan to code scanning
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
@@ -568,7 +568,7 @@ jobs:
         # report steps above. This is the CI-side backstop for the local
         # pre-push hook; see that hook's comment in .pre-commit-config.yaml
         # for why the same scan also runs there, before a push can even
-        # happen. '.trivyignore' documents why each currently-ignored CVE is
+        # happen. '.trivyignore.yaml' documents why each currently-ignored CVE is
         # there; see docs/SECURITY.md for the full reasoning.
         #
         # Everything after both gate steps (promotion, signing, the Docker
@@ -586,7 +586,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Scan the staging image with Trivy (gate, arm64)
         # Same as the amd64 gate step above, targeting the other platform.
@@ -599,7 +599,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
 
       - name: Promote the scanned image to its public tags
         # Reached only if the blocking Trivy scan above passed. Aliases the

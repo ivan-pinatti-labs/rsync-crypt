@@ -1,0 +1,157 @@
+---
+name: Security Ignore Audit
+
+# Re-checks `.trivyignore.yaml` and this repository's dismissed code scanning
+# alerts against a fresh signal every week, and opens or updates one tracking
+# issue when something needs a human decision. This is the early warning the
+# owner asked for alongside `.trivyignore.yaml`'s own `expired_at` field (see
+# docs/SECURITY.md's "Every entry expires"): `expired_at` is what actually
+# forces the CRITICAL/HIGH gate to fail once an entry goes stale, even if this
+# workflow is broken, disabled, or its issue goes unread. This workflow is
+# just the thing that notices first, on a schedule, instead of waiting for
+# someone to hit the failed gate.
+#
+# "A fresh signal" here means this repository's own code scanning alert
+# state, not a scan this workflow runs itself. `nightly-build.yml` already
+# scans the default branch with both Docker Scout and Trivy every night and
+# uploads the results as SARIF; re-running that scan here, just to read the
+# same answer a different way, would rebuild the whole multi-platform image
+# for no reason. Reading `gh api .../code-scanning/alerts` instead gets the
+# same freshness (at most a day old) for the cost of two API calls. See
+# `docs/SECURITY.md`'s "Code scanning alerts do not carry architecture or
+# version" for the one thing that signal still cannot tell you (which
+# platform a given instance came from); it does not matter here, since
+# `scripts/audit-security-ignores.py` only needs to know whether a CVE ID is
+# open, dismissed, or neither.
+#
+# Every decision `scripts/audit-security-ignores.py` makes from those two
+# alert lists is documented in that script's own header and exercised with no
+# network access at all in tests/test_audit_security_ignores.py. This
+# workflow is deliberately thin: fetch, run the script, and act on its
+# `needs_issue=`/report split the same way resolve-apk-pins.yml's own steps
+# consume scripts/resolve-apk-pins.py's `changed=` line.
+#
+# This never writes to `.trivyignore.yaml`, never dismisses or reopens a code
+# scanning alert, and never fails the job on what it finds: it only opens,
+# updates, or closes the one tracking issue below. See "CI never autofixes"
+# in CLAUDE.md; resolve-apk-pins.yml is documented there as the one exception
+# to that policy, and this is not a second one, since nothing here commits,
+# pushes, or changes what any gate enforces.
+on:
+  schedule:
+    # Monday, after nightly-build.yml's own 03:00 UTC run has had time to
+    # finish and upload a fresh SARIF for the default branch. Weekly, not
+    # nightly: `expired_at` entries are reviewed on the order of months (see
+    # .trivyignore.yaml), and a dismissed alert or a stale entry does not
+    # newly appear or disappear on any faster cadence than that, so a nightly
+    # run here would only restate the same finding six more times before
+    # anyone acts on it.
+    - cron: "0 5 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Audit ignore-list entries and dismissed alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Lets the "Open, update, or close the tracking issue" step below
+      # search, create, comment on, reopen, and close exactly one issue.
+      # Nothing here reaches code, a pull request, or a code scanning alert
+      # itself.
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch open code scanning alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/code-scanning/alerts?state=open&per_page=100" \
+            --paginate > open-alerts.json
+
+      - name: Fetch dismissed code scanning alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/code-scanning/alerts?state=dismissed&per_page=100" \
+            --paginate > dismissed-alerts.json
+
+      - name: Run the audit
+        id: audit
+        run: |
+          set -euo pipefail
+          python3 scripts/audit-security-ignores.py \
+            --ignorefile .trivyignore.yaml \
+            --open-alerts open-alerts.json \
+            --dismissed-alerts dismissed-alerts.json \
+            | tee audit-output.txt
+          head -1 audit-output.txt >> "$GITHUB_OUTPUT"
+          tail -n +2 audit-output.txt > audit-report.md
+
+      - name: Open, update, or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NEEDS_ISSUE: ${{ steps.audit.outputs.needs_issue }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Security ignore-list audit"
+          marker="<!-- security-ignore-audit -->"
+
+          # state=all: a previously closed tracking issue is reused rather
+          # than starting a new thread if something regresses later. --search
+          # can return a near match on title, so the exact title is also
+          # checked before trusting a result.
+          existing_number=$(gh issue list --search "in:title \"${title}\"" \
+            --state all --json number,title --jq \
+            ".[] | select(.title == \"${title}\") | .number" | head -1)
+
+          if [ "$NEEDS_ISSUE" = "true" ]; then
+            {
+              echo "$marker"
+              echo
+              echo "Audit run: $RUN_URL"
+              echo
+              cat audit-report.md
+            } > issue-body.md
+
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" = "CLOSED" ]; then
+                gh issue reopen "$existing_number"
+              fi
+              gh issue comment "$existing_number" --body-file issue-body.md
+              echo "::notice::Updated #$existing_number with the current findings."
+            else
+              gh issue create --title "$title" --body-file issue-body.md
+              echo "::notice::Opened a new tracking issue."
+            fi
+          else
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" != "CLOSED" ]; then
+                clean_message="Clean run ($RUN_URL): every ignore-list entry is in"
+                clean_message="${clean_message} sync, reproducing, and not near its expiry."
+                clean_message="${clean_message} Closing."
+                gh issue comment "$existing_number" \
+                  --body "$marker"$'\n\n'"$clean_message"
+                gh issue close "$existing_number"
+                echo "::notice::Closed #$existing_number; nothing needs attention."
+              fi
+            else
+              echo "::notice::Nothing needs attention; no tracking issue open."
+            fi
+          fi
