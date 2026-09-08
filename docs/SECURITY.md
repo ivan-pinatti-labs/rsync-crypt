@@ -155,6 +155,42 @@ still what backs an actual backup schedule.
 
 ---
 
+## What Scans What
+
+Image scanning (below) covers the packages the image installs. It says nothing
+about the code this repository writes, which is scanned separately:
+
+| Code | Scanned by | Where |
+| --- | --- | --- |
+| `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
+| `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
+| `scripts/*.py`, `tests/*.py` | CodeQL, `security-and-quality` suite | `codeql.yml`, on merge and weekly |
+| `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |
+| `.github/workflows/*` | actionlint, zizmor | `checklist-github-actions`, every commit |
+| Everything | detect-secrets, detect-private-key | `checklist-security-credentials`, every commit |
+
+The asymmetry there is deliberate and worth knowing before someone tries to
+"fix" it. **The shell scripts are the product**: `backup.sh`, `restore.sh` and
+`view.sh` are what the container runs, and they are covered by shellcheck
+rather than CodeQL because
+[CodeQL does not support shell at all](https://docs.github.com/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql).
+Its languages are JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++
+and C#. So the Security tab's "Code quality findings" prompt, which reads as
+though it would analyze the repository, can only reach the Python here.
+
+**The Python, conversely, does not ship.** It is repository tooling: grading
+pull requests, re-resolving apk pins on an Alpine bump, auditing this file's
+accepted-risk list. The image installs no Python interpreter, so a finding
+there can never be a vulnerability in a published artifact; it can still gate
+a merge wrongly, which is why it is analyzed twice over (ruff's `S` rules per
+commit, CodeQL weekly and on merge).
+
+That split is also why `COPY` in the `Dockerfile` names the three shell
+scripts individually instead of globbing `scripts/*`. The glob shipped every
+tooling script into `/app/` in the published image, confirmed present in
+`ghcr.io/ivan-pinatti-labs/rsync-crypt:1.6.1`. They were inert, since nothing
+in the image can execute Python, but they had no business being there.
+
 ## Image Vulnerability Scanning
 
 Every published image, `nightly` included, is scanned by both
@@ -244,11 +280,52 @@ something is being held back when nothing is.
 Expiry dates are not decorative and should not be copied from one entry to
 the next without thought. Tie each one to something real: a release window
 upstream is expected to clear the finding in, or, when that window cannot be
-predicted (gocryptfs's own release cadence has ranged from a month to over a
-year between releases), a fixed re-review interval that forces a look
-regardless. Either way, the `statement` field has to say which, so the
-person who hits the expiry knows whether they are checking for a shipped fix
-or just re-affirming the risk.
+predicted, a fixed re-review interval that forces a look regardless. Either
+way, the `statement` field has to say which, so the person who hits the expiry
+knows whether they are checking for a shipped fix or just re-affirming the
+risk.
+
+Windows follow severity, which is ordinary risk-acceptance practice: keep a
+`HIGH` exception inside 90 days, tighten it for a `CRITICAL`, and never let an
+expired one auto-renew. Today that means **30 days for the one `CRITICAL`
+entry and 60 days for the eleven `HIGH` ones**. A shared date across all
+twelve was the first arrangement and was replaced: they do share one root
+cause, but severity is what the practice keys on, and a single date meant the
+`CRITICAL` inherited the most permissive window on the list.
+
+Do not tie the window to gocryptfs's own release cadence, which cannot carry
+it. Upstream has shipped nothing since v2.6.1 (2025-08-10), and its historical
+gaps run from one month to nineteen. What actually clears these findings is an
+Alpine **package rebuild** against a newer `x/crypto`: Alpine has already
+moved `gocryptfs` from `2.6.1-r5` to `2.6.1-r6` inside the pinned 3.24 branch,
+and a rebuild like that is almost certainly what cleared the Go-stdlib entries
+this list used to carry. `golang.org/x/crypto` itself releases roughly monthly
+(v0.52.0 in May 2026 through v0.57.0 in September), so fix material is never
+the bottleneck; packaging is. The nightly rebuild is what picks such a rebuild
+up, usually within a day.
+
+### What the current entries are really about
+
+Every CVE in `.trivyignore.yaml` today is in `golang.org/x/crypto/ssh`,
+`ssh/agent`, or `ssh/knownhosts`, and **none of those packages are linked into
+the shipped binary.** gocryptfs is a filesystem tool with no SSH client and no
+SSH server. The binary confirms it: symbol references to `x/crypto/scrypt`,
+`hkdf` and `chacha20` are present, and references to `x/crypto/ssh` number
+zero.
+
+They appear at all because Trivy resolves a Go binary's vulnerabilities at
+**module** granularity, reading the module list out of the embedded build
+info. One `golang.org/x/crypto v0.33.0` dependency therefore drags in every
+CVE published against that module, whichever of its packages the linker
+actually kept.
+
+This is worth stating plainly because it changes what the expiry is for. These
+are not reachable risks being tolerated until a fix arrives; the vulnerable
+code is not in the artifact. What the expiry forces is re-verification of the
+unreachability claim, since that is the part that could stop being true: a
+future gocryptfs release could start linking `x/crypto/ssh` for some remote
+feature, and nothing about a CVE list would announce it. When renewing an
+entry, re-check that the binary still does not link the package, and say so.
 
 `.github/workflows/security-ignore-audit.yml` runs on a schedule and checks
 every entry against this repository's own code scanning history: whether it

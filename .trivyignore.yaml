@@ -96,88 +96,155 @@
 # is the audit acting as intended, once, by hand, ahead of the scheduled
 # workflow.
 #
-# All twelve entries below share one root cause (gocryptfs v2.6.1's vendored
-# golang.org/x/crypto v0.33.0) and one resolution condition (gocryptfs ships
-# a release off `master`, which already carries v0.52.0), so they share one
-# `expired_at`: 2026-12-07, a 90-day review window from when this migration
-# landed (2026-09-08). That is a deliberate re-review cadence, not a bet on
-# gocryptfs's own release date: its last two releases landed a month apart
-# and the two before that over a year apart, too irregular to predict, so
-# the date below forces a look regardless of whether upstream has shipped by
-# then. If master's fix has landed in a release, drop the entry instead of
-# renewing it, per the header above.
+# None of these are reachable in the shipped binary, and that is the primary
+# justification for every entry, ahead of "no fix available upstream".
+# All twelve are in `golang.org/x/crypto/ssh`, `ssh/agent` or
+# `ssh/knownhosts`. gocryptfs is a filesystem tool with no SSH client and no
+# SSH server, and the binary bears it out: `strings` over the extracted
+# /usr/bin/gocryptfs finds symbol references to x/crypto/scrypt, hkdf and
+# chacha20, and exactly zero to x/crypto/ssh (measured 2026-09-08 against the
+# published v1.6.1 image). Trivy reports a Go binary at *module* granularity,
+# reading the module list out of the embedded build info, so a single
+# `golang.org/x/crypto v0.33.0` dependency drags in every CVE published
+# against that module no matter which of its packages the linker actually
+# kept. That is why these appear at all.
+#
+# So the expiry below is not a countdown to a fix becoming urgent. Its job is
+# to force someone to re-verify the unreachability claim, because that claim
+# is the thing that could stop being true: a future gocryptfs release could
+# start linking x/crypto/ssh for some remote feature, and nothing about a CVE
+# list would announce it.
+#
+# Expiry windows follow severity rather than one shared date, per the usual
+# risk-acceptance practice of keeping the window inside 90 days for a HIGH and
+# tightening it for a CRITICAL:
+#
+#   2026-10-08 (30 days) - CVE-2026-56854, the one CRITICAL.
+#   2026-11-07 (60 days) - the eleven HIGH entries.
+#
+# Both windows are shorter than they would need to be if these were reachable
+# risks being tolerated, which they are not. They are re-verification
+# deadlines. Note also what would actually resolve them: not a gocryptfs
+# release (upstream has shipped nothing since v2.6.1 on 2025-08-10, thirteen
+# months, and its gaps have run from one month to nineteen), but an Alpine
+# package rebuild against a newer x/crypto. Alpine has already moved
+# gocryptfs from 2.6.1-r5 to 2.6.1-r6 within the pinned 3.24 branch, and a
+# rebuild like that is almost certainly what cleared the Go-stdlib entries
+# this file used to carry. `golang.org/x/crypto` itself releases roughly
+# monthly (v0.52.0 on 2026-05-22 through v0.57.0 on 2026-09-08), so the fix
+# material is never the bottleneck; packaging is.
+#
+# If the finding has genuinely gone, drop the entry rather than renewing it,
+# per the header above.
 
 vulnerabilities:
-  # golang.org/x/crypto (embedded in gocryptfs, pinned to v0.33.0 upstream)
-  - id: CVE-2025-22869
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2025-47913
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39828
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39829
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39830
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39831
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39832
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-39835
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-42508
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-46595
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
-  - id: CVE-2026-46597
-    statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
+  # CRITICAL, 30-day re-verification window.
   - id: CVE-2026-56854
     statement: >-
-      golang.org/x/crypto v0.33.0 embedded in gocryptfs v2.6.1, fixed
-      upstream in v0.52.0. No gocryptfs release ships that bump yet; resolves
-      when one does, or on review at expiry.
-    expired_at: 2026-12-07
+      CRITICAL in golang.org/x/ssh, via the x/crypto v0.33.0 vendored by
+      gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-10-08
+  # HIGH, 60-day re-verification window.
+  - id: CVE-2025-22869
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2025-47913
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh/agent, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh/agent. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39828
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39829
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39830
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39831
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39832
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh/agent, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh/agent. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-39835
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-42508
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh/knownhosts, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh/knownhosts. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-46595
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07
+  - id: CVE-2026-46597
+    statement: >-
+      HIGH in golang.org/x/crypto/ssh, via the x/crypto v0.33.0 vendored
+      by gocryptfs v2.6.1. Not reachable: the shipped binary links x/crypto's
+      scrypt, hkdf and chacha20 packages and has zero symbol references to
+      x/crypto/ssh. Flagged only because Trivy resolves a Go binary's
+      vulnerabilities per module, not per linked package. Re-verify that the
+      binary still does not link it, then renew or drop.
+    expired_at: 2026-11-07

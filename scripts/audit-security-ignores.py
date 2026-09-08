@@ -51,7 +51,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -354,7 +354,7 @@ def render_report(
 
 def _parse_date(value: str) -> date:
     """Parse a `YYYY-MM-DD` `--today` override as a plain calendar date."""
-    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc).date()
+    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).date()
 
 
 def main() -> int:
@@ -390,7 +390,7 @@ def main() -> int:
     # security-ignore-audit.yml, and `expired_at` dates are calendar dates
     # with no timezone of their own, so UTC is the one unambiguous "today"
     # to compare them against.
-    today = args.today or datetime.now(timezone.utc).date()
+    today = args.today or datetime.now(UTC).date()
     entries = parse_ignorefile(args.ignorefile.read_text())
     open_ids = load_alert_rule_ids(args.open_alerts)
     dismissed_ids = load_alert_rule_ids(args.dismissed_alerts)

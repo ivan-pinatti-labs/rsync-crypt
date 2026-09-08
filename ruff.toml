@@ -1,0 +1,58 @@
+# Ruff configuration for this repository's Python.
+#
+# Before this file existed there was no ruff configuration anywhere, which
+# means `ruff check` ran its default rule set: `E4`, `E7`, `E9` and `F`, that
+# is a slice of pycodestyle plus pyflakes. Useful, but entirely
+# correctness-and-style: not one security rule was enabled, so the Python here
+# had no security linting at all despite `.pre-commit-config.yaml` running
+# ruff on every commit. `S` below is the point of this file; the rest are
+# rule sets whose findings are worth having now that a config exists to hold
+# them.
+#
+# Scope: `scripts/*.py` (repository tooling that grades pull requests,
+# re-resolves apk pins and audits the ignore list) and `tests/*.py`. None of
+# it ships in the image, which deliberately installs no Python interpreter,
+# but it does gate merges, so a bug here can wave through a bad change.
+
+# Match the interpreter CI actually uses (`python-version: "3.13"` in
+# .github/workflows/pull-request-validation.yml) rather than letting ruff infer
+# one, so a rule that depends on the target version resolves the same locally
+# and in CI. This is also what makes `UP` safe to enable: it rewrites to
+# idioms that only exist from this version onwards, `datetime.UTC` (3.11+)
+# among them, so the target has to be honest or the fixes it suggests would
+# break on the interpreter that runs them.
+target-version = "py313"
+
+line-length = 88
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort, import ordering
+    "B",   # flake8-bugbear, likely bugs and design problems
+    "S",   # flake8-bandit, the security rules this repo was missing
+    "UP",  # pyupgrade, don't keep idioms the target version obsoletes
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff's own rules
+]
+
+[lint.per-file-ignores]
+# Tests legitimately do things `S` flags as suspicious in production code:
+# `assert` is how a test states its expectation (S101), and the fixtures here
+# construct temporary paths and run known-good subprocesses on purpose
+# (S103, S108, S404, S603, S607). S105 fires on the integration suite's
+# `PASSPHRASE` constant, which is a literal test passphrase fed to gocryptfs
+# in a throwaway container, not a credential: the rule cannot tell those
+# apart, and the alternative (reading it from the environment) would hide what
+# the test actually does for no gain.
+"tests/*" = ["S101", "S103", "S105", "S108", "S404", "S603", "S607"]
+
+# The tooling scripts shell out to `gh`, `docker` and `apk` by design; that is
+# their entire job. `S603`/`S607` would flag every such call for being a
+# subprocess with a resolved-from-PATH executable, which is the intended
+# behaviour here and not something to rewrite. Every one of these calls is
+# built as an argument list, never a shell string, so the injection risk
+# `S602` covers does not apply and that rule stays on.
+"scripts/*" = ["S404", "S603", "S607"]

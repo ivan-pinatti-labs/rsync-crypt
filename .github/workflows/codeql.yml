@@ -1,0 +1,83 @@
+---
+name: CodeQL
+
+# CodeQL analysis of this repository's Python, with both the security and the
+# quality query suites, uploaded to the code scanning tab alongside the Trivy
+# and Docker Scout results that publish-image.yml and nightly-build.yml send
+# there.
+#
+# Python only, and it is worth being clear about how small that scope is,
+# because the Security tab's "Code quality findings . Disabled" prompt reads
+# like it is offering to analyze the whole repository. CodeQL supports
+# JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++ and C#. It does
+# not support shell, and shell is what this image actually ships:
+# scripts/backup.sh, restore.sh and view.sh are the product. So CodeQL cannot
+# see the code that matters most here, and the tools that can already run on
+# every commit: shellcheck (plus shfmt and the shebang checks) through
+# `checklist-dev-shell` in .pre-commit-config.yaml, hadolint on the Dockerfile,
+# actionlint and zizmor on these workflows, and detect-secrets against
+# .secrets.baseline. docs/SECURITY.md's "What scans what" lays the whole
+# arrangement out.
+#
+# What CodeQL does cover is the Python under scripts/ and tests/, which is
+# repository tooling rather than shipped code: it grades pull requests
+# (assert-pin-only-diff.py, coderabbit-review-verdict.py), re-resolves apk
+# pins on an Alpine bump (resolve-apk-pins.py) and audits the accepted-risk
+# list (audit-security-ignores.py). None of it reaches the image, which
+# installs no Python interpreter at all, so a finding here is never a
+# vulnerability in a published artifact. It can still gate a merge wrongly,
+# which is reason enough to analyze it, and `ruff.toml` enables flake8-bandit
+# (`S`) over the same files for the faster, per-commit half of the same job.
+#
+# No `push:` on branches other than the default one and no `pull_request:`
+# trigger: PR validation here is already long, this analysis adds nothing a
+# reviewer acts on inside a pull request, and code scanning's own alert
+# lineage works from default-branch analyses. A schedule plus the merge to
+# main is enough to keep the Security tab current, with workflow_dispatch for
+# a manual re-run.
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Monday, an hour after security-ignore-audit.yml's own weekly run, so the
+    # two never contend for a runner and the tracking issue that audit opens
+    # is not racing a CodeQL upload for attention.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: Analyze Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # The SARIF upload below attaches to this repository's code scanning tab.
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: python
+          # Both suites. 'security-and-quality' is what the Security tab's
+          # "Code quality findings" prompt is actually asking for; the default
+          # ('security-extended' is not enabled here) would report only
+          # security queries and leave that entry disabled.
+          queries: security-and-quality
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          # Distinct from the scanner categories publish-image.yml and
+          # nightly-build.yml use ('scout-amd64', 'trivy-arm64' and so on), so
+          # this analysis keeps its own alert lineage rather than sharing one
+          # with an image scan. See docs/SECURITY.md's "Code scanning alerts do
+          # not carry architecture or version" for how that lineage is keyed.
+          category: codeql-python

@@ -244,11 +244,32 @@ name,bucket,description` reports `bucket: pass` for a completed review *and*
 for a skipped draft, so the bucket alone cannot tell them apart. The
 `description` is what distinguishes them:
 
-| `bucket`  | `description`                        | Reviewed?         |
-| --------- | ------------------------------------ | ----------------- |
-| `pending` | `Review in progress`                 | no, still running |
-| `pass`    | `Review skipped: draft pull request` | no, never started |
-| `pass`    | `Review completed`                   | yes               |
+| `bucket`  | `description`                                                    | Reviewed?         |
+| --------- | ---------------------------------------------------------------- | ----------------- |
+| `pending` | `Review in progress`                                             | no, still running |
+| `pass`    | `Review skipped: draft pull request`                             | no, never started |
+| `pass`    | `Review rate limited`                                            | no, declined      |
+| `pass`    | `Review skipped: manual review required for this OSS repository` | no, must be asked |
+| `pass`    | `Review completed`                                               | yes               |
+
+The last two rows were added after #62, where both appeared and both read
+`bucket: pass`. `Review Verified` rejected each correctly, so the gate holds;
+the point of the table is that reading `bucket` alone would have called them
+reviewed.
+
+`Review rate limited` is the free OSS review quota, not a punishment for
+asking too often, though asking repeatedly does spend it. On a public
+repository CodeRabbit grants roughly one review per short window and answers
+every further command with a decline that costs a request and buys nothing;
+five were burned that way on #62. The walkthrough comment carries the actual wait
+("Next included review available in N minutes"), so read that rather than
+retrying blind, and note the observed gap between *successful* reviews there
+ran nearer an hour than the advertised twenty minutes.
+
+`Review skipped: manual review required for this OSS repository` means
+automatic review is off for the repository, so a push alone will never be
+reviewed and a human has to post `@coderabbitai review` for each new head. It
+looks identical to a healthy pass in the checks list.
 
 So: `description` is `Review completed`, *and* the head SHA is named in
 CodeRabbit's comments, which is what proves that completion refers to the
@@ -411,8 +432,28 @@ published upstream; the Dockerfile's `apk update && apk upgrade` picks the
 fix up on the next rebuild, so the scan failing until that rebuild happens is
 the mechanism working, not a false positive to silence.
 
+Every CVE currently in that file is in `golang.org/x/crypto/ssh`, `ssh/agent`
+or `ssh/knownhosts`, and **none of those packages are linked into the shipped
+binary**: `strings` over the extracted `/usr/bin/gocryptfs` finds references to
+`x/crypto/scrypt`, `hkdf` and `chacha20` and exactly zero to `x/crypto/ssh`.
+They are reported because Trivy resolves a Go binary at *module* granularity
+from its embedded build info, so one `golang.org/x/crypto v0.33.0` dependency
+pulls in every CVE against that module regardless of what the linker kept. Do
+not read the list as twelve reachable holes in the image. The expiry exists to
+force re-verification of the unreachability claim, which is the part that could
+change (a future gocryptfs could start linking `ssh`), not to time a fix.
+
+Related, for picking a window: gocryptfs upstream has shipped nothing since
+v2.6.1 (2025-08-10) and its gaps run from one month to nineteen, so its cadence
+cannot carry an expiry. `x/crypto` releases roughly monthly. What actually
+lands a fix here is an Alpine package rebuild (`2.6.1-r5` to `2.6.1-r6` already
+happened inside the pinned 3.24 branch, and is the likely reason the Go-stdlib
+entries cleared), which the nightly rebuild picks up within a day.
+
 Every entry carries an `expired_at` date (the file is YAML specifically for
-this field) and a `statement` saying what would resolve it. This is not
+this field) and a `statement` saying what would resolve it. Windows follow
+severity, per ordinary risk-acceptance practice: 30 days for a `CRITICAL`, 60
+for a `HIGH`, never past 90. This is not
 optional formatting: an ignore-list entry with no expiry is an
 indefinitely-suppressed CVE, which is its own security problem regardless of
 how well-reasoned the original acceptance was.
