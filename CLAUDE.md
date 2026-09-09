@@ -44,8 +44,13 @@ minor only and matches whatever `-rN` revision Alpine currently carries. That is
 the whole of what is durable here, and this note deliberately does not name a
 revision: Alpine bumps `-rN` without changing the upstream version, so any
 number written down is stale on the next rebuild and misleads exactly the reader
-who trusts it. Run `apk policy gocryptfs` inside `alpine:${ALPINE_VERSION}` when
-you need the current one. See [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
+who trusts it. Run `apk update && apk policy gocryptfs` inside
+`alpine:${ALPINE_VERSION}` when you need the current one. The `apk update` is
+not optional: `apk policy` reads the local index, and a fresh container has
+none, so without it the command prints only
+`WARNING: opening from cache ... No such file or directory`, reports no version
+at all, and still exits 0. It fails silently, which is the worst way for a
+resolution step to fail. See [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
 
 The `-bs` (block size) flag is NOT supported by this build. Do not add it back;
 that is a property of gocryptfs 2.6 rather than of any revision.
@@ -61,7 +66,7 @@ of silently installing a different major version.
 constraints, not Docker tags, so no Renovate datasource can track them: an
 independently proposed bump could easily name a version the pinned Alpine
 release's repo does not carry and fail the build. This used to mean
-re-resolving all seven by hand (`apk policy <pkg>` inside the new
+re-resolving all seven by hand (`apk update && apk policy <pkg>` inside the new
 `alpine:${ALPINE_VERSION}`) every time a Renovate `ALPINE_VERSION` pull
 request landed, which is how the 2.5 to 2.6, 685 to 702 and 10.2 to 10.3
 moves above were originally found.
