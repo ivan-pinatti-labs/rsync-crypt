@@ -72,8 +72,11 @@ rather than to that publish, so it is not subject to the same restriction.
 
 ## A dependency bot pull request
 
-Dependabot and Renovate open pull requests unattended. For the ones that are
-pin only:
+Renovate opens pull requests unattended. Dependabot used to as well, on the
+same lane below, until its `updates:` configuration (github-actions,
+pre-commit) was retired and `.github/dependabot.yml` deleted: both ecosystems
+moved to Renovate's own native managers instead of a second bot managing them
+independently. For the ones that are pin only:
 
 1. **`Pin Only` is graded.** `scripts/assert-pin-only-diff.py` checks that
    every changed line differs from its counterpart in nothing but a version,
@@ -117,7 +120,7 @@ merge of something harmful is two things, neither of them a review:
    exists from a version that is safe. `alpine:3.24` becoming `alpine:3.25`
    is exactly the change it exists to permit, "and no amount of diff reading
    can tell a good release from a backdoored one," in its own words.
-2. **A cooling window on both bots**, which is the actual defence against a
+2. **A cooling window on the bot**, which is the actual defence against a
    release that is well formed and malicious, since a fresh supply chain
    compromise may have no published advisory yet, and advisory-driven
    detection cannot flag what has not been reported. Other signals remain:
@@ -125,29 +128,27 @@ merge of something harmful is two things, neither of them a review:
    person can inspect release metadata or the published artifact. The
    window buys the time in which any of that can happen.
 
-   Renovate's half is live: `.github/renovate.json5` carries a seven-day
-   `minimumReleaseAge` with `internalChecksFilter: strict`, so a pull
-   request does not open looking blocked before its window is satisfied,
-   and `vulnerabilityAlerts.minimumReleaseAge: null`, so a known
-   vulnerability fix is not held back by a wait that does not make it safer.
-
-   Dependabot's half was missing entirely until this change, and it covered
-   the larger surface of the two. Renovate here manages asdf tool versions
-   and one annotated Docker tag; Dependabot manages GitHub Actions and
-   pre-commit hooks, both of which execute arbitrary code, in CI holding a
-   token and on a developer's machine respectively. When such a bump's diff
-   is pin only, it takes the lane described under "A dependency bot pull
-   request" above: `bot-auto-merge.yml` supplies the approval, `Review
-   Verified` resolves without a review, and it merges with no person having
-   looked at it. A diff that is not pin only gets no approval and waits for
-   a human, so it is the pin-only lane specifically that a cooling window
-   has to cover. `.github/dependabot.yml` now sets
-   `cooldown.default-days: 7` on both ecosystems to match. Only
-   `default-days` is used: GitHub supports the `semver-*-days` keys on
-   neither `github-actions` nor `pre-commit`, so setting them would be
-   configuration that silently does nothing. `cooldown` applies to version
-   updates and never to Dependabot security updates, which is the same
-   carve-out Renovate gets from `vulnerabilityAlerts` above.
+   `.github/renovate.json5` carries a seven-day `minimumReleaseAge` with
+   `internalChecksFilter: strict`, so a pull request does not open looking
+   blocked before its window is satisfied, and
+   `vulnerabilityAlerts.minimumReleaseAge: null`, so a known vulnerability
+   fix is not held back by a wait that does not make it safer. This window
+   covers every ecosystem Renovate manages under one setting: asdf tool
+   versions and one annotated Docker tag, and, since the migration off
+   Dependabot, GitHub Actions and pre-commit hooks too. Those two are the
+   larger surface of the four, not the smaller, since both execute arbitrary
+   code, in CI holding a token and on a developer's machine respectively,
+   rather than merely naming a version; Dependabot used to cover them with
+   its own matching `cooldown.default-days: 7`, before its `updates:`
+   configuration was retired and `.github/dependabot.yml` deleted. When such
+   a bump's diff is pin only, it takes the lane described under "A
+   dependency bot pull request" above: `bot-auto-merge.yml` supplies the
+   approval, `Review Verified` resolves without a review, and it merges with
+   no person having looked at it. A diff that is not pin only gets no
+   approval and waits for a human, so it is the pin-only lane specifically
+   that a cooling window has to cover, and the same seven days now covers it
+   for all four surfaces regardless of which one a given pull request
+   touches.
 
 The organization-wide statement of this policy, and the reasoning for the
 schedules it interacts with, lives in `ivan-pinatti-labs/.github`'s
@@ -156,14 +157,7 @@ here because every repository in the organization shares it, and because it
 had already been re-derived incorrectly more than once from a repository's
 config comment alone. That included the schedule half: Dependabot was given a
 weekday per repository to protect a CodeRabbit review quota its pin-only bumps
-never consumed, and neither bot is assigned a weekday anymore.
-
-They are not on identical days, though, and the difference belongs to
-Dependabot rather than to anything configured here: `interval: daily` means
-weekdays only, Monday to Friday, while Renovate's `before 7am` is permitted
-every day. A release landing on a Saturday reaches Renovate's surfaces that
-morning and Dependabot's on Monday, well inside the seven-day cooling window
-both sit behind.
+never consumed, and no bot is assigned a weekday here any more.
 
 ## Every required status context
 
