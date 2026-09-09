@@ -248,7 +248,7 @@ for `v1.5.0` below:
 
 ```bash
 mkdir -p rsync-crypt/conf && cd rsync-crypt
-ref="v1.5.0"
+ref="v1.5.0" # example; substitute the current release
 
 # Your settings, as .env
 curl -fsSL -o .env \
@@ -307,6 +307,8 @@ the `main` branch, so verification has to match the tag pattern rather than
 one fixed branch ref:
 
 ```bash
+# Substitute the release you are verifying; this is an example, not a
+# current version. Tags: https://github.com/ivan-pinatti-labs/rsync-crypt/releases
 IMAGE="ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.2"
 
 cosign verify \
@@ -380,8 +382,8 @@ and `linux/arm64`), with the same digest under the same tags on both:
 - `ghcr.io/ivan-pinatti-labs/rsync-crypt` (used above)
 - `docker.io/ivanpinatti/rsync-crypt` (alternative, same image)
 
-Tags are `latest` (the most recent release) and a bare release version, e.g.
-`1.5.0` (that exact build, never rebuilt in place, which is why step 3 above
+Tags are `latest` (the most recent release) and a bare release version such as
+`X.Y.Z` (that exact build, never rebuilt in place, which is why step 3 above
 verifies and step 4 runs that same pinned tag rather than `latest`). Current
 tags are on the
 [Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page.
