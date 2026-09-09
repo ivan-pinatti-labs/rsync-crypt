@@ -1,9 +1,13 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
-  // Dependabot handles GitHub Actions and pre-commit hooks, see dependabot.yml.
-  // Renovate handles the asdf tool versions and the Alpine pin in the
-  // Dockerfile, neither of which Dependabot can parse.
+  // Renovate is the only dependency bot here now. Dependabot's `updates:`
+  // configuration (github-actions, pre-commit) is retired and
+  // .github/dependabot.yml deleted; both ecosystems moved to Renovate's own
+  // native managers below rather than to a second custom regex, since each
+  // already ships one. Renovate still separately handles the asdf tool
+  // versions and the Alpine pin in the Dockerfile, neither of which a
+  // manifest-reading manager can parse.
   extends: ["config:recommended"],
 
   // Kept on despite the standing, never-resolving tracking issue it opens.
@@ -39,9 +43,28 @@
   // the strength of a default nobody chose.
   automerge: false,
 
-  // Dependabot owns these two ecosystems; disabling them here avoids
-  // duplicate pull requests for the same update.
-  enabledManagers: ["asdf", "custom.regex"],
+  // Dependabot used to own these two ecosystems; disabling them here avoided
+  // duplicate pull requests for the same update. Dependabot's `updates:`
+  // configuration is retired now (.github/dependabot.yml no longer exists),
+  // so both are enabled here instead. The allowlist itself stays, rather
+  // than being dropped: `dockerfile`, a manager neither bot ever owned here,
+  // would otherwise start reading the `FROM alpine:${ALPINE_VERSION}` line
+  // the custom.regex manager below already owns, which is exactly the kind
+  // of duplicate this allowlist exists to prevent, just from a different
+  // direction than Dependabot's ecosystems were.
+  enabledManagers: ["asdf", "custom.regex", "github-actions", "pre-commit"],
+
+  // Off by default upstream, "not supported by the pre-commit maintainers or
+  // community" per the manager's own warning, a statement about where bug
+  // reports go rather than a reason to leave hook revisions unwatched.
+  // Listing it in enabledManagers above is not enough on its own: this
+  // manager ships `enabled: false` in its own defaultConfig regardless,
+  // confirmed with `renovate --platform=local --dry-run=extract` before
+  // relying on it, so without this override it would sit listed as enabled
+  // and extract nothing.
+  "pre-commit": {
+    enabled: true,
+  },
 
   // A cooling window before an update is offered at all, mirroring
   // docker-torrent-box-with-vpn's reasoning rather than its number chosen for
@@ -60,9 +83,14 @@
   // regardless of how many images or tools a repository tracks, so the
   // window that makes "we merged it first" into "it was already yanked" is
   // the same window here as there. This repository's surface is asdf tool
-  // versions (github-cli, pre-commit) and one annotated Docker tag
-  // (ALPINE_VERSION); none of the three carry a materially different risk
-  // profile that would justify a shorter wait.
+  // versions (github-cli, pre-commit), one annotated Docker tag
+  // (ALPINE_VERSION), and, since the migration off Dependabot, GitHub
+  // Actions and pre-commit hooks too; none of the five carry a materially
+  // different risk profile that would justify a shorter wait, and the two
+  // that moved from Dependabot are the larger attack surface of the whole
+  // set, not the smaller, since both execute arbitrary code (in CI holding a
+  // token, and on a developer's machine respectively) rather than merely
+  // naming a version.
   minimumReleaseAge: "7 days",
 
   // Hold the pull request until the window is satisfied rather than opening
@@ -96,17 +124,23 @@
     // line by line, before the label alone can do anything.
     //
     // patch and minor only, not this repository's whole update-type
-    // vocabulary. Both of Renovate's ecosystems here can offer a major:
-    // `asdf` for github-cli or pre-commit, and the custom regex manager's
-    // `versioning: docker` for ALPINE_VERSION, where "3.24" to "3.25" reads
-    // as minor but "3.x" to "4.x" would read as major. An Alpine major is
-    // exactly the case CLAUDE.md already says needs a person: apk drops and
-    // renames packages across major releases, which is what forced the apk
-    // pins in the Dockerfile to be re-resolved by hand the last time this
-    // repository's base image moved. `digest` and `pin` are not listed
+    // vocabulary. Every manager here can offer a major: `asdf` for
+    // github-cli or pre-commit, the custom regex manager's `versioning:
+    // docker` for ALPINE_VERSION (where "3.24" to "3.25" reads as minor but
+    // "3.x" to "4.x" would read as major), and, since the migration off
+    // Dependabot, `github-actions` and `pre-commit` too, the same
+    // major/minor/patch semver Dependabot used to classify on its own pull
+    // requests through bot-auto-merge.yml's use of dependabot/fetch-metadata,
+    // which retired along with its `updates:` configuration. An Alpine major
+    // is exactly the case CLAUDE.md already says needs a person: apk drops
+    // and renames packages across major releases, which is what forced the
+    // apk pins in the Dockerfile to be re-resolved by hand the last time this
+    // repository's base image moved; a major GitHub Action or pre-commit
+    // hook bump earns the same pause, since neither promises backward
+    // compatibility across one either. `digest` and `pin` are not listed
     // because neither can happen here: `pinDigests` is not enabled, and
-    // scripts/assert-pin-only-diff.py's own version grammar for the
-    // annotated `ARG` line has no shape for a digest to occupy, so granting
+    // scripts/assert-pin-only-diff.py's own version grammar for every pin
+    // surface it reads has no shape for a digest to occupy, so granting
     // automerge to an update type this repository never produces would
     // document a policy nothing here could ever exercise.
     {
@@ -123,6 +157,27 @@
     {
       matchManagers: ["custom.regex"],
       labels: ["dependencies", "docker"],
+    },
+    // The two ecosystems that moved here from Dependabot, each grouped the
+    // way Dependabot grouped it: one pull request per ecosystem
+    // (`patterns: ["*"]` in the old dependabot.yml), rather than one per
+    // dependency. That was about pull request volume, not a shared release
+    // cadence, and nothing about the reasoning changes just because a
+    // different bot is now the one opening the pull request. Labels match
+    // what dependabot.yml used to add, on top of the root `dependencies`
+    // label every Renovate pull request already carries, so a pull request
+    // from either era of this repository's history sorts the same way.
+    {
+      matchManagers: ["github-actions"],
+      groupName: "github actions",
+      groupSlug: "github-actions",
+      labels: ["dependencies", "github-actions"],
+    },
+    {
+      matchManagers: ["pre-commit"],
+      groupName: "pre-commit hooks",
+      groupSlug: "pre-commit-hooks",
+      labels: ["dependencies", "pre-commit"],
     },
   ],
 

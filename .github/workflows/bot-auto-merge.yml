@@ -12,10 +12,10 @@ name: Bot Auto Merge
 # has no approving review and cannot merge.
 #
 # Nothing else happens here: the tests are proven by the `Tests` job in
-# pull-request-validation.yml, and the merge itself is GitHub's, armed either
-# by Renovate (platformAutomerge) or by the last step here on the Dependabot
-# path, because Dependabot cannot arm it; the owner's own path arms nothing at
-# all, see the `approve-owner` job below for why.
+# pull-request-validation.yml, and the merge itself is GitHub's, armed by
+# Renovate itself (platformAutomerge) when it opens the pull request; the
+# owner's own path arms nothing at all, see the `approve-owner` job below for
+# why.
 #
 # Why an approval has to be supplied at all: no CODEOWNERS file exists here
 # and none should be added for this reason alone, since CODEOWNERS accepts
@@ -35,7 +35,9 @@ name: Bot Auto Merge
 # the fix. If a second write collaborator is ever added, every approval
 # decision in this file has to be revisited: the fence both jobs rely on is
 # that only accounts already trusted with write access are approved here at
-# all, and Renovate, Dependabot and the owner are the only three today.
+# all, and Renovate and the owner are the only two today. Dependabot used to
+# be a third; its `updates:` configuration is retired now, and every
+# reference to it below went with it.
 #
 # What an `approve-owner` approval does *not* mean: that a human read the
 # diff. It is issued the moment every required context reads green, with no
@@ -102,7 +104,7 @@ permissions:
 
 jobs:
   approve-bot:
-    name: Approve and enable auto-merge for a dependency bot
+    name: Approve a dependency bot pull request
     # user.login is set by GitHub from the authenticated author, so a pull
     # request cannot claim to be a bot. Exact equality, not startsWith or
     # contains: `renovate[bot]-x` is a login somebody may register, and the
@@ -115,10 +117,8 @@ jobs:
     # before anything had even run. Only the label this job actually reads is
     # worth waking it for.
     if: >-
-      github.event.pull_request.head.repo.fork == false && (
-        github.event.pull_request.user.login == 'renovate[bot]' ||
-        github.event.pull_request.user.login == 'dependabot[bot]'
-      ) && (
+      github.event.pull_request.head.repo.fork == false &&
+      github.event.pull_request.user.login == 'renovate[bot]' && (
         github.event.action != 'labeled' ||
         github.event.label.name == 'automerge'
       )
@@ -133,11 +133,6 @@ jobs:
       group: bot-auto-merge-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     permissions:
-      # For `gh pr merge --auto` on the Dependabot path only. Arming auto-merge
-      # does not merge anything: every required check still has to pass, and
-      # `Tests` is absent until pull-request-validation.yml proves this
-      # commit.
-      contents: write
       pull-requests: write
     steps:
       - name: Check out the default branch
@@ -197,118 +192,32 @@ jobs:
           echo "::error::No settled Pin Only verdict for $HEAD_SHA after two minutes."
           exit 1
 
-      - name: Fetch Dependabot metadata
-        id: metadata
-        if: github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Decide whether this bump may merge unattended
-        # One decision, one place. The steps below read its outputs rather than
-        # restating the condition, which is what went wrong before: the same
-        # expression was written out twice, both copies compared the ecosystem
-        # to a hyphenated name that fetch-metadata never emits (it reports
-        # "pre_commit", confirmed live), and all ten pull requests from the
-        # first run silently skipped both steps, none flagged as a failure
-        # since a skipped step is not an error.
-        #
         # Renovate is asked by label, not by update type. It already decides
         # which of its own pull requests may automerge, in
         # .github/renovate.json5, and the rule that grants it also adds the
-        # `automerge` label. Restating the update types here would be a second
-        # copy of that policy, free to drift from the one Renovate acts on.
-        # A major bump therefore arrives with no label, gets no approval, and
-        # waits.
+        # `automerge` label. Restating the update types here would be a
+        # second copy of that policy, free to drift from the one Renovate
+        # acts on. A major bump therefore arrives with no label, gets no
+        # approval, and waits.
         #
-        # Dependabot has no such config, so its update type is read from the
-        # metadata action. All three of its ecosystems are eligible, test
-        # requirements included: they only reach the test virtualenv, and the
-        # suite is what clears them either way.
-        #
-        # Graded from `updated-dependencies-json` alone, never from the
-        # top-level `update-type` output. update-type is fetch-metadata's own
-        # summary of the *highest* semver level *present* among a group's
-        # entries, not a guarantee that *every* entry is at or below that
-        # level: `maxSemver` builds a set of each entry's updateType and
-        # returns the first of major/minor/patch found in it, blank entries
-        # included in the set but never selected over a real one. A group
-        # pairing one resolved minor bump with one blank, unresolved entry
-        # therefore reports the top-level type as "version-update:semver-minor",
-        # confirmed by running fetch-metadata's own algorithm against that
-        # exact shape, which would have approved the whole group on the
-        # strength of the one entry that happened to resolve. Reading
-        # `updated-dependencies-json` unconditionally instead, and requiring
-        # every single entry in it to be a patch or minor bump, closes that
-        # gap without opening a new one: for a genuine single-dependency
-        # update this is the same check the top-level field would have made,
-        # since its one entry is exactly what `update-type` was built from.
-        #
-        # A grouped update is the normal shape here, not an edge case: this
-        # organization's every repository groups its pre-commit and
-        # github-actions ecosystems with `patterns: ["*"]`, so the grouped
-        # shape is the one Dependabot produces most often. Ported from
-        # docker-torrent-box-with-vpn, where #94 was the live example.
+        # This used to also grade Dependabot's own pull requests, reading an
+        # update type off dependabot/fetch-metadata rather than a label,
+        # since Dependabot carried no such config of its own. That branch is
+        # gone with `.github/dependabot.yml`'s `updates:` config, which is
+        # retired now that Renovate's own native `github-actions` and
+        # `pre-commit` managers cover both ecosystems instead.
         id: decide
         env:
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           HAS_AUTOMERGE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'automerge') }}
-          UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}
         run: |
           approve=false
-          arm=false
-
-          case "$PR_AUTHOR" in
-            "renovate[bot]")
-              if [ "$HAS_AUTOMERGE_LABEL" = "true" ]; then
-                approve=true
-              else
-                echo "::notice::No automerge label, so Renovate is not asking for this to merge."
-              fi
-              ;;
-            "dependabot[bot]")
-              # Every entry has to be a patch or minor bump on its own, one
-              # dependency or many. Piped in on stdin rather than
-              # interpolated into the jq program text, so nothing about a
-              # dependency's name or version is ever read as jq syntax.
-              #
-              # shellcheck disable=SC2016
-              result=$(printf '%s' "$UPDATED_DEPENDENCIES_JSON" | jq -r -s '
-                  def ok: . == "version-update:semver-patch"
-                    or . == "version-update:semver-minor";
-                  if length != 1 then
-                    "false\texpected exactly one JSON value, got \(length)"
-                  else .[0]
-                    | if (type != "array") or length == 0 then
-                        "false\tno updated-dependencies-json to grade"
-                      else
-                        ([.[].updateType
-                          | if . == "" or . == null then "unknown" else . end]) as $types
-                        | if ($types | all(ok)) then
-                            "true\tevery bump is patch or minor (\($types | join(", ")))"
-                          else
-                            "false\tnot every bump is patch or minor (\($types | join(", ")))"
-                          end
-                      end
-                  end
-                ' 2>/dev/null) || result=""
-              if [ -z "$result" ]; then
-                result="false"$'\t'"updated-dependencies-json was empty or invalid JSON"
-              fi
-              IFS=$'\t' read -r bump_ok bump_reason <<< "$result"
-              if [ "$bump_ok" = "true" ]; then
-                approve=true
-                # Dependabot cannot arm auto-merge itself, unlike Renovate.
-                arm=true
-                echo "::notice::$bump_reason."
-              else
-                echo "::notice::$bump_reason, so it waits for review."
-              fi
-              ;;
-          esac
-
+          if [ "$HAS_AUTOMERGE_LABEL" = "true" ]; then
+            approve=true
+          else
+            echo "::notice::No automerge label, so Renovate is not asking for this to merge."
+          fi
           echo "approve=$approve" >> "$GITHUB_OUTPUT"
-          echo "arm=$arm" >> "$GITHUB_OUTPUT"
 
       - name: Approve
         if: steps.decide.outputs.approve == 'true'
@@ -341,17 +250,6 @@ jobs:
             exit 0
           fi
           gh pr review --approve "$PR_URL"
-
-      - name: Enable auto-merge
-        # With a merge queue on `main`, this still only arms auto-merge; it
-        # does not merge anything itself. GitHub adds the pull request to the
-        # queue on its own once every required check, this one included, is
-        # green, the same as it does for Renovate's own platformAutomerge.
-        if: steps.decide.outputs.arm == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
 
   resolve-owner:
     name: Find the owner's pull request to approve

@@ -8,8 +8,8 @@ exit non-zero unless every changed file is one of the pin surfaces below and
 every changed line differs from its counterpart in nothing but a version.
 
 Ported from docker-torrent-box-with-vpn's script of the same name, which is
-the check that stands between "renovate[bot] or dependabot[bot] opened a pull
-request" and an unattended merge there. It exists here for the same reason,
+the check that stands between "renovate[bot] opened a pull request" and an
+unattended merge there. It exists here for the same reason,
 ahead of ever needing it: approving a bot's pull request on the strength of
 its author means the bot identity holds write access to main, and a diff that
 is not actually pin-only is exactly the shape a compromised or misconfigured
@@ -38,18 +38,21 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# The pin surfaces a dependency bot actually touches in this repository.
-# Dependabot manages `.github/workflows/` (Action SHAs) and
-# `.pre-commit-config.yaml` (hook `rev:` pins), see .github/dependabot.yml.
-# Renovate manages `.tool-versions` (the asdf manager) and, inside the
-# `Dockerfile`, only the `ARG` lines its custom regex manager is anchored to
-# (see below and .github/renovate.json5). The `Dockerfile` also carries seven
-# apk `~=` pins that neither bot manages: .github/workflows/resolve-apk-pins.yml
-# bumps those instead, on the lines its own `# apk-pin:` marker is anchored to
-# (see below), and this script grades that automated commit the same way it
-# grades a bot's. Neither bot touches `tests/requirements.txt`: dependabot.yml
-# enables only the github-actions and pre-commit ecosystems, so a pip pin bump
-# is not a real bot-authored shape here and is deliberately left off this list.
+# The pin surfaces Renovate, the only dependency bot here, actually touches in
+# this repository. Its native `github-actions` and `pre-commit` managers cover
+# `.github/workflows/` (Action SHAs) and `.pre-commit-config.yaml` (hook
+# `rev:` pins); Dependabot managed those same two files from a separate set of
+# pin positions until its `updates:` configuration was retired (see
+# .github/renovate.json5). Renovate's `asdf` manager covers `.tool-versions`,
+# and, inside the `Dockerfile`, only the `ARG` lines its custom regex manager
+# is anchored to (see below and .github/renovate.json5) come from Renovate
+# too. The `Dockerfile` also carries seven apk `~=` pins that no bot manages:
+# .github/workflows/resolve-apk-pins.yml bumps those instead, on the lines its
+# own `# apk-pin:` marker is anchored to (see below), and this script grades
+# that automated commit the same way it grades a bot's. Nothing touches
+# `tests/requirements.txt`: no enabled manager here reads pip requirements
+# files, so a pip pin bump is not a real bot-authored shape here and is
+# deliberately left off this list.
 #
 # `.env.example` used to be on this list and no longer is. Every annotated pin
 # it carried moved into the `Dockerfile`; what is left in it is user
@@ -97,8 +100,9 @@ TOOL_VERSION_LINE = re.compile(
 REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 
 # A GitHub Actions pin, always a full 40 character commit SHA in this
-# repository (dependabot updates it that way; a trailing `# v7` comment is
-# left as ordinary text and not touched here). The negative lookahead stops a
+# repository (the dependency bot updates it that way; a trailing `# v7`
+# comment is left as ordinary text and not touched here). The negative
+# lookahead stops a
 # 40 character prefix of a longer hex run from matching and silently
 # swallowing the character that would have made the shapes differ.
 ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")

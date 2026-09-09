@@ -3,7 +3,7 @@
 This is the check that stands between a dependency bot's pull request and an
 unattended merge, so what it refuses matters as much as what it accepts. The
 refusal cases below are the ones that would otherwise turn "approve because the
-author is renovate[bot] or dependabot[bot]" into write access to main.
+author is renovate[bot]" into write access to main.
 
 No containers and no stack state, so these run anywhere:
     pytest -m scripts tests/test_assert_pin_only_diff.py
@@ -192,9 +192,10 @@ def test_refuses_a_non_pin_line_in_the_dockerfile():
 
 
 def test_refuses_a_pip_pin_in_tests_requirements():
-    # Neither bot manages this file: dependabot.yml enables only the
-    # github-actions and pre-commit ecosystems, so a change here from a bot
-    # would not be a real shape and is not on the allowlist.
+    # No manager here reads this file: Renovate's enabledManagers is asdf,
+    # custom.regex, github-actions and pre-commit, none of which are a pip
+    # manager, so a change here from a bot would not be a real shape and is
+    # not on the allowlist.
     result = _check(
         _diff(
             "tests/requirements.txt",
@@ -379,7 +380,7 @@ def test_refuses_a_tool_versions_entry_trading_a_release_for_main():
 def test_refuses_a_github_action_sha_trading_for_a_floating_tag():
     # Every action in this repository is pinned to a full commit SHA, never a
     # tag; accepting one here would be accepting the shape a compromised
-    # dependabot run would take to stop being pinned at all.
+    # dependency bot run would take to stop being pinned at all.
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
