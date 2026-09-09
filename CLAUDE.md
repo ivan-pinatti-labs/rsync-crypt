@@ -538,6 +538,82 @@ When dispatching with the Agent tool, pass `isolation: "worktree"` so each
 agent gets an isolated copy. A worktree costs a few hundred milliseconds and
 some disk, and is removed automatically if unchanged.
 
+### `GOCRYPTFS_CIPHER` offers two spellings of one cipher, and one that cannot work
+
+Reverse mode needs deterministic encryption, so gocryptfs enables the `AESSIV`
+feature flag unconditionally. `aes-gcm` (no flag) and `aes-siv` (`-aessiv`)
+therefore produce identical feature flags, verified by reading `.FeatureFlags`
+out of `.gocryptfs.reverse.conf` after initialising each way. `xchacha` cannot
+work at all: `gocryptfs -reverse -init -xchacha` exits 24 with "can't have both
+XChaCha20Poly1305 and AESSIV feature flags", on 2.5.4 and 2.6.1 alike, so it is
+long-standing rather than a regression. `backup.sh` now accepts the two
+equivalent spellings, refuses `xchacha` with an explanation, and aborts on
+anything else rather than falling back silently.
+`tests/test_gocryptfs_cipher.py` executes the real `case` block.
+
+### Makefile expansions are wrapped in `$(subst ",,${VAR})` on purpose
+
+Do not "simplify" those back to `"${VAR}"`. `.env.example` quotes every value,
+and `include $(ENV_FILE)` hands the quote characters to make as part of the
+value, so `"${VAR}"` produces `""/mnt/my backups""`. Those two pairs do not
+nest: the shell concatenates empty string, bare word, empty string, then splits
+on the space anyway.
+
+Unquoted was worse and is what this replaced. A blank value did not arrive as an
+empty argument, it vanished, shifting every later positional argument down one
+slot: a blank `GOCRYPTFS_CIPHER` put `GOCRYPTFS_SCRYPT_N` in the cipher slot and
+left `__gocryptfs_encrypt_names` on its `true` default, silently turning on
+filename encryption and defeating every filter rule (see the
+`GOCRYPTFS_ENCRYPT_NAMES` gotcha above for why that breaks filtering).
+
+`$(subst ",,${VAR})` strips the env file's quotes before make adds its own.
+`$(patsubst "%",%,...)` does **not** work here, because `patsubst` operates on
+whitespace-separated words and a value with a space arrives as two.
+`tests/test_makefile.py` drives `make --dry-run` with blank and
+quoted-with-space values and asserts both the argument count and each slot.
+
+Only the seven variables that reach positional arguments are wrapped.
+`--volume`, `--tag` and `--build-arg` sites are left alone deliberately: there
+the env file's own quotes are the only quoting the shell sees, so a value with a
+space already parses as one word, and stripping them without adding real quotes
+would regress that.
+
+### `pre-commit run --all-files` only sees tracked files
+
+A new file passes locally and then fails in CI until it is `git add`ed. This has
+bitten more than once, most recently on a new `ruff.toml` that cspell only
+flagged once staged. `git add` first, then run the hooks.
+
+### `.coderabbit.yaml` sets `auto_pause_after_reviewed_commits: 0` deliberately
+
+The default is 5, which silently pauses automatic reviews once five commits on a
+branch have been reviewed. The check stays green, so a pull request looks
+reviewed when nothing has read its head; that cost twelve hours on
+pre-commit-checklists#12. Do not restore the default.
+
+The other half is not config-fixable: the plan's included-review allowance
+**drops** a review rather than queueing it, so a push arriving while the quota
+is exhausted is declined and never retried. Recovery is a manual
+`@coderabbitai review`, or `full review` when the incremental logic has already
+marked the commits as seen. `schema.v2.json` has no retry, backoff, queue or
+poll setting anywhere in it.
+
+### The deliberate lint suppressions, and why each exists
+
+There are five, and "nothing is ignored" would be the wrong claim:
+
+| Suppression | Where | Why |
+| --- | --- | --- |
+| `superfluous-actions` | `.github/zizmor.yml` | zizmor wants `gh release create` instead of a SHA-pinned action carrying `allowUpdates`, which has no equivalent. Tracked in [#71](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/71). |
+| `MD001 MD013 MD033 MD041`, and `MD013 MD033` | two blocks in `README.md` | The centred badge header and the crypto QR table are necessarily raw HTML. Scoped `disable`/`enable` pairs naming specific rules, never a file-wide disable. |
+| `--ignore-checks QuoteCharacter` | the local dotenv hook | `.env.example` quotes its values deliberately. See the dotenv-linter section above. |
+| `ignoreWords` | `.cspell.json` | Identifiers and third-party names, kept separate from the real dictionary `words`. |
+| `unset` properties | `.editorconfig` | Each marks something a tool reports that cannot be fixed. See that file's comments. |
+
+`.secrets.baseline` is not on the list: it allowlists zero findings, so it
+suppresses nothing. Do not attach counts to any of this; earlier versions said
+"38 `ignoreWords`" and similar and every number was wrong within a few commits.
+
 ## User Preferences
 
 - No em-dashes (`—` or `--`) in prose; use commas or parentheses instead

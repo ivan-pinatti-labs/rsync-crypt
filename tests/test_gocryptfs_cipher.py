@@ -163,7 +163,8 @@ def test_missing_argument_falls_back_to_the_default():
     Distinct from the empty case above: `${9:-"..."}` covers unset and empty
     alike, but only the unset path is what a blank Makefile variable produces,
     because the recipes expand them unquoted so a blank one vanishes rather than
-    passing as empty. See item 10 in docs/TODO.md.
+    passing as empty. See CLAUDE.md's "Makefile expansions are
+    wrapped in $(subst) on purpose".
     """
     result = _run_case()
     assert result.returncode == 0, (
