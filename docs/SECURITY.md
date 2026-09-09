@@ -295,14 +295,46 @@ cause, but severity is what the practice keys on, and a single date meant the
 
 Do not tie the window to gocryptfs's own release cadence, which cannot carry
 it. Upstream has shipped nothing since v2.6.1 (2025-08-10), and its historical
-gaps run from one month to nineteen. What actually clears these findings is an
-Alpine **package rebuild** against a newer `x/crypto`: Alpine has already
-moved `gocryptfs` from `2.6.1-r5` to `2.6.1-r6` inside the pinned 3.24 branch,
-and a rebuild like that is almost certainly what cleared the Go-stdlib entries
-this list used to carry. `golang.org/x/crypto` itself releases roughly monthly
-(v0.52.0 in May 2026 through v0.57.0 in September), so fix material is never
-the bottleneck; packaging is. The nightly rebuild is what picks such a rebuild
-up, usually within a day.
+gaps run from one month to nineteen.
+
+### Which fixes Alpine can deliver, and which it cannot
+
+Two classes of CVE reach this binary, and only one of them a rebuild can clear.
+The distinction is the whole answer to "so what would actually fix this":
+
+| CVE class | Comes from | Cleared by |
+| --- | --- | --- |
+| Go stdlib | the toolchain gocryptfs was compiled with | an Alpine package rebuild |
+| Vendored dependency (`x/crypto`, all current entries) | gocryptfs's own `go.mod` | only a gocryptfs release |
+
+Alpine builds the release as upstream published it and does not patch
+dependency versions, so **no number of Alpine rebuilds will move `x/crypto` off
+v0.33.0.** That is why the Go-stdlib entries this list used to carry cleared by
+themselves while these did not: 3.24's `2.6.1-r6` is compiled with go1.26.8,
+new enough to shed the stdlib findings, and still vendors `x/crypto` v0.33.0.
+gocryptfs `master` already carries v0.52.0; until a release is cut off it,
+there is nothing for Alpine to package.
+
+**A newer Alpine is not the answer either, and is currently worse.** Measured
+2026-09-08 against the extracted binary:
+
+| Alpine branch | gocryptfs | Built with | `x/crypto` | CRITICAL/HIGH |
+| --- | --- | --- | --- | --- |
+| 3.23 | 2.5.4-r11 | | | older release entirely |
+| 3.24 (pinned) | 2.6.1-r6 | go1.26.8 | v0.33.0 | 12 |
+| edge | 2.6.1-r7 | go1.26.5 | v0.33.0 | 20 |
+
+edge reports **more** findings than the pinned branch, because its `r7` happens
+to be built with an *older* Go toolchain and so reintroduces the stdlib CVEs
+3.24 has already shed. So an `ALPINE_VERSION` bump is a decision about the base
+image; it is never a remediation for these entries, and moving to edge chasing
+one would regress the count.
+
+The remaining option, building gocryptfs from source off `master`, would clear
+them today and is deliberately rejected: see "Why not build gocryptfs from
+source" below. Which leaves the honest position, and it is a comfortable one
+rather than a resignation: nothing needs fixing, because the vulnerable
+packages are not linked into the binary at all.
 
 ### What the current entries are really about
 

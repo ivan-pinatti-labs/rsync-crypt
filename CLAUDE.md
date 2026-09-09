@@ -377,9 +377,11 @@ the tool. The library documents the local-hook copy as the supported way out.
 ### `.trivyignore.yaml` entries need a live scan, not a copied list
 
 Every CVE ID in `.trivyignore.yaml` traces to gocryptfs's vendored
-`golang.org/x/crypto`, upstream and unfixed until gocryptfs itself ships a
-release off its `master` branch (see docs/SECURITY.md's "Accepted-risk
-CVEs"). Confirm a new entry against a live `trivy rootfs` run over the binary
+`golang.org/x/crypto`, which stays at v0.33.0 until gocryptfs itself ships a
+release bumping its `go.mod`; an Alpine package rebuild cannot move it, and the
+section below spells out why that distinction matters (see also
+docs/SECURITY.md's "Accepted-risk CVEs"). None of them are reachable in the
+shipped binary either way. Confirm a new entry against a live `trivy rootfs` run over the binary
 extracted from the image, or a current Docker Scout scan of that image, before
 adding it, never against an advisory feed or a prior list on faith. Not
 `trivy image`: as the next paragraph explains, it cannot produce these
@@ -443,12 +445,31 @@ not read the list as twelve reachable holes in the image. The expiry exists to
 force re-verification of the unreachability claim, which is the part that could
 change (a future gocryptfs could start linking `ssh`), not to time a fix.
 
-Related, for picking a window: gocryptfs upstream has shipped nothing since
-v2.6.1 (2025-08-10) and its gaps run from one month to nineteen, so its cadence
-cannot carry an expiry. `x/crypto` releases roughly monthly. What actually
-lands a fix here is an Alpine package rebuild (`2.6.1-r5` to `2.6.1-r6` already
-happened inside the pinned 3.24 branch, and is the likely reason the Go-stdlib
-entries cleared), which the nightly rebuild picks up within a day.
+**Two classes of CVE reach this binary, and only one of them Alpine can fix.**
+Conflating them is easy and wrong, so keep them apart:
+
+- **Go stdlib CVEs** come from the toolchain gocryptfs was compiled with.
+  Alpine bumping the package revision and rebuilding changes that, which is why
+  the Go-stdlib block this file used to carry cleared on its own: 3.24's
+  `2.6.1-r6` is built with go1.26.8.
+- **Vendored dependency CVEs** (every entry in the list today, all
+  `golang.org/x/crypto`) come from gocryptfs's own `go.mod`. Alpine builds the
+  release as published and does not patch dependency versions, so **no number
+  of Alpine rebuilds will move `x/crypto` off v0.33.0.** Only a gocryptfs
+  release that bumps its `go.mod` can, and `master` already carries v0.52.0
+  with no release cut off it since v2.6.1 (2025-08-10), gaps historically
+  running one to nineteen months.
+
+Measured 2026-09-08, which is what settles it: 3.24 `2.6.1-r6` is go1.26.8 with
+`x/crypto v0.33.0`, and edge `2.6.1-r7` is go1.26.5 with `x/crypto v0.33.0`.
+The dependency does not budge across either.
+
+So do not go looking for a newer Alpine to fix this. **edge is currently worse
+than the pinned branch**, 20 CRITICAL/HIGH against the extracted binary versus
+3.24's 12, because its `r7` was built with an *older* Go toolchain and so
+reintroduces stdlib findings that 3.24 has already shed. 3.23 is worse again,
+still on gocryptfs 2.5.4. An `ALPINE_VERSION` bump is a decision about the base
+image, never a remediation for these entries.
 
 Every entry carries an `expired_at` date (the file is YAML specifically for
 this field) and a `statement` saying what would resolve it. Windows follow
