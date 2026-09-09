@@ -160,10 +160,18 @@ def test_empty_argument_falls_back_to_the_default():
 def test_missing_argument_falls_back_to_the_default():
     """An absent ninth argument must take the default too.
 
-    Distinct from the empty case above: `${9:-"..."}` covers unset and empty
-    alike, but only the unset path is what a blank Makefile variable produces,
-    because the recipes expand them unquoted so a blank one vanishes rather than
-    passing as empty. See item 10 in docs/TODO.md.
+    Distinct from the empty case above, and deliberately hypothetical: this
+    omits `$9` outright to exercise the unset branch of `${9:-"..."}`, which
+    the empty-string case cannot reach. It is not a description of what the
+    Makefile does. The Makefile wraps each expansion as
+    `"$(subst ",,${VAR})"`, so a blank variable arrives as an empty argument
+    and nothing shifts;
+    `tests/test_makefile.py::test_blank_env_var_does_not_shift_script_arguments`
+    is what asserts that, and CLAUDE.md's "Makefile expansions are wrapped in
+    $(subst) on purpose" explains why the wrapping is there. Unquoted
+    expansions did once make a blank value vanish, which is the bug that
+    wrapping fixed; this test guards the script's own fallback so it stays
+    correct regardless.
     """
     result = _run_case()
     assert result.returncode == 0, (

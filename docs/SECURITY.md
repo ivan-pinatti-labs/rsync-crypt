@@ -155,6 +155,42 @@ still what backs an actual backup schedule.
 
 ---
 
+## What Scans What
+
+Image scanning (below) covers the packages the image installs. It says nothing
+about the code this repository writes, which is scanned separately:
+
+| Code | Scanned by | Where |
+| --- | --- | --- |
+| `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
+| `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
+| `scripts/*.py`, `tests/*.py` | CodeQL, `security-and-quality` suite | `codeql.yml`, on merge and weekly |
+| `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |
+| `.github/workflows/*` | actionlint, zizmor | `checklist-github-actions`, every commit |
+| Everything | detect-secrets, detect-private-key | `checklist-security-credentials`, every commit |
+
+The asymmetry there is deliberate and worth knowing before someone tries to
+"fix" it. **The shell scripts are the product**: `backup.sh`, `restore.sh` and
+`view.sh` are what the container runs, and they are covered by shellcheck
+rather than CodeQL because
+[CodeQL does not support shell at all](https://docs.github.com/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql).
+Its languages are JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++
+and C#. So the Security tab's "Code quality findings" prompt, which reads as
+though it would analyze the repository, can only reach the Python here.
+
+**The Python, conversely, does not ship.** It is repository tooling: grading
+pull requests, re-resolving apk pins on an Alpine bump, auditing this file's
+accepted-risk list. The image installs no Python interpreter, so a finding
+there can never be a vulnerability in a published artifact; it can still gate
+a merge wrongly, which is why it is analyzed twice over (ruff's `S` rules per
+commit, CodeQL weekly and on merge).
+
+That split is also why `COPY` in the `Dockerfile` names the three shell
+scripts individually instead of globbing `scripts/*`. The glob shipped every
+tooling script into `/app/` in the published image, confirmed present in
+`ghcr.io/ivan-pinatti-labs/rsync-crypt:1.6.1`. They were inert, since nothing
+in the image can execute Python, but they had no business being there.
+
 ## Image Vulnerability Scanning
 
 Every published image, `nightly` included, is scanned by both
@@ -244,11 +280,106 @@ something is being held back when nothing is.
 Expiry dates are not decorative and should not be copied from one entry to
 the next without thought. Tie each one to something real: a release window
 upstream is expected to clear the finding in, or, when that window cannot be
-predicted (gocryptfs's own release cadence has ranged from a month to over a
-year between releases), a fixed re-review interval that forces a look
-regardless. Either way, the `statement` field has to say which, so the
-person who hits the expiry knows whether they are checking for a shipped fix
-or just re-affirming the risk.
+predicted, a fixed re-review interval that forces a look regardless. Either
+way, the `statement` field has to say which, so the person who hits the expiry
+knows whether they are checking for a shipped fix or just re-affirming the
+risk.
+
+Windows follow severity, which is ordinary risk-acceptance practice: keep a
+`HIGH` exception inside 90 days, tighten it for a `CRITICAL`, and never let an
+expired one auto-renew. Today that means **30 days for the one `CRITICAL`
+entry and 60 days for the eleven `HIGH` ones**. A shared date across all
+twelve was the first arrangement and was replaced: they do share one root
+cause, but severity is what the practice keys on, and a single date meant the
+`CRITICAL` inherited the most permissive window on the list.
+
+Do not tie the window to gocryptfs's own release cadence, which cannot carry
+it. Upstream has shipped nothing since v2.6.1 (2025-08-10), and its historical
+gaps run from one month to nineteen.
+
+### Which fixes Alpine can deliver, and which it cannot
+
+Two classes of CVE reach this binary, and only one of them a rebuild can clear.
+The distinction is the whole answer to "so what would actually fix this":
+
+| CVE class | Comes from | Cleared by |
+| --- | --- | --- |
+| Go stdlib | the toolchain gocryptfs was compiled with | an Alpine package rebuild |
+| Vendored dependency (`x/crypto`, all current entries) | gocryptfs's own `go.mod` | only a gocryptfs release |
+
+Alpine builds the release as upstream published it and does not patch
+dependency versions, so **no number of Alpine rebuilds will move `x/crypto` off
+v0.33.0.** That is why the Go-stdlib entries this list used to carry cleared by
+themselves while these did not: 3.24's `2.6.1-r6` is compiled with go1.26.8,
+new enough to shed the stdlib findings, and still vendors `x/crypto` v0.33.0.
+gocryptfs `master` already carries v0.52.0; until a release is cut off it,
+there is nothing for Alpine to package.
+
+**A newer Alpine is not the answer either, and is currently worse.** Measured
+2026-09-08 against the extracted binary:
+
+| Alpine branch | gocryptfs | Built with | `x/crypto` | CRITICAL/HIGH |
+| --- | --- | --- | --- | --- |
+| 3.23 | 2.5.4-r11 | | | older release entirely |
+| 3.24 (pinned) | 2.6.1-r6 | go1.26.8 | v0.33.0 | 12 |
+| edge | 2.6.1-r7 | go1.26.5 | v0.33.0 | 20 |
+
+edge reports **more** findings than the pinned branch, because its `r7` happens
+to be built with an *older* Go toolchain and so reintroduces the stdlib CVEs
+3.24 has already shed. So an `ALPINE_VERSION` bump is a decision about the base
+image; it is never a remediation for these entries, and moving to edge chasing
+one would regress the count.
+
+The remaining option, building gocryptfs from source off `master`, would clear
+them today and is deliberately rejected: see "Why not build gocryptfs from
+source" below. Which leaves the honest position, and it is a comfortable one
+rather than a resignation: nothing needs fixing, because the vulnerable
+packages are not linked into the binary at all.
+
+### What the current entries are really about
+
+Every CVE in `.trivyignore.yaml` today is in `golang.org/x/crypto/ssh`,
+`ssh/agent`, or `ssh/knownhosts`, and **none of those packages are linked into
+the shipped binary.** gocryptfs is a filesystem tool with no SSH client and no
+SSH server.
+
+Two checks establish it, and the second is authoritative:
+
+- `go list -deps ./...` at the `v2.6.1` tag lists the `x/crypto` packages
+  genuinely in the build graph: `chacha20`, `chacha20poly1305`, `hkdf`,
+  `internal/alias`, `internal/poly1305`, `pbkdf2`, `scrypt`. No `ssh` in any
+  form, and the source imports `x/crypto/ssh` in zero files.
+- `govulncheck ./...` at that tag, which is Go's own reachability analysis:
+  *"Your code is affected by 0 vulnerabilities. This scan also found 0
+  vulnerabilities in packages you import and 22 vulnerabilities in modules you
+  require, but your code doesn't appear to call these vulnerabilities."*
+
+gocryptfs's maintainer said the same in November 2025, on
+[rfjakob/gocryptfs#973](https://github.com/rfjakob/gocryptfs/issues/973#issuecomment-3543578223):
+"The mentioned vulnerable functions are not used by gocryptfs and, as far as I
+can see, not even included in the gocryptfs binary."
+
+**Do not try to re-verify this with `strings` or `go tool nm`.** Alpine ships
+the binary stripped, so both return nothing for every package, including the
+ones gocryptfs demonstrably uses; a zero there measures the strip, not
+absence. `govulncheck -mode=binary` is actively misleading on a stripped
+binary: it reports 21 vulnerabilities under a `=== Symbol Results ===` heading,
+listing `ssh.Dial` five times as though verified present, which source mode at
+the same tag contradicts outright. Use source mode, or an unstripped build.
+
+They appear at all because Trivy resolves a Go binary's vulnerabilities at
+**module** granularity, reading the module list out of the embedded build
+info. One `golang.org/x/crypto v0.33.0` dependency therefore drags in every
+CVE published against that module, whichever of its packages the linker
+actually kept.
+
+This is worth stating plainly because it changes what the expiry is for. These
+are not reachable risks being tolerated until a fix arrives; the vulnerable
+code is not in the artifact. What the expiry forces is re-verification of the
+unreachability claim, since that is the part that could stop being true: a
+future gocryptfs release could start linking `x/crypto/ssh` for some remote
+feature, and nothing about a CVE list would announce it. When renewing an
+entry, re-check that the binary still does not link the package, and say so.
 
 `.github/workflows/security-ignore-audit.yml` runs on a schedule and checks
 every entry against this repository's own code scanning history: whether it
@@ -278,6 +409,36 @@ unsigned, untested binary that happens to have fewer known CVEs today is an
 unbounded, undocumented one: it trades a finding the security tooling can
 see and track for a class of risk the tooling has no way to see at all.
 Given that choice, the tracked and expiring cost is the one worth taking.
+
+**Be precise about what that distribution process does and does not cover**,
+because "built, tested and signed by Alpine" is easy to over-read. Alpine
+compiles the binary on its own builders and signs the resulting `apk`, so the
+binary in this image is Alpine's work, not an upstream download. But Alpine's
+*input* is not the git tag. `community/gocryptfs`'s APKBUILD fetches
+`gocryptfs_v${pkgver}_src-deps.tar.gz`, a source tarball the gocryptfs
+maintainer builds and signs on his own machine, with no CI provenance tying it
+to a commit. Most comparable Alpine Go packages (`syncthing`, `rclone`, `age`,
+`croc`) use GitHub's deterministic tag archive instead, so this is the
+exception rather than the norm.
+
+Verified for the version this image ships, rather than assumed. Against
+`v2.6.1`: Alpine's pinned sha512 matches the published asset, all 206 `.go`
+files are byte-identical to the git tag, `go.mod` and `go.sum` match,
+`go mod verify` passes, and the shipped `vendor/` tree reproduces exactly from
+a fresh `go mod vendor` against upstream modules. So every line Alpine
+compiled is either the public tag or an upstream module matching its `go.sum`
+hash.
+
+That check was manual and covers one release, which is the actual gap: nothing
+in the chain establishes it automatically, and a future tarball could diverge
+from its tag with nothing noticing. It does not change the decision above, since
+a source build off `master` would still put this pipeline in the position of
+being the only party that ever built or tested the binary. It does mean the
+argument rests on "Alpine compiles it, and the source is verifiable if someone
+checks" rather than on an unbroken chain of attestations. Raised upstream as
+[rfjakob/gocryptfs#1035](https://github.com/rfjakob/gocryptfs/issues/1035) and
+with Alpine as
+[aports#18435](https://gitlab.alpinelinux.org/alpine/aports/-/issues/18435).
 
 This is why the CVEs in `.trivyignore.yaml` are unfixable from this side
 for as long as it holds, and why they are accepted risk rather than a bug to

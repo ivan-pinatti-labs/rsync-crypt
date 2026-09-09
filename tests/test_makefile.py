@@ -411,7 +411,7 @@ def test_no_blanket_error_suppression_in_the_makefile():
 def test_blank_env_var_does_not_shift_script_arguments(
     tmp_path, target, script_name, arg_spec
 ):
-    """docs/TODO.md item 10: a blank ${VAR} expansion must arrive as an empty
+    """A blank ${VAR} expansion must arrive as an empty
     positional argument, not vanish and shift every later argument down one
     slot. REMOTE_SERVER is used here because it is passed to all three
     scripts, so the same check covers backup.sh, restore.sh and view.sh.
@@ -426,7 +426,7 @@ def test_blank_env_var_does_not_shift_script_arguments(
 
 
 def test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_path):
-    """The exact scenario docs/TODO.md item 10 and CLAUDE.md's gotcha
+    """The exact scenario CLAUDE.md's Makefile-quoting and filter-rule gotchas
     describe: blanking GOCRYPTFS_CIPHER must not shift GOCRYPTFS_SCRYPT_N
     into the cipher slot and push GOCRYPTFS_ENCRYPT_NAMES out of the argument
     list entirely, which previously made backup.sh fall back to its 'true'
@@ -449,7 +449,7 @@ def test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_path):
 def test_value_with_a_space_does_not_split_into_two_arguments(tmp_path):
     """Same defect, opposite direction: an unquoted expansion whose value
     contains a space splits into two shell words instead of shifting later
-    arguments down, which is the same class of bug docs/TODO.md item 10
+    arguments down, which is the same class of bug the Makefile-quoting gotcha
     names for REMOTE_SERVER and REMOTE_SERVER_BACKUP_FOLDER.
     """
     example_text = (REPO_ROOT / ".env.example").read_text()
@@ -473,7 +473,7 @@ def test_value_with_a_space_does_not_split_into_two_arguments(tmp_path):
 def test_quoted_env_value_with_a_space_arrives_as_one_argument(
     tmp_path, target, script_name, arg_spec
 ):
-    """docs/TODO.md item 11: .env.example quotes every value deliberately, so
+    """.env.example quotes every value deliberately, so
     'include $(ENV_FILE)' hands the make variable those literal quote
     characters as part of its value, e.g.
     REMOTE_SERVER_BACKUP_FOLDER="/mnt/my backups" sets the variable to
@@ -503,7 +503,7 @@ def test_quoted_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_p
     test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default already
     covers an unquoted blank (GOCRYPTFS_CIPHER=). This is the same scenario
     with GOCRYPTFS_CIPHER="" instead, which is how .env.example's own
-    convention would spell an empty value. docs/TODO.md item 11 records this
+    convention would spell an empty value. CLAUDE.md records this
     as one of the three cases $(subst ",,$(VAR)) was verified against: a
     value with a space, a value without one, and an empty value.
     """

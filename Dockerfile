@@ -114,7 +114,17 @@ RUN apk update \
         /restore \
         /gocrypt-view
 
-COPY --chown=crypt:crypt scripts/* /app/
+# Named individually, not 'scripts/*'. The glob also copied in every
+# repository-tooling script that happens to live under scripts/
+# (assert-pin-only-diff.py, audit-security-ignores.py,
+# coderabbit-review-verdict.py, resolve-apk-pins.py), all of which exist to
+# grade pull requests and audit the ignore list in CI and have no business in
+# a published backup image. They were inert there, since this image installs
+# no Python interpreter at all, but they were still shipped: confirmed present
+# under /app/ in ghcr.io/ivan-pinatti-labs/rsync-crypt:1.6.1. Listing the
+# three scripts the container actually runs keeps the next tooling script from
+# silently joining them.
+COPY --chown=crypt:crypt scripts/backup.sh scripts/restore.sh scripts/view.sh /app/
 COPY --chown=root:root files/bash/* /root/
 COPY --chown=crypt:crypt files/bash/* /home/crypt/
 

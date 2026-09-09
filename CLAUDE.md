@@ -39,10 +39,18 @@ rsync-style first-match-wins semantics.
 
 ### Alpine gocryptfs version
 
-`ARG GOCRYPTFS_VERSION=2.6` resolves to `2.6.1-r5` in the Alpine 3.24
-community repo, verified 2026-08-20 with `apk policy gocryptfs` in
-`alpine:3.24`.
-The `-bs` (block size) flag is NOT supported by this build. Do not add it back.
+`ARG GOCRYPTFS_VERSION=2.6` is an apk `~=` constraint, so it pins the major and
+minor only and matches whatever `-rN` revision Alpine currently carries. That is
+the durable statement; any exact revision written here is a dated snapshot and
+nothing else. As of 2026-09-09, `apk policy gocryptfs` in `alpine:3.24` reports
+`2.6.1-r6` (it was `2.6.1-r5` on 2026-08-20, and edge carries `2.6.1-r7`), which
+is precisely why this note should not be read as naming the artifact you have.
+Re-resolve it before relying on a revision. Whether the note should name one at
+all is [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
+
+The `-bs` (block size) flag is NOT supported by this build. Do not add it back;
+that is a property of gocryptfs 2.6, not of any particular revision, and was
+re-verified against 2.6.1.
 
 An `ALPINE_VERSION` bump can invalidate this and the `~=` pins in the
 Dockerfile, which is what those pins are for: the build fails loudly instead
@@ -244,11 +252,32 @@ name,bucket,description` reports `bucket: pass` for a completed review *and*
 for a skipped draft, so the bucket alone cannot tell them apart. The
 `description` is what distinguishes them:
 
-| `bucket`  | `description`                        | Reviewed?         |
-| --------- | ------------------------------------ | ----------------- |
-| `pending` | `Review in progress`                 | no, still running |
-| `pass`    | `Review skipped: draft pull request` | no, never started |
-| `pass`    | `Review completed`                   | yes               |
+| `bucket`  | `description`                                                    | Reviewed?         |
+| --------- | ---------------------------------------------------------------- | ----------------- |
+| `pending` | `Review in progress`                                             | no, still running |
+| `pass`    | `Review skipped: draft pull request`                             | no, never started |
+| `pass`    | `Review rate limited`                                            | no, declined      |
+| `pass`    | `Review skipped: manual review required for this OSS repository` | no, must be asked |
+| `pass`    | `Review completed`                                               | yes               |
+
+The last two rows were added after #62, where both appeared and both read
+`bucket: pass`. `Review Verified` rejected each correctly, so the gate holds;
+the point of the table is that reading `bucket` alone would have called them
+reviewed.
+
+`Review rate limited` is the free OSS review quota, not a punishment for
+asking too often, though asking repeatedly does spend it. On a public
+repository CodeRabbit grants roughly one review per short window and answers
+every further command with a decline that costs a request and buys nothing;
+five were burned that way on #62. The walkthrough comment carries the actual wait
+("Next included review available in N minutes"), so read that rather than
+retrying blind, and note the observed gap between *successful* reviews there
+ran nearer an hour than the advertised twenty minutes.
+
+`Review skipped: manual review required for this OSS repository` means
+automatic review is off for the repository, so a push alone will never be
+reviewed and a human has to post `@coderabbitai review` for each new head. It
+looks identical to a healthy pass in the checks list.
 
 So: `description` is `Review completed`, *and* the head SHA is named in
 CodeRabbit's comments, which is what proves that completion refers to the
@@ -356,9 +385,11 @@ the tool. The library documents the local-hook copy as the supported way out.
 ### `.trivyignore.yaml` entries need a live scan, not a copied list
 
 Every CVE ID in `.trivyignore.yaml` traces to gocryptfs's vendored
-`golang.org/x/crypto`, upstream and unfixed until gocryptfs itself ships a
-release off its `master` branch (see docs/SECURITY.md's "Accepted-risk
-CVEs"). Confirm a new entry against a live `trivy rootfs` run over the binary
+`golang.org/x/crypto`, which stays at v0.33.0 until gocryptfs itself ships a
+release bumping its `go.mod`; an Alpine package rebuild cannot move it, and the
+section below spells out why that distinction matters (see also
+docs/SECURITY.md's "Accepted-risk CVEs"). None of them are reachable in the
+shipped binary either way. Confirm a new entry against a live `trivy rootfs` run over the binary
 extracted from the image, or a current Docker Scout scan of that image, before
 adding it, never against an advisory feed or a prior list on faith. Not
 `trivy image`: as the next paragraph explains, it cannot produce these
@@ -411,8 +442,76 @@ published upstream; the Dockerfile's `apk update && apk upgrade` picks the
 fix up on the next rebuild, so the scan failing until that rebuild happens is
 the mechanism working, not a false positive to silence.
 
+Every CVE currently in that file is in `golang.org/x/crypto/ssh`, `ssh/agent`
+or `ssh/knownhosts`, and **none of those packages are linked into the shipped
+binary**. They are reported because Trivy resolves a Go binary at *module*
+granularity from its embedded build info, so one `golang.org/x/crypto v0.33.0`
+dependency pulls in every CVE against that module regardless of what the linker
+kept. Do not read the list as twelve reachable holes in the image. The expiry
+exists to force re-verification of the unreachability claim, which is the part
+that could change (a future gocryptfs could start linking `ssh`), not to time a
+fix.
+
+**How to verify that claim, and how not to.** `govulncheck ./...` in source
+mode against the gocryptfs tag is the authoritative check: at v2.6.1 it reports
+"0 vulnerabilities ... 22 vulnerabilities in modules you require, but your code
+doesn't appear to call these". `go list -deps ./...` corroborates it, showing
+`chacha20`, `chacha20poly1305`, `hkdf`, `pbkdf2`, `scrypt` and no `ssh`
+anywhere in the build graph. The maintainer said the same on
+rfjakob/gocryptfs#973 in November 2025.
+
+**Alpine builds from the maintainer's tarball, not from the git tag.**
+`community/gocryptfs`'s APKBUILD fetches `gocryptfs_v${pkgver}_src-deps.tar.gz`,
+which the gocryptfs maintainer packages and signs on his own machine with no CI
+provenance; `package-release-tarballs.bash` deliberately stops at a printed
+`gpg --detach-sig` hint so his key never touches a build machine. Alpine then
+compiles that source itself and signs the `apk`, so the binary is Alpine's, but
+the source is not verifiably the tag. It was checked once by hand for `v2.6.1`
+(206 `.go` files byte-identical, `go.mod`/`go.sum` match, `go mod verify`
+clean, `vendor/` reproduces from a fresh `go mod vendor`) and it held. Do not
+restate "Alpine builds, tests and signs it" as though that covered the source
+provenance; see docs/SECURITY.md's "Why not build gocryptfs from source".
+Raised upstream as rfjakob/gocryptfs#1035 and with Alpine as aports#18435.
+
+Do **not** reach for `strings` or `go tool nm` over the shipped binary, which
+is the mistake this repo made first: Alpine strips it, so both return zero for
+every package including the ones gocryptfs certainly uses, and a zero there
+measures the strip rather than absence. `govulncheck -mode=binary` fails worse,
+in the confident direction: on the stripped binary it prints 21 vulnerabilities
+under `=== Symbol Results ===` and lists `ssh.Dial` five times as though found,
+which source mode flatly contradicts. A repeated identical symbol in that
+output is the tell that it has degraded to module-level guessing.
+
+**Two classes of CVE reach this binary, and only one of them Alpine can fix.**
+Conflating them is easy and wrong, so keep them apart:
+
+- **Go stdlib CVEs** come from the toolchain gocryptfs was compiled with.
+  Alpine bumping the package revision and rebuilding changes that, which is why
+  the Go-stdlib block this file used to carry cleared on its own: 3.24's
+  `2.6.1-r6` is built with go1.26.8.
+- **Vendored dependency CVEs** (every entry in the list today, all
+  `golang.org/x/crypto`) come from gocryptfs's own `go.mod`. Alpine builds the
+  release as published and does not patch dependency versions, so **no number
+  of Alpine rebuilds will move `x/crypto` off v0.33.0.** Only a gocryptfs
+  release that bumps its `go.mod` can, and `master` already carries v0.52.0
+  with no release cut off it since v2.6.1 (2025-08-10), gaps historically
+  running one to nineteen months.
+
+Measured 2026-09-08, which is what settles it: 3.24 `2.6.1-r6` is go1.26.8 with
+`x/crypto v0.33.0`, and edge `2.6.1-r7` is go1.26.5 with `x/crypto v0.33.0`.
+The dependency does not budge across either.
+
+So do not go looking for a newer Alpine to fix this. **edge is currently worse
+than the pinned branch**, 20 CRITICAL/HIGH against the extracted binary versus
+3.24's 12, because its `r7` was built with an *older* Go toolchain and so
+reintroduces stdlib findings that 3.24 has already shed. 3.23 is worse again,
+still on gocryptfs 2.5.4. An `ALPINE_VERSION` bump is a decision about the base
+image, never a remediation for these entries.
+
 Every entry carries an `expired_at` date (the file is YAML specifically for
-this field) and a `statement` saying what would resolve it. This is not
+this field) and a `statement` saying what would resolve it. Windows follow
+severity, per ordinary risk-acceptance practice: 30 days for a `CRITICAL`, 60
+for a `HIGH`, never past 90. This is not
 optional formatting: an ignore-list entry with no expiry is an
 indefinitely-suppressed CVE, which is its own security problem regardless of
 how well-reasoned the original acceptance was.
@@ -446,6 +545,82 @@ indistinguishable from a real pass in the report that comes back.
 When dispatching with the Agent tool, pass `isolation: "worktree"` so each
 agent gets an isolated copy. A worktree costs a few hundred milliseconds and
 some disk, and is removed automatically if unchanged.
+
+### `GOCRYPTFS_CIPHER` offers two spellings of one cipher, and one that cannot work
+
+Reverse mode needs deterministic encryption, so gocryptfs enables the `AESSIV`
+feature flag unconditionally. `aes-gcm` (no flag) and `aes-siv` (`-aessiv`)
+therefore produce identical feature flags, verified by reading `.FeatureFlags`
+out of `.gocryptfs.reverse.conf` after initialising each way. `xchacha` cannot
+work at all: `gocryptfs -reverse -init -xchacha` exits 24 with "can't have both
+XChaCha20Poly1305 and AESSIV feature flags", on 2.5.4 and 2.6.1 alike, so it is
+long-standing rather than a regression. `backup.sh` now accepts the two
+equivalent spellings, refuses `xchacha` with an explanation, and aborts on
+anything else rather than falling back silently.
+`tests/test_gocryptfs_cipher.py` executes the real `case` block.
+
+### Makefile expansions are wrapped in `$(subst ",,${VAR})` on purpose
+
+Do not "simplify" those back to `"${VAR}"`. `.env.example` quotes every value,
+and `include $(ENV_FILE)` hands the quote characters to make as part of the
+value, so `"${VAR}"` produces `""/mnt/my backups""`. Those two pairs do not
+nest: the shell concatenates empty string, bare word, empty string, then splits
+on the space anyway.
+
+Unquoted was worse and is what this replaced. A blank value did not arrive as an
+empty argument, it vanished, shifting every later positional argument down one
+slot: a blank `GOCRYPTFS_CIPHER` put `GOCRYPTFS_SCRYPT_N` in the cipher slot and
+left `__gocryptfs_encrypt_names` on its `true` default, silently turning on
+filename encryption and defeating every filter rule (see the
+`GOCRYPTFS_ENCRYPT_NAMES` gotcha above for why that breaks filtering).
+
+`$(subst ",,${VAR})` strips the env file's quotes before make adds its own.
+`$(patsubst "%",%,...)` does **not** work here, because `patsubst` operates on
+whitespace-separated words and a value with a space arrives as two.
+`tests/test_makefile.py` drives `make --dry-run` with blank and
+quoted-with-space values and asserts both the argument count and each slot.
+
+Only the seven variables that reach positional arguments are wrapped.
+`--volume`, `--tag` and `--build-arg` sites are left alone deliberately: there
+the env file's own quotes are the only quoting the shell sees, so a value with a
+space already parses as one word, and stripping them without adding real quotes
+would regress that.
+
+### `pre-commit run --all-files` only sees tracked files
+
+A new file passes locally and then fails in CI until it is `git add`ed. This has
+bitten more than once, most recently on a new `ruff.toml` that cspell only
+flagged once staged. `git add` first, then run the hooks.
+
+### `.coderabbit.yaml` sets `auto_pause_after_reviewed_commits: 0` deliberately
+
+The default is 5, which silently pauses automatic reviews once five commits on a
+branch have been reviewed. The check stays green, so a pull request looks
+reviewed when nothing has read its head; that cost twelve hours on
+pre-commit-checklists#12. Do not restore the default.
+
+The other half is not config-fixable: the plan's included-review allowance
+**drops** a review rather than queueing it, so a push arriving while the quota
+is exhausted is declined and never retried. Recovery is a manual
+`@coderabbitai review`, or `full review` when the incremental logic has already
+marked the commits as seen. `schema.v2.json` has no retry, backoff, queue or
+poll setting anywhere in it.
+
+### The deliberate lint suppressions, and why each exists
+
+There are five, and "nothing is ignored" would be the wrong claim:
+
+| Suppression | Where | Why |
+| --- | --- | --- |
+| `superfluous-actions` | `.github/zizmor.yml` | zizmor wants `gh release create` instead of a SHA-pinned action carrying `allowUpdates`, which has no equivalent. Tracked in [#71](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/71). |
+| `MD001 MD013 MD033 MD041`, and `MD013 MD033` | two blocks in `README.md` | The centred badge header and the crypto QR table are necessarily raw HTML. Scoped `disable`/`enable` pairs naming specific rules, never a file-wide disable. |
+| `--ignore-checks QuoteCharacter` | the local dotenv hook | `.env.example` quotes its values deliberately. See the dotenv-linter section above. |
+| `ignoreWords` | `.cspell.json` | Identifiers and third-party names, kept separate from the real dictionary `words`. |
+| `unset` properties | `.editorconfig` | Each marks something a tool reports that cannot be fixed. See that file's comments. |
+
+`.secrets.baseline` is not on the list: it allowlists zero findings, so it
+suppresses nothing. Do not attach counts to any of this; earlier versions said
+"38 `ignoreWords`" and similar and every number was wrong within a few commits.
 
 ## User Preferences
 
