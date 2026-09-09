@@ -452,6 +452,19 @@ doesn't appear to call these". `go list -deps ./...` corroborates it, showing
 anywhere in the build graph. The maintainer said the same on
 rfjakob/gocryptfs#973 in November 2025.
 
+**Alpine builds from the maintainer's tarball, not from the git tag.**
+`community/gocryptfs`'s APKBUILD fetches `gocryptfs_v${pkgver}_src-deps.tar.gz`,
+which the gocryptfs maintainer packages and signs on his own machine with no CI
+provenance; `package-release-tarballs.bash` deliberately stops at a printed
+`gpg --detach-sig` hint so his key never touches a build machine. Alpine then
+compiles that source itself and signs the `apk`, so the binary is Alpine's, but
+the source is not verifiably the tag. It was checked once by hand for `v2.6.1`
+(206 `.go` files byte-identical, `go.mod`/`go.sum` match, `go mod verify`
+clean, `vendor/` reproduces from a fresh `go mod vendor`) and it held. Do not
+restate "Alpine builds, tests and signs it" as though that covered the source
+provenance; see docs/SECURITY.md's "Why not build gocryptfs from source".
+Raised upstream as rfjakob/gocryptfs#1035 and with Alpine as aports#18435.
+
 Do **not** reach for `strings` or `go tool nm` over the shipped binary, which
 is the mistake this repo made first: Alpine strips it, so both return zero for
 every package including the ones gocryptfs certainly uses, and a zero there

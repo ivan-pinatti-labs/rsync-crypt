@@ -480,3 +480,45 @@ and push, then mark the pull request ready once both pass. The checks
 themselves change nothing in CI; the author does. The point is that a review
 slot is spent on a diff that has already survived them, rather than on defects
 a linter would have named for free.
+
+## Upstream gocryptfs and Alpine items this repo is waiting on
+
+Four open upstream threads. None of them block anything today, and each has a
+concrete trigger that would let something here be simplified or removed, so the
+point of this list is that the trigger gets noticed rather than re-derived.
+
+Two of them were filed from here, and both illustrate the same thing about
+cadence: gocryptfs is essentially one maintainer, replies are sparse, and a
+thread sitting untouched for months is the normal case rather than a signal
+that something went wrong. Do not chase them.
+
+- **[gocryptfs#1000](https://github.com/rfjakob/gocryptfs/issues/1000)**,
+  `-filter-from` with rsync-style first-match-wins semantics. Filed from here
+  2026-02-28, still open, no comments. This is the one that would actually
+  change the product: it would let filtering move into gocryptfs and lift the
+  `GOCRYPTFS_ENCRYPT_NAMES` constraint documented in `CLAUDE.md` and
+  `docs/USAGE.md`, since rsync would no longer need to match plaintext names.
+  Nothing to do until upstream engages.
+- **A gocryptfs release off `master`.** `master` carries `x/crypto v0.52.0`
+  (rfjakob/gocryptfs#1018) while the last release, v2.6.1 from 2025-08-10,
+  carries v0.33.0. When a release ships and Alpine packages it, every entry in
+  `.trivyignore.yaml` should stop reproducing and the file should empty out.
+  `.github/workflows/security-ignore-audit.yml` is what notices; the entries'
+  own `expired_at` dates are the backstop. An Alpine package rebuild cannot
+  deliver this, only a release can: see `docs/SECURITY.md`'s "Which fixes
+  Alpine can deliver, and which it cannot".
+- **[gocryptfs#1035](https://github.com/rfjakob/gocryptfs/issues/1035)**,
+  release artifacts built and signed offline with no provenance. Filed from
+  here. If upstream moves release builds into CI with attestations, the
+  provenance caveat in `docs/SECURITY.md`'s "Why not build gocryptfs from
+  source" can be shortened to a link.
+- **[aports#18435](https://gitlab.alpinelinux.org/alpine/aports/-/issues/18435)**,
+  `community/gocryptfs` building from the maintainer's hand-built tarball
+  rather than the git tag. Filed from here. If Alpine switches to the
+  deterministic tag archive the way `syncthing`, `rclone`, `age` and `croc`
+  already do, the same caveat gets shorter from the other end.
+
+Neither #1035 nor aports#18435 changes what this repository does. Both exist so
+the trust chain is written down and improvable rather than assumed, and so the
+verification that was done by hand once (recorded in `docs/SECURITY.md`) has a
+path to being automatic.

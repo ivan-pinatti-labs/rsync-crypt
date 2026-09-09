@@ -410,6 +410,36 @@ unbounded, undocumented one: it trades a finding the security tooling can
 see and track for a class of risk the tooling has no way to see at all.
 Given that choice, the tracked and expiring cost is the one worth taking.
 
+**Be precise about what that distribution process does and does not cover**,
+because "built, tested and signed by Alpine" is easy to over-read. Alpine
+compiles the binary on its own builders and signs the resulting `apk`, so the
+binary in this image is Alpine's work, not an upstream download. But Alpine's
+*input* is not the git tag. `community/gocryptfs`'s APKBUILD fetches
+`gocryptfs_v${pkgver}_src-deps.tar.gz`, a source tarball the gocryptfs
+maintainer builds and signs on his own machine, with no CI provenance tying it
+to a commit. Most comparable Alpine Go packages (`syncthing`, `rclone`, `age`,
+`croc`) use GitHub's deterministic tag archive instead, so this is the
+exception rather than the norm.
+
+Verified for the version this image ships, rather than assumed. Against
+`v2.6.1`: Alpine's pinned sha512 matches the published asset, all 206 `.go`
+files are byte-identical to the git tag, `go.mod` and `go.sum` match,
+`go mod verify` passes, and the shipped `vendor/` tree reproduces exactly from
+a fresh `go mod vendor` against upstream modules. So every line Alpine
+compiled is either the public tag or an upstream module matching its `go.sum`
+hash.
+
+That check was manual and covers one release, which is the actual gap: nothing
+in the chain establishes it automatically, and a future tarball could diverge
+from its tag with nothing noticing. It does not change the decision above, since
+a source build off `master` would still put this pipeline in the position of
+being the only party that ever built or tested the binary. It does mean the
+argument rests on "Alpine compiles it, and the source is verifiable if someone
+checks" rather than on an unbroken chain of attestations. Raised upstream as
+[rfjakob/gocryptfs#1035](https://github.com/rfjakob/gocryptfs/issues/1035) and
+with Alpine as
+[aports#18435](https://gitlab.alpinelinux.org/alpine/aports/-/issues/18435).
+
 This is why the CVEs in `.trivyignore.yaml` are unfixable from this side
 for as long as it holds, and why they are accepted risk rather than a bug to
 route around by quietly switching to a source build the next time this list
