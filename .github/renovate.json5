@@ -137,14 +137,27 @@
     // apk pins in the Dockerfile to be re-resolved by hand the last time this
     // repository's base image moved; a major GitHub Action or pre-commit
     // hook bump earns the same pause, since neither promises backward
-    // compatibility across one either. `digest` and `pin` are not listed
-    // because neither can happen here: `pinDigests` is not enabled, and
-    // scripts/assert-pin-only-diff.py's own version grammar for every pin
-    // surface it reads has no shape for a digest to occupy, so granting
-    // automerge to an update type this repository never produces would
-    // document a policy nothing here could ever exercise.
+    // compatibility across one either.
+    //
+    // digest is listed for the same reason docker-torrent-box-with-vpn's
+    // copy of this file lists it: every action under .github/workflows/ is
+    // pinned to a full commit SHA with a trailing `# vX.Y.Z` comment, which
+    // is exactly the shape github-actions's own `digest` update type covers,
+    // a rebuilt tag pointing at a new commit with no version change to
+    // announce it. Leaving digest out would not have kept a policy
+    // unexercised the way it did before this repository had a github-actions
+    // manager at all: it would have meant every one of those SHA refreshes,
+    // the routine case rather than the exception, arrives unlabelled and
+    // waits for a person, the automerge path pin-only diffs are supposed to
+    // have. `scripts/assert-pin-only-diff.py`'s version grammar already
+    // accepts a changed action SHA as a pin-position change, confirmed
+    // against `ACTION_SHA` in that script, so `Pin Only` is still the actual
+    // gate behind this label; digest reaching automerge does not bypass it.
+    // `pin` stays off the list: `pinDigests` is not enabled anywhere in this
+    // config, so nothing here can ever produce a `pin` update, unlike
+    // `digest`, which github-actions produces on its own.
     {
-      matchUpdateTypes: ["patch", "minor"],
+      matchUpdateTypes: ["patch", "minor", "digest"],
       automerge: true,
       addLabels: ["automerge"],
     },
