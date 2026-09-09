@@ -41,16 +41,19 @@ rsync-style first-match-wins semantics.
 
 `ARG GOCRYPTFS_VERSION=2.6` is an apk `~=` constraint, so it pins the major and
 minor only and matches whatever `-rN` revision Alpine currently carries. That is
-the durable statement; any exact revision written here is a dated snapshot and
-nothing else. As of 2026-09-09, `apk policy gocryptfs` in `alpine:3.24` reports
-`2.6.1-r6` (it was `2.6.1-r5` on 2026-08-20, and edge carries `2.6.1-r7`), which
-is precisely why this note should not be read as naming the artifact you have.
-Re-resolve it before relying on a revision. Whether the note should name one at
-all is [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
+the whole of what is durable here, and this note deliberately does not name a
+revision: Alpine bumps `-rN` without changing the upstream version, so any
+number written down is stale on the next rebuild and misleads exactly the reader
+who trusts it. Run `apk update && apk policy gocryptfs` inside
+`alpine:${ALPINE_VERSION}` when you need the current one. The `apk update` is
+not optional: `apk policy` reads the local index, and a fresh container has
+none, so without it the command prints only
+`WARNING: opening from cache ... No such file or directory`, reports no version
+at all, and still exits 0. It fails silently, which is the worst way for a
+resolution step to fail. See [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
 
 The `-bs` (block size) flag is NOT supported by this build. Do not add it back;
-that is a property of gocryptfs 2.6, not of any particular revision, and was
-re-verified against 2.6.1.
+that is a property of gocryptfs 2.6 rather than of any revision.
 
 An `ALPINE_VERSION` bump can invalidate this and the `~=` pins in the
 Dockerfile, which is what those pins are for: the build fails loudly instead
@@ -63,7 +66,7 @@ of silently installing a different major version.
 constraints, not Docker tags, so no Renovate datasource can track them: an
 independently proposed bump could easily name a version the pinned Alpine
 release's repo does not carry and fail the build. This used to mean
-re-resolving all seven by hand (`apk policy <pkg>` inside the new
+re-resolving all seven by hand (`apk update && apk policy <pkg>` inside the new
 `alpine:${ALPINE_VERSION}`) every time a Renovate `ALPINE_VERSION` pull
 request landed, which is how the 2.5 to 2.6, 685 to 702 and 10.2 to 10.3
 moves above were originally found.
@@ -621,6 +624,39 @@ There are five, and "nothing is ignored" would be the wrong claim:
 `.secrets.baseline` is not on the list: it allowlists zero findings, so it
 suppresses nothing. Do not attach counts to any of this; earlier versions said
 "38 `ignoreWords`" and similar and every number was wrong within a few commits.
+
+### Do not write specific versions into prose
+
+Renovate, Dependabot, Alpine's `-rN` rebuilds and `apk upgrade` all move
+versions continuously, and none of them edit documentation. Every exact version
+committed to prose therefore starts rotting immediately, and a confidently wrong
+version is worse than none: it is the reader who trusts it who gets hurt. This
+has already bitten three times, tracked as
+[#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72) (an apk
+revision in this file), [#78](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/78)
+(around forty of them in `THIRD_PARTY_LICENSES.md`) and a `2.6.1-r5` that
+contradicted an `r6` measurement inside this same file.
+
+Three cases, treated differently:
+
+- **Incidental.** Say what the thing is, not which version it is: "the Alpine
+  apk package that installed it", not "gocryptfs 2.6.1-r5". Nothing is lost.
+- **An example a reader might copy** (an image tag, an env value, a `ref=`).
+  Use `X.Y.Z` where the surrounding text can carry the meaning, and where a
+  runnable command needs a plausible value, put the substitution instruction
+  next to it rather than only in nearby prose. Point at the Releases page.
+- **Evidence.** Keep the version, because a measurement without its subject
+  cannot be checked: "an older `x/crypto` has CVEs" is unverifiable, while
+  "`x/crypto v0.33.0`, measured on this date with this command" is. Carry a
+  date and the command, and put a staleness note at the top of the section (see
+  `docs/SECURITY.md`'s "Image Vulnerability Scanning" and
+  `.trivyignore.yaml`'s header for the shape).
+
+The test to apply: if this number changes and nobody updates this sentence, is
+the sentence merely out of date, or is it now false and misleading? Generalize
+the second kind. Version numbers in `Dockerfile` ARGs, `.pre-commit-config.yaml`
+pins, workflow SHAs and `.env.example` defaults are configuration rather than
+prose and are exempt; they are the things bots are supposed to move.
 
 ## User Preferences
 

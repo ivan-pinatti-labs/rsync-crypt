@@ -127,13 +127,15 @@ both registries, since they publish the same digest. Verify a pulled image
 actually came out of this repository's `publish-image.yml` workflow before
 trusting it. A real release signs with the identity of the git tag that
 triggered it (`refs/tags/vX.Y.Z`), not the `main` branch, so verification has
-to match the tag pattern rather than one fixed branch ref:
+to match the tag pattern rather than one fixed branch ref. Substitute the
+release you are verifying for `X.Y.Z`; current tags are on the
+[Releases](https://github.com/ivan-pinatti-labs/rsync-crypt/releases) page:
 
 ```bash
 cosign verify \
   --certificate-identity-regexp "^https://github\.com/ivan-pinatti-labs/rsync-crypt/\.github/workflows/publish-image\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  ghcr.io/ivan-pinatti-labs/rsync-crypt:1.5.2
+  ghcr.io/ivan-pinatti-labs/rsync-crypt:X.Y.Z
 ```
 
 Prefer a pinned version tag over `latest` for anything unattended (a cron job,
@@ -192,6 +194,16 @@ tooling script into `/app/` in the published image, confirmed present in
 in the image can execute Python, but they had no business being there.
 
 ## Image Vulnerability Scanning
+
+> **Version numbers in this section are dated observations, not current facts.**
+> Renovate, Dependabot and Alpine's own rebuilds move packages continuously and
+> none of them edit prose, so anything specific written here starts going stale
+> the moment it is committed. The versions are kept because the reasoning below
+> is a set of measurements and a measurement without its subject is not
+> checkable: "an older `x/crypto` has CVEs" tells you nothing you could verify.
+> Treat each as "this is what was observed, on the date given, with the command
+> given", and re-measure before relying on one. Where a version has no date
+> next to it, assume it has drifted.
 
 Every published image, `nightly` included, is scanned by both
 [Docker Scout](https://docs.docker.com/scout/) and

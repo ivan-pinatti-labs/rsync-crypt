@@ -2,6 +2,15 @@
 # CI, both --severity CRITICAL,HIGH). See docs/SECURITY.md's "Accepted-risk
 # CVEs" section for the full reasoning; the short version is below.
 #
+# NOTE ON THE VERSION NUMBERS BELOW. They are dated observations, not current
+# facts. Alpine rebuilds, Renovate and Dependabot all move versions and none of
+# them edit comments, so every number here is stale the moment something bumps.
+# They are kept anyway because the reasoning is a set of measurements, and a
+# measurement without its subject cannot be re-checked: "an older x/crypto has
+# CVEs" is unverifiable where "x/crypto v0.33.0, measured on this date with this
+# command" is. Re-measure before acting on one; see CLAUDE.md's "Do not write
+# specific versions into prose" for the convention.
+#
 # YAML format (Trivy's `.trivyignore.yaml`, still marked experimental
 # upstream but verified against the exact pinned version below), not the
 # plain-list `.trivyignore` this file used to be. The reason for the move is
