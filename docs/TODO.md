@@ -3,6 +3,12 @@
 <!-- cspell:words checkmake coderabbit maxbodylength mbake -->
 <!-- cspell:words minphony mktemp phonydeclared shutil -->
 
+> **Open work lives in GitHub issues, not here.** Every still-open item below is
+> tracked as an issue and links to it; this file keeps the reasoning and the
+> record of what was decided, including for items already fixed, because that
+> detail is too long for an issue body and is worth not re-deriving. If you are
+> looking for what to pick up, use the issue tracker.
+
 ## The pre-commit-checklists adoption
 
 The adoption landed as a stack of four pull requests, merged in order because
@@ -82,6 +88,8 @@ Both cost a round trip; worth knowing before the next stacked change.
 
 ### Upstream `pre-commit-checklists` TODO items
 
+**Tracked in [#75](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/75).**
+
 Tracked in that repo's `docs/TODO.md`; two of them affect this repo, one
 still open upstream and one already landed.
 
@@ -106,6 +114,8 @@ consequences.
 
 ### 1. The Dockerfile's `USER` is inert at run time
 
+**Tracked in [#69](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/69).**
+
 `Dockerfile` ends with `USER 1000`, and `id` inside the image confirms that
 resolves to `uid=1000(crypt) gid=1000(crypt)`. But **all ten `docker run`
 invocations in the Makefile pass `--user root`**, so nothing that ships here
@@ -122,6 +132,8 @@ Not touched during adoption because it is a behavioural change to the backup
 and restore paths, and the lint work had no business making one.
 
 ### 2. Pull requests targeting a non-`main` branch run no CI at all
+
+**Tracked in [#70](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/70).**
 
 `.github/workflows/pull-request-validation.yml` triggers on:
 
@@ -152,6 +164,8 @@ branches:
 
 ### 3. `zizmor` flags the release action, and the finding is ignored
 
+**Tracked in [#71](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/71).**
+
 `.github/zizmor.yml` ignores `superfluous-actions` for `merge.yml`. zizmor
 suggests replacing `ncipollo/release-action` with `gh release create` in a
 script step, and **exits 11 on it even though the finding is informational**,
@@ -168,6 +182,8 @@ rather than during it. If it is done, the ignore entry in
 `.github/zizmor.yml` should go with it.
 
 ### 4. The Makefile is not linted, deliberately
+
+**Tracked in [#73](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/73).**
 
 This repo is Makefile-driven and its Makefile holds real logic, so the gap is
 worth naming. Three tools were evaluated and all three were rejected:
@@ -191,6 +207,8 @@ correctly.
 
 ### 5. Files no hook covers
 
+**Tracked in [#74](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/74).**
+
 Minor, listed so it is a known set rather than a surprise.
 
 | File                     | Why it is uncovered                                                                                                                                                                                                                                      |
@@ -202,6 +220,8 @@ Minor, listed so it is a known set rather than a surprise.
 | `conf/*.txt`, `llms.txt` | Plain text by design. Spell-checked (`conf/*.txt` deliberately not excluded), but not otherwise validated.                                                                                                                                               |
 
 ### 6. `CLAUDE.md` records a stale gocryptfs revision
+
+**Tracked in [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).**
 
 **Status:** fixed by the Alpine 3.24 bump. The note now names `2.6.1-r5` on
 Alpine 3.24, dated and with the command used to resolve it.
@@ -215,6 +235,8 @@ that the constraint actually pins. The `-bs` flag warning underneath it is not
 version-specific and was re-verified against 2.6.1.
 
 ### 7. Restore and view sessions write to a predictable shared path
+
+**Tracked in [#68](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/68).**
 
 **Status:** open. Raised by CodeRabbit on the formatting pull request, against
 pre-existing code.
@@ -480,45 +502,3 @@ and push, then mark the pull request ready once both pass. The checks
 themselves change nothing in CI; the author does. The point is that a review
 slot is spent on a diff that has already survived them, rather than on defects
 a linter would have named for free.
-
-## Upstream gocryptfs and Alpine items this repo is waiting on
-
-Four open upstream threads. None of them block anything today, and each has a
-concrete trigger that would let something here be simplified or removed, so the
-point of this list is that the trigger gets noticed rather than re-derived.
-
-Two of them were filed from here, and both illustrate the same thing about
-cadence: gocryptfs is essentially one maintainer, replies are sparse, and a
-thread sitting untouched for months is the normal case rather than a signal
-that something went wrong. Do not chase them.
-
-- **[gocryptfs#1000](https://github.com/rfjakob/gocryptfs/issues/1000)**,
-  `-filter-from` with rsync-style first-match-wins semantics. Filed from here
-  2026-02-28, still open, no comments. This is the one that would actually
-  change the product: it would let filtering move into gocryptfs and lift the
-  `GOCRYPTFS_ENCRYPT_NAMES` constraint documented in `CLAUDE.md` and
-  `docs/USAGE.md`, since rsync would no longer need to match plaintext names.
-  Nothing to do until upstream engages.
-- **A gocryptfs release off `master`.** `master` carries `x/crypto v0.52.0`
-  (rfjakob/gocryptfs#1018) while the last release, v2.6.1 from 2025-08-10,
-  carries v0.33.0. When a release ships and Alpine packages it, every entry in
-  `.trivyignore.yaml` should stop reproducing and the file should empty out.
-  `.github/workflows/security-ignore-audit.yml` is what notices; the entries'
-  own `expired_at` dates are the backstop. An Alpine package rebuild cannot
-  deliver this, only a release can: see `docs/SECURITY.md`'s "Which fixes
-  Alpine can deliver, and which it cannot".
-- **[gocryptfs#1035](https://github.com/rfjakob/gocryptfs/issues/1035)**,
-  release artifacts built and signed offline with no provenance. Filed from
-  here. If upstream moves release builds into CI with attestations, the
-  provenance caveat in `docs/SECURITY.md`'s "Why not build gocryptfs from
-  source" can be shortened to a link.
-- **[aports#18435](https://gitlab.alpinelinux.org/alpine/aports/-/issues/18435)**,
-  `community/gocryptfs` building from the maintainer's hand-built tarball
-  rather than the git tag. Filed from here. If Alpine switches to the
-  deterministic tag archive the way `syncthing`, `rclone`, `age` and `croc`
-  already do, the same caveat gets shorter from the other end.
-
-Neither #1035 nor aports#18435 changes what this repository does. Both exist so
-the trust chain is written down and improvable rather than assumed, and so the
-verification that was done by hand once (recorded in `docs/SECURITY.md`) has a
-path to being automatic.
