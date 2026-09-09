@@ -39,10 +39,18 @@ rsync-style first-match-wins semantics.
 
 ### Alpine gocryptfs version
 
-`ARG GOCRYPTFS_VERSION=2.6` resolves to `2.6.1-r5` in the Alpine 3.24
-community repo, verified 2026-08-20 with `apk policy gocryptfs` in
-`alpine:3.24`.
-The `-bs` (block size) flag is NOT supported by this build. Do not add it back.
+`ARG GOCRYPTFS_VERSION=2.6` is an apk `~=` constraint, so it pins the major and
+minor only and matches whatever `-rN` revision Alpine currently carries. That is
+the durable statement; any exact revision written here is a dated snapshot and
+nothing else. As of 2026-09-09, `apk policy gocryptfs` in `alpine:3.24` reports
+`2.6.1-r6` (it was `2.6.1-r5` on 2026-08-20, and edge carries `2.6.1-r7`), which
+is precisely why this note should not be read as naming the artifact you have.
+Re-resolve it before relying on a revision. Whether the note should name one at
+all is [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72).
+
+The `-bs` (block size) flag is NOT supported by this build. Do not add it back;
+that is a property of gocryptfs 2.6, not of any particular revision, and was
+re-verified against 2.6.1.
 
 An `ALPINE_VERSION` bump can invalidate this and the `~=` pins in the
 Dockerfile, which is what those pins are for: the build fails loudly instead

@@ -44,8 +44,8 @@
 #
 # Docker Scout's SBOM-based scan (see .github/workflows/publish-image.yml)
 # flags these. A plain `trivy image` scan of this image currently does NOT:
-# Trivy tracks gocryptfs purely as the Alpine apk package
-# (gocryptfs 2.6.1-r5) once it is apk-installed, and does not separately run
+# Trivy tracks gocryptfs purely as the Alpine apk package that installed it
+# (whatever `-rN` revision that currently is), and does not separately run
 # its gobinary analyzer against a binary a distro package manager already
 # owns, so the vendored x/crypto/stdlib versions embedded in the binary
 # itself never surface through `trivy image`. Confirmed 2026-09-06 by
