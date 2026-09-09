@@ -341,9 +341,31 @@ packages are not linked into the binary at all.
 Every CVE in `.trivyignore.yaml` today is in `golang.org/x/crypto/ssh`,
 `ssh/agent`, or `ssh/knownhosts`, and **none of those packages are linked into
 the shipped binary.** gocryptfs is a filesystem tool with no SSH client and no
-SSH server. The binary confirms it: symbol references to `x/crypto/scrypt`,
-`hkdf` and `chacha20` are present, and references to `x/crypto/ssh` number
-zero.
+SSH server.
+
+Two checks establish it, and the second is authoritative:
+
+- `go list -deps ./...` at the `v2.6.1` tag lists the `x/crypto` packages
+  genuinely in the build graph: `chacha20`, `chacha20poly1305`, `hkdf`,
+  `internal/alias`, `internal/poly1305`, `pbkdf2`, `scrypt`. No `ssh` in any
+  form, and the source imports `x/crypto/ssh` in zero files.
+- `govulncheck ./...` at that tag, which is Go's own reachability analysis:
+  *"Your code is affected by 0 vulnerabilities. This scan also found 0
+  vulnerabilities in packages you import and 22 vulnerabilities in modules you
+  require, but your code doesn't appear to call these vulnerabilities."*
+
+gocryptfs's maintainer said the same in November 2025, on
+[rfjakob/gocryptfs#973](https://github.com/rfjakob/gocryptfs/issues/973#issuecomment-3543578223):
+"The mentioned vulnerable functions are not used by gocryptfs and, as far as I
+can see, not even included in the gocryptfs binary."
+
+**Do not try to re-verify this with `strings` or `go tool nm`.** Alpine ships
+the binary stripped, so both return nothing for every package, including the
+ones gocryptfs demonstrably uses; a zero there measures the strip, not
+absence. `govulncheck -mode=binary` is actively misleading on a stripped
+binary: it reports 21 vulnerabilities under a `=== Symbol Results ===` heading,
+listing `ssh.Dial` five times as though verified present, which source mode at
+the same tag contradicts outright. Use source mode, or an unstripped build.
 
 They appear at all because Trivy resolves a Go binary's vulnerabilities at
 **module** granularity, reading the module list out of the embedded build

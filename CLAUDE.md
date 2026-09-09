@@ -436,14 +436,30 @@ the mechanism working, not a false positive to silence.
 
 Every CVE currently in that file is in `golang.org/x/crypto/ssh`, `ssh/agent`
 or `ssh/knownhosts`, and **none of those packages are linked into the shipped
-binary**: `strings` over the extracted `/usr/bin/gocryptfs` finds references to
-`x/crypto/scrypt`, `hkdf` and `chacha20` and exactly zero to `x/crypto/ssh`.
-They are reported because Trivy resolves a Go binary at *module* granularity
-from its embedded build info, so one `golang.org/x/crypto v0.33.0` dependency
-pulls in every CVE against that module regardless of what the linker kept. Do
-not read the list as twelve reachable holes in the image. The expiry exists to
-force re-verification of the unreachability claim, which is the part that could
-change (a future gocryptfs could start linking `ssh`), not to time a fix.
+binary**. They are reported because Trivy resolves a Go binary at *module*
+granularity from its embedded build info, so one `golang.org/x/crypto v0.33.0`
+dependency pulls in every CVE against that module regardless of what the linker
+kept. Do not read the list as twelve reachable holes in the image. The expiry
+exists to force re-verification of the unreachability claim, which is the part
+that could change (a future gocryptfs could start linking `ssh`), not to time a
+fix.
+
+**How to verify that claim, and how not to.** `govulncheck ./...` in source
+mode against the gocryptfs tag is the authoritative check: at v2.6.1 it reports
+"0 vulnerabilities ... 22 vulnerabilities in modules you require, but your code
+doesn't appear to call these". `go list -deps ./...` corroborates it, showing
+`chacha20`, `chacha20poly1305`, `hkdf`, `pbkdf2`, `scrypt` and no `ssh`
+anywhere in the build graph. The maintainer said the same on
+rfjakob/gocryptfs#973 in November 2025.
+
+Do **not** reach for `strings` or `go tool nm` over the shipped binary, which
+is the mistake this repo made first: Alpine strips it, so both return zero for
+every package including the ones gocryptfs certainly uses, and a zero there
+measures the strip rather than absence. `govulncheck -mode=binary` fails worse,
+in the confident direction: on the stripped binary it prints 21 vulnerabilities
+under `=== Symbol Results ===` and lists `ssh.Dial` five times as though found,
+which source mode flatly contradicts. A repeated identical symbol in that
+output is the tell that it has degraded to module-level guessing.
 
 **Two classes of CVE reach this binary, and only one of them Alpine can fix.**
 Conflating them is easy and wrong, so keep them apart:
