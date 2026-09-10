@@ -10,10 +10,11 @@
     "broken."
   ],
   "comment_aliveStatusCodes": [
-    "418 is here for THIRD_PARTY_LICENSES.md's ~49",
-    "gitlab.alpinelinux.org/alpine/aports source-tree links, one per bundled",
-    "package. Every one of them resolves with a plain `curl` (200, or 307 to",
-    "the same page) when checked slowly, one at a time. markdown-link-check",
+    "418 is here for THIRD_PARTY_LICENSES.md's generated inventory, which",
+    "carries one gitlab.alpinelinux.org/alpine/aports source-tree link per",
+    "bundled package. Every one of them resolves with a plain `curl` (200, or",
+    "307 to the same page) when checked slowly, one at a time.",
+    "markdown-link-check",
     "fires all of them in quick succession and gitlab.alpinelinux.org answers a",
     "chunk of that burst with 418 (a rate-limit / anti-bot response, not a real",
     "dead link), and which links get hit depends on request timing, so the",

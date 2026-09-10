@@ -14,42 +14,47 @@ these are Alpine's own unmodified builds, that obligation is satisfied by
 pointing to Alpine's own `aports` source tree for the exact package and
 version shipped, rather than rehosting source in this repository. Every
 source link below is pinned to the specific commit that built the listed
-version, not to a branch: `3.24-stable` keeps moving as Alpine backports
-fixes into it, so a branch link could point at different source than what
-was actually shipped by the time anyone follows it.
+version, not to a branch: Alpine's `<version>-stable` branches keep moving as
+fixes are backported into them, so a branch link could point at different
+source than what was actually shipped by the time anyone follows it.
 
-## How this list was built
+## How this list is built
 
-The list below is the complete, exact output of `apk info -v` run inside a
-container built from this repository's `Dockerfile` pinned to the versions
-below (`ARG ALPINE_VERSION=3.24`, and the other `*_VERSION` ARG defaults
-alongside it in that same file), so it includes the Alpine base image's own
-packages as well as everything `apk add` installs, transitively. Every license was read from
-Alpine's own package metadata (the `license:` field `apk info -a` reports,
-sourced from each package's `APKBUILD`) for Alpine branch `3.24-stable`, not
-guessed or inferred from the package name.
-
-**This list is tied to the versions above, and only loosely pinned even
-then.** `Dockerfile` runs `apk update && apk upgrade` before installing
-anything, so patch-level releases of packages this repository does not pin
-with a `~=` constraint (everything except `bash`, `gocryptfs`, `less`,
-`openssh`, `rsync`, `sshfs`, `vim`) can drift between one `docker build` and
-the next even with `ALPINE_VERSION` and every `*_VERSION` unchanged, as
-Alpine backports security fixes within the `3.24-stable` branch. Regenerate
-this list whenever any of those change, and periodically otherwise:
+**It is generated, not hand-maintained.** `scripts/generate-third-party-licenses.py`
+reads the metadata out of an image built from this repository's `Dockerfile` and
+rewrites the inventory below:
 
 ```console
 make build
-docker run --rm --entrypoint apk local/gocryptfs:1.0.0 info -v | sort
+make third-party-licenses
 ```
 
-...and re-check the license and source link for anything added, removed, or
-whose version changed, against
-`https://pkgs.alpinelinux.org/package/v<ALPINE_VERSION>/<repo>/x86_64/<package>`.
-That page's "Git repository" field gives the browsable `3.24-stable` link;
-its "Commit" field gives the immutable commit hash this file's source links
-are actually built from (`.../aports/-/tree/<commit>/<repo>/<pkgdir>`, not
-`.../aports/-/tree/3.24-stable/<repo>/<pkgdir>`).
+Everything it needs is already inside the image, in apk's own installed
+database (`/lib/apk/db/installed`), one stanza per package: the exact version
+with its `-rN` revision, the licence Alpine's own `APKBUILD` declares, the
+aports subdirectory the package was built from, and the aports commit that
+built it. So the licences are read from Alpine's package metadata rather than
+guessed from a package name, and the source links are pinned to a commit
+rather than to `<version>-stable`, which keeps moving as Alpine backports
+fixes into it. The one thing that database does not record is whether a
+package came from `main` or `community`, which the link path needs, so the
+script reads that from `apk policy` and joins the two on the package name.
+
+The inventory covers the Alpine base image's own packages as well as
+everything `apk add` installs, transitively, because every one of them ends up
+in the published image regardless of who asked for it.
+
+`make third-party-licenses-check` regenerates in memory and fails if the
+committed file has drifted from the image. That check is what gives
+regeneration a trigger: `nightly-build.yml` runs it against the image it has
+just built and opens or updates a pull request when the answer is that the
+inventory has moved (see `.github/workflows/nightly-build.yml`). Which is the
+point, because the drift is not driven by anything in this repository.
+`Dockerfile` runs `apk update && apk upgrade` before installing anything, so
+packages this repository does not pin with a `~=` constraint can move between
+one `docker build` and the next with `ALPINE_VERSION` and every `*_VERSION`
+unchanged, as Alpine backports security fixes within its stable branch.
+Nothing a person edits here would ever say so.
 
 ## License key
 
@@ -67,6 +72,18 @@ license with several copyright holders, none of them copyleft.
 
 ## Packages in the image
 
+<!-- BEGIN GENERATED INVENTORY -->
+
+> **Generated on 2026-09-10 from an image built on Alpine 3.24.1.**
+> Every row below is a dated observation, not a standing fact: Alpine bumps a
+> package's `-rN` revision without changing its upstream version, and `Dockerfile`
+> runs `apk update && apk upgrade` before installing anything, so a rebuild that
+> changes no file in this repository can still move these versions. Regenerate with
+> `make third-party-licenses`. The licences themselves do not move with a revision,
+> and each source link stays valid for the revision it names.
+
+51 packages:
+
 | Package                | Version          | License                                   | Source                                                                                                                |
 | ---------------------- | ---------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | acl-libs               | 2.3.2-r1         | LGPL-2.1-or-later AND GPL-2.0-or-later    | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/8bac74716d06c84627ab02d101fd9d2bafd0a34c/main/acl>               |
@@ -80,20 +97,20 @@ license with several copyright holders, none of them copyleft.
 | busybox-binsh          | 1.37.0-r31       | GPL-2.0-only                              | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/c3ef5d10e6ef6528852c51f0564963e2f8c1be19/main/busybox>           |
 | ca-certificates-bundle | 20260611-r0      | MPL-2.0 AND MIT                           | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/e41cbd2ae991adfe8df298ba8e8e777e90bd0e03/main/ca-certificates>   |
 | fuse                   | 2.9.9-r7         | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/7831ef13a9d4ad46cbf4962aa573f81225e8220d/community/fuse>         |
-| fuse3                  | 3.18.2-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/19abb11201b27c75a38af1815dcd6f0caf4ee686/main/fuse3>             |
-| fuse3-libs             | 3.18.2-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/19abb11201b27c75a38af1815dcd6f0caf4ee686/main/fuse3>             |
-| fuse-common            | 3.18.2-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/19abb11201b27c75a38af1815dcd6f0caf4ee686/main/fuse3>             |
+| fuse-common            | 3.18.3-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/0adb5f52202c5e2d5029f50a27a972479b3d98b5/main/fuse3>             |
+| fuse3                  | 3.18.3-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/0adb5f52202c5e2d5029f50a27a972479b3d98b5/main/fuse3>             |
+| fuse3-libs             | 3.18.3-r0        | GPL-2.0-only AND LGPL-2.1-only            | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/0adb5f52202c5e2d5029f50a27a972479b3d98b5/main/fuse3>             |
 | glib                   | 2.88.1-r1        | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/bd96e2db11c9ba7d7795454d16af620d577614c7/main/glib>              |
-| gocryptfs              | 2.6.1-r5         | MIT                                       | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/27c48bceb6e14cff00893d8e657a37fbd4b7fb86/community/gocryptfs>    |
+| gocryptfs              | 2.6.1-r6         | MIT                                       | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/1e1aed58b7720fcb6b1859043d543b33019d8c4f/community/gocryptfs>    |
 | less                   | 702-r0           | GPL-3.0-or-later OR BSD-2-Clause          | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/58c8a1ed3dcfa0680c6ad25e2edd6512bcb0ff93/main/less>              |
 | libapk                 | 3.0.8-r0         | GPL-2.0-only                              | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/4588b452722bd4800efdc6cce4f6e980e02a997f/main/apk-tools>         |
-| libblkid               | 2.42.1-r0        | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/58e8609cc84989eeb6f07b86d79b10321eacca9f/main/util-linux>        |
+| libblkid               | 2.42.3-r1        | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/d98c55af59055e6ca60fbe36e171546918709965/main/util-linux>        |
 | libcrypto3             | 3.5.8-r0         | Apache-2.0                                | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/013edf8b29199933e8ea34dde460b5584b979042/main/openssl>           |
 | libeconf               | 0.8.3-r0         | MIT                                       | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/62db33049768522f381410614d59c7d732f72c3a/main/libeconf>          |
 | libedit                | 20260508.3.1-r1  | BSD-3-Clause                              | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/7c805161e588c028cdee3f19f500849fb2c75d42/main/libedit>           |
 | libffi                 | 3.5.2-r1         | MIT                                       | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/2c2a7bb4a8b16066834e90402567b2c19403a790/main/libffi>            |
 | libintl                | 1.0-r0           | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/a0b12dbf67fb047e79a1b76c6dfe6f2904d0d391/main/gettext>           |
-| libmount               | 2.42.1-r0        | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/58e8609cc84989eeb6f07b86d79b10321eacca9f/main/util-linux>        |
+| libmount               | 2.42.3-r1        | LGPL-2.1-or-later                         | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/d98c55af59055e6ca60fbe36e171546918709965/main/util-linux>        |
 | libncursesw            | 6.6_p20260516-r0 | X11                                       | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/2cee8a7328d061418336ad327b512d96bcd7bc5e/main/ncurses>           |
 | libssl3                | 3.5.8-r0         | Apache-2.0                                | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/013edf8b29199933e8ea34dde460b5584b979042/main/openssl>           |
 | libxxhash              | 0.8.3-r1         | BSD-2-Clause                              | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/3b2e469e223a5cb31932b1eae30c266e26b30148/main/xxhash>            |
@@ -121,12 +138,14 @@ license with several copyright holders, none of them copyleft.
 | zlib                   | 1.3.2-r0         | Zlib                                      | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/f248b33b5943c7dc69bf691031d7612ab2e8ed93/main/zlib>              |
 | zstd-libs              | 1.5.7-r2         | BSD-3-Clause OR GPL-2.0-or-later          | <https://gitlab.alpinelinux.org/alpine/aports/-/tree/3c6e2ee2b16f403d53eab39c4426eb61f003c322/main/zstd>              |
 
+<!-- END GENERATED INVENTORY -->
+
 ## Notes on specific packages
 
 - **rsync** (GPL-3.0-or-later): the package this documentation exists for.
   Alpine's unmodified rsync build is used as-is; its complete corresponding
-  source is Alpine's own `aports` tree, linked above, at the commit that
-  built `rsync-3.5.0-r0` for Alpine `3.24-stable`.
+  source is Alpine's own `aports` tree, linked above, at the commit that built
+  the exact `rsync` revision the table names.
 - **openssh**, **openssh-server**, **openssh-client-\*\***, **openssh-keygen**,
   **openssh-sftp-server** (`SSH-OpenSSH`): all built from the single
   `main/openssh` aports directory; listed separately because they are

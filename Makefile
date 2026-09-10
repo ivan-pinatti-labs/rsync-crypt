@@ -106,7 +106,8 @@ endef
 .PHONY: all help build backup backup_as_root bb bbr brr \
         restore restore_to_origin restore_as_root restore_as_root_to_origin \
         r ro rr rro view view_as_root v vr \
-        run_container run_container_as_root check-passkey clean
+        run_container run_container_as_root check-passkey clean \
+        third-party-licenses third-party-licenses-check
 
 all: build run_container
 
@@ -135,6 +136,8 @@ help:
 		'  run_container_as_root       Start an interactive system-backup container.' \
 		'  check-passkey               Create or verify the passkey file.' \
 		'  clean                       Remove backup state and image (prompts; destructive).' \
+		'  third-party-licenses        Regenerate THIRD_PARTY_LICENSES.md from the built image.' \
+		'  third-party-licenses-check  Fail if THIRD_PARTY_LICENSES.md has drifted from it.' \
 		'  help                        Show this help.' \
 		'' \
 		'If the env file does not exist, create it first:' \
@@ -189,6 +192,27 @@ build:
 		$(if $(_pin_snapshot_VIM_VERSION),--build-arg VIM_VERSION=$(_pin_snapshot_VIM_VERSION)) \
 		--tag ${DOCKER_IMAGE_TAG_NAME} \
 		--tag ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
+
+# THIRD_PARTY_LICENSES.md's package inventory is generated, not written, and
+# these two targets are the generating and the enforcing half of that. Both
+# read an already-built image rather than building one: the inventory is a
+# statement about a specific image, so building here would quietly answer a
+# question about a different one than the caller had in mind. Run `make build`
+# first.
+#
+# ${DOCKER_IMAGE_TAG_NAME} carries no version suffix and is one of the two tags
+# `build` applies, so this follows a plain `make build` without the caller
+# having to restate DOCKER_IMAGE_TAG_VERSION.
+#
+# No $(subst ",,...) wrapper on the tag: this is not one of the seven
+# expansions that reach a script's positional arguments, and the env file's own
+# quotes are the only quoting the shell sees here, so a value with a space
+# already parses as one word.
+third-party-licenses:
+	@python3 scripts/generate-third-party-licenses.py --image ${DOCKER_IMAGE_TAG_NAME}
+
+third-party-licenses-check:
+	@python3 scripts/generate-third-party-licenses.py --image ${DOCKER_IMAGE_TAG_NAME} --check
 
 # WARNING: permanently deletes the passkey, gocryptfs config files, and Docker image.
 # Make sure the master key is backed up before running this.
