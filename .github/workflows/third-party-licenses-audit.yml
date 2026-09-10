@@ -47,6 +47,16 @@ on:
 
 permissions: {}
 
+# One run at a time. A schedule and a manual workflow_dispatch landing together
+# would both read the tracking issue, then both act on what they read: two
+# runs can open the issue twice, or a clean run can close the issue a drift run
+# has just updated. Queue rather than cancel, for the same reason
+# nightly-build.yml does: a cancelled run can land after the issue has been
+# reopened and before it has been commented on.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   audit:
     name: Audit the generated licence inventory
@@ -81,15 +91,26 @@ jobs:
 
       - name: Check the inventory against the image
         id: audit
+        # The generator exits 2 for drift and 1 for a broken run, and the
+        # difference matters here: reading every non-zero exit as drift would
+        # turn a failed `apk update` or an unreadable image into a tracking
+        # issue announcing package changes nobody made, while letting this job
+        # report success. Anything but 0 or 2 fails the workflow instead.
         run: |
           set -uo pipefail
-          if python3 scripts/generate-third-party-licenses.py \
-            --image third-party-licenses-audit --check > inventory-diff.txt; then
-            echo "drifted=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "drifted=true" >> "$GITHUB_OUTPUT"
-          fi
+          python3 scripts/generate-third-party-licenses.py \
+            --image third-party-licenses-audit --check > inventory-diff.txt
+          status=$?
           cat inventory-diff.txt
+          case "$status" in
+            0) echo "drifted=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "drifted=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::The generator failed (exit $status); no conclusion" \
+                "about the inventory can be drawn from this run."
+              exit "$status"
+              ;;
+          esac
 
       - name: Open, update, or close the tracking issue
         env:
@@ -105,12 +126,21 @@ jobs:
 
           # state=all: a previously closed tracking issue is reused rather
           # than starting a new thread when the inventory drifts again, which
-          # it will, every time Alpine publishes a revision. --search can
-          # return a near match on title, so the exact title is also checked
-          # before trusting a result.
+          # it will, every time Alpine publishes a revision.
+          #
+          # Matched on the marker in the body, not on the title. --search can
+          # return a near match on title, and the title is ordinary English
+          # that a person could reasonably open an issue under themselves;
+          # commenting on, reopening or closing someone else's issue because
+          # it happens to be called the same thing is the failure this avoids.
+          # Only an issue this workflow wrote carries the marker.
+          jq_filter=".[]
+            | select(.title == \"${title}\")
+            | select(.body | contains(\"${marker}\"))
+            | .number"
           existing_number=$(gh issue list --search "in:title \"${title}\"" \
-            --state all --limit 100 --json number,title --jq \
-            ".[] | select(.title == \"${title}\") | .number" | head -1)
+            --state all --limit 100 --json number,title,body \
+            --jq "$jq_filter" | head -1)
 
           if [ "$DRIFTED" = "true" ]; then
             {

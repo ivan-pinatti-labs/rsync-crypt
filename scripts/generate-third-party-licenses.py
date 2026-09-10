@@ -100,6 +100,30 @@ class GenerationError(RuntimeError):
     """Something the caller has to fix, reported instead of guessed around."""
 
 
+# `--check` exit statuses. Drift gets its own, distinct from the 1 a
+# GenerationError exits with, because the two need opposite handling and a
+# caller cannot tell them apart from a bare non-zero: drift is the expected
+# finding this tool exists to report, while a failed `apk update` or an
+# unreadable image is a broken run whose "the inventory has moved" conclusion
+# is worthless. third-party-licenses-audit.yml branches on exactly this.
+DRIFT_EXIT = 2
+ERROR_EXIT = 1
+
+
+# The note that opens the generated region. A template at module scope rather
+# than a block built inside `render`, so the Markdown below reads exactly as it
+# is written to the file, with no source indentation to strip and no
+# implicitly concatenated fragments to miscount a comma in.
+PROVENANCE_NOTE = """\
+> **Generated on {generated_on} from an image built on Alpine {alpine_release}.**
+> Every row below is a dated observation, not a standing fact: Alpine bumps a
+> package's `-rN` revision without changing its upstream version, and `Dockerfile`
+> runs `apk update && apk upgrade` before installing anything, so a rebuild that
+> changes no file in this repository can still move these versions. Regenerate
+> with `make third-party-licenses`. The licences themselves do not move with a
+> revision, and each source link stays valid for the revision it names."""
+
+
 def parse_installed_db(text: str) -> list[Package]:
     """Parse apk's installed database into packages, sorted by name.
 
@@ -122,7 +146,11 @@ def parse_installed_db(text: str) -> list[Package]:
                 fields.setdefault(key, value)
         if "P" not in fields:
             continue
-        missing = [key for key in ("V", "L", "o", "c") if key not in fields]
+        # Emptiness counts as missing. `L:` with nothing after it parses fine
+        # and would render a blank licence cell; `c:` empty would render a
+        # source link pointing at the aports tree root. Both read as complete
+        # rows, which is the failure this refuses.
+        missing = [key for key in ("V", "L", "o", "c") if not fields.get(key)]
         if missing:
             raise GenerationError(
                 f"package {fields['P']} has no {', '.join(missing)} field in apk's "
@@ -261,19 +289,9 @@ def render(
         [
             BEGIN_MARKER,
             "",
-            f"> **Generated on {generated_on} from an image built on Alpine "
-            f"{alpine_release}.**",
-            "> Every row below is a dated observation, not a standing fact: Alpine "
-            "bumps a",
-            "> package's `-rN` revision without changing its upstream version, and "
-            "`Dockerfile`",
-            "> runs `apk update && apk upgrade` before installing anything, so a "
-            "rebuild that",
-            "> changes no file in this repository can still move these versions. "
-            "Regenerate with",
-            "> `make third-party-licenses`. The licences themselves do not move "
-            "with a revision,",
-            "> and each source link stays valid for the revision it names.",
+            PROVENANCE_NOTE.format(
+                generated_on=generated_on, alpine_release=alpine_release
+            ),
             "",
             f"{len(packages)} packages:",
             "",
@@ -412,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except GenerationError as error:
         print(f"error: {error}", file=sys.stderr)
-        return 1
+        return ERROR_EXIT
 
     if args.check:
         if updated == document:
@@ -436,7 +454,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{args.image}. Run `make third-party-licenses` and commit the result.",
             file=sys.stderr,
         )
-        return 1
+        return DRIFT_EXIT
 
     if updated == document:
         print(f"{LICENSES_FILE.name} already up to date ({len(packages)} packages).")

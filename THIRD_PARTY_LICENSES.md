@@ -46,10 +46,10 @@ in the published image regardless of who asked for it.
 
 `make third-party-licenses-check` regenerates in memory and fails if the
 committed file has drifted from the image. That check is what gives
-regeneration a trigger: `nightly-build.yml` runs it against the image it has
-just built and opens or updates a pull request when the answer is that the
-inventory has moved (see `.github/workflows/nightly-build.yml`). Which is the
-point, because the drift is not driven by anything in this repository.
+regeneration a trigger: `.github/workflows/third-party-licenses-audit.yml`
+runs it weekly against an image it builds with a cache bust, and opens,
+updates or closes one tracking issue carrying the diff. Which is the point,
+because the drift is not driven by anything in this repository.
 `Dockerfile` runs `apk update && apk upgrade` before installing anything, so
 packages this repository does not pin with a `~=` constraint can move between
 one `docker build` and the next with `ALPINE_VERSION` and every `*_VERSION`
@@ -78,9 +78,9 @@ license with several copyright holders, none of them copyleft.
 > Every row below is a dated observation, not a standing fact: Alpine bumps a
 > package's `-rN` revision without changing its upstream version, and `Dockerfile`
 > runs `apk update && apk upgrade` before installing anything, so a rebuild that
-> changes no file in this repository can still move these versions. Regenerate with
-> `make third-party-licenses`. The licences themselves do not move with a revision,
-> and each source link stays valid for the revision it names.
+> changes no file in this repository can still move these versions. Regenerate
+> with `make third-party-licenses`. The licences themselves do not move with a
+> revision, and each source link stays valid for the revision it names.
 
 51 packages:
 

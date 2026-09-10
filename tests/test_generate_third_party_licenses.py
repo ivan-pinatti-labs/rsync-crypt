@@ -141,6 +141,15 @@ def test_missing_field_is_refused_rather_than_left_blank():
         generator.parse_installed_db(without_commit)
 
 
+def test_an_empty_field_value_is_refused_the_same_as_a_missing_one():
+    # `L:` with nothing after it parses as a present key. A row rendered from
+    # it would carry a blank licence and still look like a complete entry,
+    # which is worse than a loud failure.
+    blank_license = INSTALLED_DB.replace("L:MIT\no:musl\n", "L:\no:musl\n")
+    with pytest.raises(generator.GenerationError, match="musl has no L field"):
+        generator.parse_installed_db(blank_license)
+
+
 def test_empty_database_is_refused():
     with pytest.raises(generator.GenerationError, match="no packages at all"):
         generator.parse_installed_db("")
@@ -251,3 +260,22 @@ def test_rendered_region_states_its_provenance():
     assert "3 packages:" in rendered
     assert rendered.startswith(generator.BEGIN_MARKER)
     assert rendered.endswith(generator.END_MARKER)
+
+
+def test_drift_and_failure_exit_with_different_statuses():
+    # third-party-licenses-audit.yml branches on these two, because "the
+    # inventory moved" and "the run was broken" need opposite handling and a
+    # bare non-zero cannot tell them apart.
+    assert generator.DRIFT_EXIT != generator.ERROR_EXIT
+    assert generator.DRIFT_EXIT != 0
+    assert generator.ERROR_EXIT != 0
+
+
+def test_provenance_note_has_no_stray_template_fields():
+    # The note is a module-level template, so a typo'd placeholder would
+    # otherwise reach the committed file as a literal brace.
+    rendered = generator.PROVENANCE_NOTE.format(
+        generated_on="2026-09-10", alpine_release="3.24.1"
+    )
+    assert "{" not in rendered and "}" not in rendered
+    assert all(line.startswith(">") for line in rendered.splitlines())
