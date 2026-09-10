@@ -192,6 +192,28 @@
       groupSlug: "pre-commit-hooks",
       labels: ["dependencies", "pre-commit"],
     },
+    // The github-actions manager extracts more than uses: pins by default:
+    // pull-request-validation.yml's python-version: "3.13" passed to
+    // actions/setup-python's with: (depType uses-with) is exactly what PR
+    // #82 proved live, proposing 3.13 to 3.14 with no way to ever merge it.
+    // Dependabot's github-actions ecosystem never watched this shape, it
+    // bumped uses: pins only, and scripts/assert-pin-only-diff.py's
+    // REV_PIN and ACTION_SHA patterns do not match a with: input either, so
+    // Pin Only was always going to refuse a diff like this and route it to
+    // a person, the same person it will keep routing every future Python
+    // release to, forever, unless this manager stops proposing the shape.
+    // Disabled here so this repository stops generating a pull request
+    // that can never pass its own required check, rather than leaving that
+    // outcome to repeat every time upstream Python cuts a release.
+    // matchDepTypes also covers github-runner (a literal runs-on: value)
+    // for the same reason, even though nothing here happens to use one
+    // today; docker-torrent-box-with-vpn and pre-commit-checklists-demo
+    // both carry the identical rule for the identical reason.
+    {
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["github-runner", "uses-with"],
+      enabled: false,
+    },
   ],
 
   customManagers: [
