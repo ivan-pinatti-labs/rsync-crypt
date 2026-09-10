@@ -207,8 +207,8 @@
     // outcome to repeat every time upstream Python cuts a release.
     // matchDepTypes also covers github-runner (a literal runs-on: value)
     // for the same reason, even though nothing here happens to use one
-    // today; docker-torrent-box-with-vpn and pre-commit-checklists-demo
-    // both carry the identical rule for the identical reason.
+    // today; pre-commit-checklists and pre-commit-checklists-demo both
+    // carry the identical rule for the identical reason.
     {
       matchManagers: ["github-actions"],
       matchDepTypes: ["github-runner", "uses-with"],
