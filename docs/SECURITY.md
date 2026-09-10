@@ -166,7 +166,8 @@ about the code this repository writes, which is scanned separately:
 | --- | --- | --- |
 | `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
 | `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
-| `scripts/*.py`, `tests/*.py` | CodeQL, `security-and-quality` suite | `codeql.yml`, on merge and weekly |
+| `scripts/*.py`, `tests/*.py` | CodeQL, `security-extended` suite | `codeql.yml`, on merge and weekly |
+| `scripts/*.py`, `tests/*.py` | CodeQL quality queries | GitHub-managed Code Quality, on push, PR and weekly |
 | `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |
 | `.github/workflows/*` | actionlint, zizmor | `checklist-github-actions`, every commit |
 | Everything | detect-secrets, detect-private-key | `checklist-security-credentials`, every commit |
@@ -177,8 +178,21 @@ The asymmetry there is deliberate and worth knowing before someone tries to
 rather than CodeQL because
 [CodeQL does not support shell at all](https://docs.github.com/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql).
 Its languages are JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++
-and C#. So the Security tab's "Code quality findings" prompt, which reads as
-though it would analyze the repository, can only reach the Python here.
+and C#.
+
+The Security tab's "Code quality findings" entry is a separate product, not a
+relabelling of `codeql.yml`, and it has to be enabled on its own; it was, on
+2026-09-09. It runs a GitHub-managed CodeQL analysis for quality queries, and
+it supports fewer languages still (`csharp`, `go`, `java-kotlin`,
+`javascript-typescript`, `python`, `ruby`), so it cannot see `scripts/*.sh`
+either. Enabling it is why `codeql.yml` narrowed from `security-and-quality`
+to `security-extended`: quality moved there rather than being given up, and
+running both suites over the same small directory would have analyzed it
+twice. Its findings have no REST API and appear only in the UI at
+`/security/quality`, which makes a clean result and a broken setup look the
+same from outside; confirm it ran under Actions rather than from that page.
+AI detections (`ai_findings_option`) are deliberately left disabled, as a
+separate decision from enabling the baseline.
 
 **The Python, conversely, does not ship.** It is repository tooling: grading
 pull requests, re-resolving apk pins on an Alpine bump, auditing this file's
