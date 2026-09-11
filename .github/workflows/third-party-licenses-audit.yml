@@ -128,19 +128,39 @@ jobs:
           # than starting a new thread when the inventory drifts again, which
           # it will, every time Alpine publishes a revision.
           #
-          # Matched on the marker in the body, not on the title. --search can
-          # return a near match on title, and the title is ordinary English
-          # that a person could reasonably open an issue under themselves;
-          # commenting on, reopening or closing someone else's issue because
-          # it happens to be called the same thing is the failure this avoids.
-          # Only an issue this workflow wrote carries the marker.
-          jq_filter=".[]
-            | select(.title == \"${title}\")
-            | select(.body | contains(\"${marker}\"))
-            | .number"
-          existing_number=$(gh issue list --search "in:title \"${title}\"" \
-            --state all --limit 100 --json number,title,body \
-            --jq "$jq_filter" | head -1)
+          # Three conditions, all required, because this job holds
+          # `issues: write` and the only thing standing between that and
+          # someone else's issue is whatever identifies "ours". Title alone is
+          # ordinary English anyone could reasonably open an issue under. The
+          # marker alone is no better on a public repository with issues
+          # enabled: it is visible in this file, so anyone can paste it into a
+          # body and have this workflow reopen, comment on or close their
+          # issue, or quietly take the place of the real tracking issue so
+          # drift stops being reported. The author is the half that cannot be
+          # forged, since only this workflow's own token writes as
+          # github-actions[bot].
+          #
+          # `gh api` rather than `gh issue list`: it reports the canonical
+          # `github-actions[bot]` login (`gh issue list --json author` renders
+          # a GitHub App as `app/github-actions` instead), and this endpoint
+          # returns pull requests alongside issues, so `.pull_request` has to
+          # be excluded explicitly.
+          # `--arg` rather than interpolating into the filter, so a title or
+          # marker is data to jq and never filter syntax. `awk NR==1` rather
+          # than `head -1`, which would close the pipe early and can fail the
+          # step under `pipefail`.
+          existing_number=$(gh api \
+            "repos/${REPO}/issues?state=all&per_page=100" --paginate \
+            | jq -r --arg title "$title" --arg marker "$marker" '
+                .[]
+                | select(.pull_request == null)
+                | select(.user.login == "github-actions[bot]")
+                | select(.user.type == "Bot")
+                | select(.title == $title)
+                | select(.body != null and (.body | contains($marker)))
+                | .number
+              ' \
+            | awk 'NR==1')
 
           if [ "$DRIFTED" = "true" ]; then
             {
