@@ -122,6 +122,15 @@ ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")
 # same name, where a CodeRabbit review found exactly that gap in an earlier,
 # unscoped version of this pattern.
 #
+# `uses:` alone is not narrow enough either, as a follow-up CodeRabbit
+# finding on this exact pattern went on to show: `\buses:` is a
+# word-boundary check, not a position check, so it matches the substring
+# "uses:" anywhere a line contains it, including inside a `run:` step's own
+# text (`run: uses: actions/checkout@v7` normalized the same way a real
+# `uses:` line did). Anchored to the start of the line instead, with only
+# an optional YAML list marker (`- `) and indentation in front of `uses:`,
+# which is the only place a real `uses:` field can sit.
+#
 # Applying ACTION_SHA first, ahead of this one, is what keeps the two from
 # double matching: RELEASE's character class is wide enough to also accept a
 # 40 character hex run as a "version", so an already-pinned line would match
@@ -130,7 +139,9 @@ ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")
 # itself does not start with a digit or a bare `v`, so RELEASE cannot match
 # it a second time.
 BARE_ACTION_VERSION = re.compile(
-    r"(?P<action_prefix>\buses:[ \t]+[\w.-]+/[\w./-]+)@" + RELEASE + r"$"
+    r"(?P<action_prefix>^(?:[ \t]*-[ \t]+)?[ \t]*uses:[ \t]+[\w.-]+/[\w./-]+)@"
+    + RELEASE
+    + r"$"
 )
 
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")

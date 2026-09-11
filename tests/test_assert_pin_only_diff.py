@@ -77,6 +77,20 @@ def test_accepts_a_first_time_github_action_pin():
     assert result.returncode == 0, result.stdout
 
 
+def test_accepts_a_first_time_pin_as_a_yaml_list_item():
+    # A step is also legally written as a bare list item, `- uses: ...`,
+    # with no name: line above it. The anchor has to allow the optional
+    # marker, not just plain indentation.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-      - uses: actions/checkout@v7\n"
+            f"+      - uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
 def test_accepts_a_pre_commit_hook_rev_bump():
     result = _check(
         _diff(
@@ -272,6 +286,23 @@ def test_refuses_a_run_step_version_bump_disguised_as_a_first_time_pin():
         _diff(
             ".github/workflows/pull-request-validation.yml",
             f"-          run: tool@v7\n+          run: tool@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_uses_embedded_in_a_run_step_disguised_as_a_first_time_pin():
+    # CodeRabbit's follow-up finding: \buses: is a word-boundary check, not
+    # a position check, so it matched the substring "uses:" anywhere on the
+    # line, including inside a run: step's own text. BARE_ACTION_VERSION now
+    # anchors to the start of the line, so a run: step that happens to
+    # contain the literal text "uses: owner/repo@version" cannot disguise
+    # itself as a real uses: field this way.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-          run: uses: actions/checkout@v7\n"
+            f"+          run: uses: actions/checkout@{SHA}\n",
         )
     )
     assert result.returncode == 1
