@@ -1,23 +1,43 @@
 ---
 name: CodeQL
 
-# CodeQL analysis of this repository's Python, with both the security and the
-# quality query suites, uploaded to the code scanning tab alongside the Trivy
-# and Docker Scout results that publish-image.yml and nightly-build.yml send
-# there.
+# CodeQL security analysis of this repository's Python, uploaded to the code
+# scanning tab alongside the Trivy and Docker Scout results that
+# publish-image.yml and nightly-build.yml send there.
 #
-# Python only, and it is worth being clear about how small that scope is,
-# because the Security tab's "Code quality findings . Disabled" prompt reads
-# like it is offering to analyze the whole repository. CodeQL supports
-# JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++ and C#. It does
-# not support shell, and shell is what this image actually ships:
-# scripts/backup.sh, restore.sh and view.sh are the product. So CodeQL cannot
-# see the code that matters most here, and the tools that can already run on
-# every commit: shellcheck (plus shfmt and the shebang checks) through
-# `checklist-dev-shell` in .pre-commit-config.yaml, hadolint on the Dockerfile,
-# actionlint and zizmor on these workflows, and detect-secrets against
-# .secrets.baseline. docs/SECURITY.md's "What scans what" lays the whole
-# arrangement out.
+# Security only. This used to run 'security-and-quality', which was the right
+# call while nothing else covered quality; GitHub Code Quality was enabled on
+# this repository on 2026-09-09 and now runs its own GitHub-managed CodeQL
+# analysis over the same Python for exactly that. Keeping both would run the
+# quality queries twice over one small tooling directory and pay for it twice
+# in runner minutes. So the managed setup owns quality and this workflow owns
+# security. See issue #80.
+#
+# Two things about that managed analysis are worth knowing before assuming it
+# is missing. Its workflow is GitHub-generated and does not live in
+# .github/workflows/, so actionlint and zizmor never see it and it does not
+# follow this repository's permissions/SHA-pinning conventions; nothing to
+# fix, but the usual gates do not cover it. And it reports through its own
+# REST endpoints rather than code scanning's, which is easy to get wrong:
+# 'code-quality/setup' returns the configuration and 'code-quality/findings'
+# the results, while 'code-quality/alerts' and 'code-quality/analyses' both
+# 404 and no 'code-scanning/analyses' entry is produced at all (measured
+# 2026-09-11). So this analysis never appears in a 'code-scanning/analyses'
+# sweep, and its absence there says nothing about whether it ran; read
+# 'code-quality/findings', or the UI at /security/quality, or the run itself
+# under Actions.
+#
+# Python only, either way, and it is worth being clear about how small that
+# scope is. CodeQL supports JavaScript/TypeScript, Ruby, Python, Go,
+# Java/Kotlin, C/C++ and C#, and Code Quality supports a subset of those. It
+# does not support shell, and shell is what this image actually ships:
+# scripts/backup.sh, restore.sh and view.sh are the product. So neither
+# analysis can see the code that matters most here, and the tools that can
+# already run on every commit: shellcheck (plus shfmt and the shebang checks)
+# through `checklist-dev-shell` in .pre-commit-config.yaml, hadolint on the
+# Dockerfile, actionlint and zizmor on these workflows, and detect-secrets
+# against .secrets.baseline. docs/SECURITY.md's "What scans what" lays the
+# whole arrangement out.
 #
 # What CodeQL does cover is the Python under scripts/ and tests/, which is
 # repository tooling rather than shipped code: it grades pull requests
@@ -66,11 +86,16 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: python
-          # Both suites. 'security-and-quality' is what the Security tab's
-          # "Code quality findings" prompt is actually asking for; the default
-          # ('security-extended' is not enabled here) would report only
-          # security queries and leave that entry disabled.
-          queries: security-and-quality
+          # 'security-extended' rather than the default suite, and rather than
+          # the 'security-and-quality' this used to run. Extended keeps the
+          # broader security query set, including the lower-severity and
+          # higher-false-positive queries the default omits, which is worth it
+          # over a directory this small. Dropping the input entirely would
+          # take the default suite and lose security queries as well as the
+          # quality ones, which is not the trade being made here: the quality
+          # half moved to GitHub's managed Code Quality setup, it was not
+          # given up. See this file's header and issue #80.
+          queries: security-extended
 
       - name: Analyze
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
