@@ -1,0 +1,222 @@
+---
+name: Third-Party Licenses Audit
+
+# Re-checks THIRD_PARTY_LICENSES.md against a freshly built image every week,
+# and opens or updates one tracking issue when the inventory has drifted.
+#
+# The inventory is generated (scripts/generate-third-party-licenses.py) rather
+# than hand-written, but generating it is not enough on its own, because
+# nothing in this repository changes when it goes stale. `Dockerfile` runs
+# `apk update && apk upgrade` before installing anything, so Alpine publishing
+# a new `-rN` moves what the image ships without touching a single tracked
+# file. A person would have to happen to re-run the generator to find out. This
+# workflow is what notices instead (see issue #78).
+#
+# Why not run this check on every pull request: the drift has nothing to do
+# with the pull request. Alpine publishing a revision overnight would fail the
+# next unrelated change to a shell script, which is a check firing at whoever
+# is nearest rather than at whoever can act. The `make third-party-licenses`
+# and `make third-party-licenses-check` targets stay available for anyone
+# deliberately looking.
+#
+# Why not open a pull request with the regenerated file: that needs a second
+# workflow holding `contents: write`, and CLAUDE.md documents
+# resolve-apk-pins.yml as the single deliberate exception to "CI never
+# autofixes". This is a warning, the same shape security-ignore-audit.yml
+# already uses. Nothing here commits, pushes, or changes what any gate
+# enforces; the issue body carries the full diff, so applying it is
+# `make build && make third-party-licenses` and a commit.
+#
+# It builds its own image rather than reading the one nightly-build.yml
+# pushes. amd64 only and no push, which takes a fraction of that workflow's
+# multi-platform build, and the package set is the same for the purpose of a
+# licence inventory. It also means this keeps working when publishing is down,
+# which is exactly when nobody is watching the inventory.
+on:
+  schedule:
+    # Monday, an hour after codeql.yml's own weekly run and two after
+    # security-ignore-audit.yml, so the three weekly jobs never contend for a
+    # runner and their tracking issues do not land at the same minute.
+    #
+    # Weekly rather than nightly: a revision bump is acted on by regenerating
+    # and committing, which happens on a human's cadence, so a nightly run
+    # would only restate the same drift six more times before anyone got to
+    # it.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+# One run at a time. A schedule and a manual workflow_dispatch landing together
+# would both read the tracking issue, then both act on what they read: two
+# runs can open the issue twice, or a clean run can close the issue a drift run
+# has just updated. Queue rather than cancel, for the same reason
+# nightly-build.yml does: a cancelled run can land after the issue has been
+# reopened and before it has been commented on.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit the generated licence inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Lets the "Open, update, or close the tracking issue" step below
+      # search, create, comment on, reopen, and close exactly one issue.
+      # Deliberately not `contents: write`: see this file's header.
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build the image
+        # APK_CACHE_BUST is what makes this an honest reading rather than a
+        # replay: without it the apk layer is keyed on the Dockerfile's text
+        # alone, so a cache hit would report whatever Alpine was serving the
+        # last time the layer actually ran, which is the exact staleness this
+        # workflow exists to detect. Same reasoning as nightly-build.yml's own
+        # build step; see the ARG's comment in the Dockerfile.
+        env:
+          RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          docker build . \
+            --build-arg "APK_CACHE_BUST=${RUN_KEY}" \
+            --tag third-party-licenses-audit
+
+      - name: Check the inventory against the image
+        id: audit
+        # The generator exits 2 for drift and 1 for a broken run, and the
+        # difference matters here: reading every non-zero exit as drift would
+        # turn a failed `apk update` or an unreadable image into a tracking
+        # issue announcing package changes nobody made, while letting this job
+        # report success. Anything but 0 or 2 fails the workflow instead.
+        run: |
+          set -uo pipefail
+          python3 scripts/generate-third-party-licenses.py \
+            --image third-party-licenses-audit --check > inventory-diff.txt
+          status=$?
+          cat inventory-diff.txt
+          case "$status" in
+            0) echo "drifted=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "drifted=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::The generator failed (exit $status); no conclusion" \
+                "about the inventory can be drawn from this run."
+              exit "$status"
+              ;;
+          esac
+
+      - name: Open, update, or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DRIFTED: ${{ steps.audit.outputs.drifted }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="Third-party licence inventory has drifted"
+          marker="<!-- third-party-licenses-audit -->"
+
+          # state=all: a previously closed tracking issue is reused rather
+          # than starting a new thread when the inventory drifts again, which
+          # it will, every time Alpine publishes a revision.
+          #
+          # Three conditions, all required, because this job holds
+          # `issues: write` and the only thing standing between that and
+          # someone else's issue is whatever identifies "ours". Title alone is
+          # ordinary English anyone could reasonably open an issue under. The
+          # marker alone is no better on a public repository with issues
+          # enabled: it is visible in this file, so anyone can paste it into a
+          # body and have this workflow reopen, comment on or close their
+          # issue, or quietly take the place of the real tracking issue so
+          # drift stops being reported. The author is the half that cannot be
+          # forged, since only this workflow's own token writes as
+          # github-actions[bot].
+          #
+          # `gh api` rather than `gh issue list`: it reports the canonical
+          # `github-actions[bot]` login (`gh issue list --json author` renders
+          # a GitHub App as `app/github-actions` instead), and this endpoint
+          # returns pull requests alongside issues, so `.pull_request` has to
+          # be excluded explicitly.
+          # `--arg` rather than interpolating into the filter, so a title or
+          # marker is data to jq and never filter syntax. `awk NR==1` rather
+          # than `head -1`, which would close the pipe early and can fail the
+          # step under `pipefail`.
+          existing_number=$(gh api \
+            "repos/${REPO}/issues?state=all&per_page=100" --paginate \
+            | jq -r --arg title "$title" --arg marker "$marker" '
+                .[]
+                | select(.pull_request == null)
+                | select(.user.login == "github-actions[bot]")
+                | select(.user.type == "Bot")
+                | select(.title == $title)
+                | select(.body != null and (.body | contains($marker)))
+                | .number
+              ' \
+            | awk 'NR==1')
+
+          if [ "$DRIFTED" = "true" ]; then
+            {
+              echo "$marker"
+              echo
+              echo "\`THIRD_PARTY_LICENSES.md\` no longer matches the packages a"
+              echo "freshly built image installs. Alpine has published at least one"
+              echo "new package revision within the existing \`~=\` pins since it was"
+              echo "last generated."
+              echo
+              echo "Nothing here is a licensing error: a licence does not change with"
+              echo "a revision bump, and every source link stays valid for the"
+              echo "revision it names. What is wrong is that the file reads as a"
+              echo "statement about the current image while describing an older one."
+              echo
+              echo "To fix:"
+              echo
+              echo '```console'
+              echo "make build"
+              echo "make third-party-licenses"
+              echo '```'
+              echo
+              echo "Audit run: $RUN_URL"
+              echo
+              echo "<details><summary>Diff this run would apply</summary>"
+              echo
+              echo '```diff'
+              cat inventory-diff.txt
+              echo '```'
+              echo
+              echo "</details>"
+            } > issue-body.md
+
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" = "CLOSED" ]; then
+                gh issue reopen "$existing_number"
+              fi
+              gh issue comment "$existing_number" --body-file issue-body.md
+              echo "::notice::Updated #$existing_number with the current drift."
+            else
+              gh issue create --title "$title" --body-file issue-body.md
+              echo "::notice::Opened a new tracking issue."
+            fi
+          else
+            if [ -n "$existing_number" ]; then
+              state=$(gh issue view "$existing_number" --json state --jq .state)
+              if [ "$state" != "CLOSED" ]; then
+                clean_message="Clean run ($RUN_URL): the committed inventory matches"
+                clean_message="${clean_message} a freshly built image. Closing."
+                gh issue comment "$existing_number" \
+                  --body "$marker"$'\n\n'"$clean_message"
+                gh issue close "$existing_number"
+                echo "::notice::Closed #$existing_number; the inventory is current."
+              fi
+            else
+              echo "::notice::The inventory is current; no tracking issue open."
+            fi
+          fi

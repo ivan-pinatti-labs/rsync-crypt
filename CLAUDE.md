@@ -528,6 +528,48 @@ CVE for dismissal at all (a sub-gate finding or a no-upgrade-path one, the
 worked examples there, generally does not) and for why a GitHub dismissal
 and an ignore-list entry have to move together.
 
+### The licence inventory is generated, and its trigger is a weekly issue
+
+`THIRD_PARTY_LICENSES.md`'s package table is written by
+`scripts/generate-third-party-licenses.py`, not by hand. Do not edit a row in
+it; run `make build && make third-party-licenses`. Everything outside the
+`<!-- BEGIN GENERATED INVENTORY -->` / `<!-- END GENERATED INVENTORY -->`
+markers is prose the script never touches.
+
+It reads apk's own installed database inside the built image
+(`/lib/apk/db/installed`), whose per-package stanza carries the exact version,
+the licence from Alpine's `APKBUILD`, the aports subdirectory (`o:`) and, the
+part that makes this work at all, the aports commit that built the package
+(`c:`). That is the same commit the source links pin, so no scraping of
+`pkgs.alpinelinux.org` is involved. The one field it does not carry is whether
+the package came from `main` or `community`, which the link path needs, so
+`apk policy` supplies that and the two are joined on the package name.
+
+Two traps, both found by running it rather than by reasoning about it:
+
+- **`apk policy` needs `apk update` first**, for the same reason the gocryptfs
+  note above says so: `Dockerfile` removes the apk cache, and without an index
+  `apk policy` reports no repository at all while still exiting 0.
+- **The installed revision is often not the repository's current one.** When
+  Alpine publishes a newer `-rN`, the installed version's `apk policy` block
+  is left with nothing under it but `lib/apk/db/installed`, no repository URL,
+  which is what a `fuse-common` one revision behind looked like. The parser
+  falls back to another block for the same package, because `main` versus
+  `community` is a property of the package rather than of a revision. The
+  version and the commit still come only from the installed database, never
+  from `apk policy`, so the fallback cannot pin the wrong source.
+
+`.github/workflows/third-party-licenses-audit.yml` runs `--check` against a
+freshly built image weekly and opens, updates or closes one tracking issue.
+That is the trigger, and it is a warning rather than a fix, exactly like
+`security-ignore-audit.yml`: nothing commits or pushes, so "CI never
+autofixes" still holds with `resolve-apk-pins.yml` as its only exception.
+
+Deliberately not a pull-request-validation check. The drift is caused by
+Alpine publishing a revision overnight, not by anything in a pull request, so
+gating pull requests on it would fail whoever is nearest rather than whoever
+can act.
+
 ### Parallel agents need separate worktrees
 
 More than one agent working in this repository at the same time must each get
@@ -634,7 +676,8 @@ version is worse than none: it is the reader who trusts it who gets hurt. This
 has already bitten three times, tracked as
 [#72](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/72) (an apk
 revision in this file), [#78](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/78)
-(around forty of them in `THIRD_PARTY_LICENSES.md`) and a `2.6.1-r5` that
+(a whole inventory of them in `THIRD_PARTY_LICENSES.md`, since generated: see
+"The licence inventory is generated" below) and a `2.6.1-r5` that
 contradicted an `r6` measurement inside this same file.
 
 Three cases, treated differently:
