@@ -653,7 +653,7 @@ poll setting anywhere in it.
 
 ### The deliberate lint suppressions, and why each exists
 
-There are four, and "nothing is ignored" would be the wrong claim:
+"Nothing is ignored" would be the wrong claim:
 
 | Suppression | Where | Why |
 | --- | --- | --- |
