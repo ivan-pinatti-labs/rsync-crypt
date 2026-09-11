@@ -107,6 +107,32 @@ REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 # swallowing the character that would have made the shapes differ.
 ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")
 
+# A first-time `pinDigests` bump on a GitHub Action changes
+# `uses: actions/checkout@v7` to `uses: actions/checkout@<sha>` in one step:
+# there is no prior SHA to compare against. ACTION_SHA above normalizes the
+# pinned side to `@<version>`; this pattern gives the unpinned side the
+# identical placeholder, so the two sides of a first-time pin compare equal
+# the same way an ordinary SHA-to-SHA bump does.
+#
+# Requires a `uses:` field and an owner/repo-shaped coordinate immediately
+# before the `@`, not bare `@RELEASE` anywhere on the line: an unscoped
+# version would let a `run:` step's own `tool@v7` normalize the same way,
+# so that line could grow an unrelated-looking SHA and still read as a
+# first-time pin. Ported from docker-torrent-box-with-vpn's script of the
+# same name, where a CodeRabbit review found exactly that gap in an earlier,
+# unscoped version of this pattern.
+#
+# Applying ACTION_SHA first, ahead of this one, is what keeps the two from
+# double matching: RELEASE's character class is wide enough to also accept a
+# 40 character hex run as a "version", so an already-pinned line would match
+# this pattern too if it still carried its SHA. ACTION_SHA already replaces
+# that SHA with `<version>` by the time this pattern runs, and `<version>`
+# itself does not start with a digit or a bare `v`, so RELEASE cannot match
+# it a second time.
+BARE_ACTION_VERSION = re.compile(
+    r"(?P<action_prefix>\buses:[ \t]+[\w.-]+/[\w./-]+)@" + RELEASE + r"$"
+)
+
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 
 # The exact shape .github/renovate.json5's custom regex manager is anchored
@@ -218,6 +244,7 @@ def normalize(line: str, path: str = "") -> str:
         # structural mismatch instead of being waved through.
         return line
     line = ACTION_SHA.sub(r"\g<prefix><version>", line)
+    line = BARE_ACTION_VERSION.sub(r"\g<action_prefix>@<version>", line)
     line = REV_PIN.sub(r"\g<prefix><version>", line)
     return line
 

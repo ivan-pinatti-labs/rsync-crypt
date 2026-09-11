@@ -62,6 +62,21 @@ def test_accepts_a_github_action_sha_bump():
     assert result.returncode == 0, result.stdout
 
 
+def test_accepts_a_first_time_github_action_pin():
+    # pinDigests adding a SHA to a previously unpinned action, ported from
+    # docker-torrent-box-with-vpn's own PR #178/#183: there is no prior SHA
+    # to compare against, and ACTION_SHA alone had no pattern for that
+    # transition.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
 def test_accepts_a_pre_commit_hook_rev_bump():
     result = _check(
         _diff(
@@ -230,6 +245,33 @@ def test_refuses_a_swapped_name_at_the_same_version():
             ".github/workflows/pull-request-validation.yml",
             f"-        uses: actions/checkout@{SHA}\n"
             f"+        uses: attacker/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_a_first_time_pin_with_a_swapped_owner():
+    # The dependency name stays literal to the left of the `@` for this
+    # shape exactly as it does for every other pin type here.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n+        uses: evil/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_a_run_step_version_bump_disguised_as_a_first_time_pin():
+    # BARE_ACTION_VERSION requires a uses: field and an owner/repo
+    # coordinate, not bare `@RELEASE` anywhere on the line: a run: step's
+    # trailing tool@v7 must not normalize the same way a first-time action
+    # pin does, or that line could grow an unrelated-looking SHA and still
+    # read as pin-only.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-          run: tool@v7\n+          run: tool@{SHA}\n",
         )
     )
     assert result.returncode == 1
