@@ -17,12 +17,15 @@ name: CodeQL
 # is missing. Its workflow is GitHub-generated and does not live in
 # .github/workflows/, so actionlint and zizmor never see it and it does not
 # follow this repository's permissions/SHA-pinning conventions; nothing to
-# fix, but the usual gates do not cover it. And its results have no REST API
-# at all (code-quality/alerts and code-quality/analyses both 404, and it
-# produces no code-scanning/analyses entry), so they are visible only in the
-# UI at /security/quality, which means a clean result and a broken setup look
-# identical from the outside. Confirm it ran by looking for its run under
-# Actions, not by reading the security page.
+# fix, but the usual gates do not cover it. And it reports through its own
+# REST endpoints rather than code scanning's, which is easy to get wrong:
+# 'code-quality/setup' returns the configuration and 'code-quality/findings'
+# the results, while 'code-quality/alerts' and 'code-quality/analyses' both
+# 404 and no 'code-scanning/analyses' entry is produced at all (measured
+# 2026-09-11). So this analysis never appears in a 'code-scanning/analyses'
+# sweep, and its absence there says nothing about whether it ran; read
+# 'code-quality/findings', or the UI at /security/quality, or the run itself
+# under Actions.
 #
 # Python only, either way, and it is worth being clear about how small that
 # scope is. CodeQL supports JavaScript/TypeScript, Ruby, Python, Go,

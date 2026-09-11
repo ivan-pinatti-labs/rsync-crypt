@@ -188,11 +188,27 @@ it supports fewer languages still (`csharp`, `go`, `java-kotlin`,
 either. Enabling it is why `codeql.yml` narrowed from `security-and-quality`
 to `security-extended`: quality moved there rather than being given up, and
 running both suites over the same small directory would have analyzed it
-twice. Its findings have no REST API and appear only in the UI at
-`/security/quality`, which makes a clean result and a broken setup look the
-same from outside; confirm it ran under Actions rather than from that page.
-AI detections (`ai_findings_option`) are deliberately left disabled, as a
-separate decision from enabling the baseline.
+twice.
+
+It reports through its own REST endpoints rather than code scanning's, which
+is worth knowing before concluding it is not running. Measured 2026-09-11:
+
+```console
+$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/setup
+{"state":"configured","languages":["python"],"schedule":"weekly", ...}
+$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/findings
+[]
+$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/alerts
+404
+$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/analyses
+404
+```
+
+It also produces no `code-scanning/analyses` entry, so it never shows up in a
+sweep of those and its absence there says nothing about whether it ran. Read
+`code-quality/findings`, the UI at `/security/quality`, or the run itself
+under Actions. AI detections (`ai_findings_option`) are deliberately left
+disabled, as a separate decision from enabling the baseline.
 
 **The Python, conversely, does not ship.** It is repository tooling: grading
 pull requests, re-resolving apk pins on an Alpine bump, auditing this file's
