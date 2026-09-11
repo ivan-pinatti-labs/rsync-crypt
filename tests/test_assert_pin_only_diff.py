@@ -52,9 +52,14 @@ def _diff(path: str, body: str, *, header: str = "") -> str:
 
 
 def test_accepts_a_github_action_sha_bump():
+    # A real `gh pr diff` always carries a line or two of unchanged context
+    # around a change; the leading ` - name: Checkout` here mirrors that,
+    # since _in_block_scalar conservatively refuses a candidate pin when the
+    # diff shows it no visible context at all to judge from.
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
             f"-        uses: actions/checkout@{SHA} # v7\n"
             f"+        uses: actions/checkout@{OTHER_SHA} # v7\n",
         )
@@ -70,6 +75,7 @@ def test_accepts_a_first_time_github_action_pin():
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
             f"-        uses: actions/checkout@v7\n"
             f"+        uses: actions/checkout@{SHA}\n",
         )
@@ -84,6 +90,7 @@ def test_accepts_a_first_time_pin_as_a_yaml_list_item():
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
+            f"     steps:\n"
             f"-      - uses: actions/checkout@v7\n"
             f"+      - uses: actions/checkout@{SHA}\n",
         )
@@ -96,11 +103,28 @@ def test_accepts_an_uppercase_first_time_pin():
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
             f"-        uses: actions/checkout@v7\n"
             f"+        uses: actions/checkout@{SHA.upper()}\n",
         )
     )
     assert result.returncode == 0, result.stdout
+
+
+def test_refuses_a_first_time_pin_with_no_visible_context():
+    # _in_block_scalar has nothing to judge from when the diff shows no
+    # line shallower than the change at all (a synthetic edge case a real
+    # gh pr diff essentially never produces, since it always carries a
+    # line or two of context), and conservatively refuses rather than
+    # guess, the same fail closed direction every other shape here takes.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
 
 
 def test_refuses_a_non_hex_40_character_token_as_a_first_time_pin():
