@@ -275,7 +275,8 @@ APK_PIN_ANNOTATED_ARGS = apk_pin_annotated_args()
 PIN_ELIGIBLE_ARGS = RENOVATE_ANNOTATED_ARGS | APK_PIN_ANNOTATED_ARGS
 
 
-# A YAML block scalar opener: `key: |`, `key: >`, with the optional
+# A YAML block scalar opener: `key: |`, `key: >`, or a bare sequence item
+# whose own value is the scalar (`- |`, `- >-`), with the optional
 # chomping (`-`/`+`) and explicit indentation (a digit) modifiers the spec
 # allows, in either order (`|2-` and `|-2` are both valid YAML), and an
 # optional trailing comment after them. Everything indented more than a
@@ -290,11 +291,16 @@ PIN_ELIGIBLE_ARGS = RENOVATE_ANNOTATED_ARGS | APK_PIN_ANNOTATED_ARGS
 # approves. A later review round found the first regex here only matched
 # one modifier order and no trailing comment, so `run: |2-  # step body`
 # or `run: |-2` opened a block scalar this check could not recognize as
-# one. The Dockerfile has no YAML block scalars, so this only ever
-# matters for the ACTION_SHA/BARE_ACTION_VERSION/REV_PIN branch below,
-# never the ARG branch.
+# one. A further review found it still missed a standalone sequence-item
+# scalar header, `- |` with no `key:` in front at all, since the pattern
+# required a colon before the scalar indicator; confirmed exploitable the
+# same way, a `uses:` line nested under one read as ordinary YAML
+# structure instead of a block scalar's literal content. The Dockerfile
+# has no YAML block scalars, so this only ever matters for the
+# ACTION_SHA/BARE_ACTION_VERSION/REV_PIN branch below, never the ARG
+# branch.
 BLOCK_SCALAR_OPENER = re.compile(
-    r":\s*[|>](?:[+-][1-9]?|[1-9][+-]?)?(?:[ \t]+#.*)?\s*$"
+    r"(?::|^[ \t]*-)\s*[|>](?:[+-][1-9]?|[1-9][+-]?)?(?:[ \t]+#.*)?\s*$"
 )
 
 
