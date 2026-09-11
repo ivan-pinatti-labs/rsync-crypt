@@ -105,7 +105,88 @@ REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 # lookahead stops a
 # 40 character prefix of a longer hex run from matching and silently
 # swallowing the character that would have made the shapes differ.
-ACTION_SHA = re.compile(r"(?P<prefix>@)[0-9a-f]{40}(?![0-9a-fA-F])")
+#
+# Case-insensitive (`[0-9a-fA-F]`, not `[0-9a-f]`): GitHub resolves a
+# `uses:` SHA the same way regardless of case, so an uppercase or
+# mixed-case SHA is just as real a pin as a lowercase one, and matching
+# only lowercase left a gap a CodeRabbit review of BARE_ACTION_VERSION
+# below found: an uppercase SHA on a first-time pin's new side fell
+# through ACTION_SHA entirely and was accepted by BARE_ACTION_VERSION's
+# generic RELEASE grammar instead, which does not check that a
+# first-time pin's target is SHA-shaped at all.
+#
+# Anchored to a genuine `uses:` field at the start of the line, the same
+# anchor BARE_ACTION_VERSION uses, rather than a bare `@<sha>` matched
+# anywhere: a follow-up CodeRabbit finding on this exact pattern pointed
+# out the original, unanchored ACTION_SHA matched a 40 character hex run
+# on ANY changed workflow line, `run:` step content included, so a `run:`
+# command could change while its normalized form stayed equal, as long as
+# the line still ended in something SHA-shaped. `prefix` now captures the
+# full `uses: owner/repo@` text, not only `@`, so the dependency name
+# stays literal to the left exactly as it already did.
+ACTION_SHA = re.compile(
+    r"(?P<prefix>^(?:[ \t]*-[ \t]+)?[ \t]*uses:[ \t]+[\w.-]+/[\w./-]+@)"
+    r"[0-9a-fA-F]{40}(?![0-9a-fA-F])"
+)
+
+# A first-time `pinDigests` bump on a GitHub Action changes
+# `uses: actions/checkout@v7` to `uses: actions/checkout@<sha>` in one step:
+# there is no prior SHA to compare against. ACTION_SHA above normalizes the
+# pinned side to `@<version>`; this pattern gives the unpinned side the
+# identical placeholder, so the two sides of a first-time pin compare equal
+# the same way an ordinary SHA-to-SHA bump does.
+#
+# Requires a `uses:` field and an owner/repo-shaped coordinate immediately
+# before the `@`, not bare `@RELEASE` anywhere on the line: an unscoped
+# version would let a `run:` step's own `tool@v7` normalize the same way,
+# so that line could grow an unrelated-looking SHA and still read as a
+# first-time pin. Ported from docker-torrent-box-with-vpn's script of the
+# same name, where a CodeRabbit review found exactly that gap in an earlier,
+# unscoped version of this pattern.
+#
+# `uses:` alone is not narrow enough either, as a follow-up CodeRabbit
+# finding on this exact pattern went on to show: `\buses:` is a
+# word-boundary check, not a position check, so it matches the substring
+# "uses:" anywhere a line contains it, including inside a `run:` step's own
+# text (`run: uses: actions/checkout@v7` normalized the same way a real
+# `uses:` line did). Anchored to the start of the line instead, with only
+# an optional YAML list marker (`- `) and indentation in front of `uses:`,
+# which is the only place a real `uses:` field can sit.
+#
+# Applying ACTION_SHA first, ahead of this one, is what keeps the two from
+# double matching: RELEASE's character class is wide enough to also accept a
+# 40 character hex run as a "version", so an already-pinned line would match
+# this pattern too if it still carried its SHA. ACTION_SHA already replaces
+# that SHA with `<version>` by the time this pattern runs, and `<version>`
+# itself does not start with a digit or a bare `v`, so RELEASE cannot match
+# it a second time.
+#
+# The version is its own capture group, `bare_version`, rather than folded
+# unnamed into the match, because a third CodeRabbit-class finding (found by
+# extending their own test, not reported directly) showed RELEASE alone is
+# still too permissive here: `_normalize_bare_action_version` below refuses
+# a 40 character match outright, real hex or not, because 40 characters is
+# the shape ACTION_SHA exists to own exclusively. Without that check, a
+# non-hex 40 character token, `0` followed by 39 `z`s for instance, never
+# matches ACTION_SHA (not hex) and was accepted here instead, since nothing
+# about this pattern's own grammar checked that the "version" replacing a
+# first-time pin's bare tag was ever a real SHA at all, only that it was
+# RELEASE-shaped. A real first-time pin's target is always exactly a 40
+# character SHA, ACTION_SHA's exclusive domain, so anything that length
+# reaching this pattern instead is already suspect, and refusing it outright
+# costs nothing: a length that long never occurs in a genuine bare release
+# tag either.
+BARE_ACTION_VERSION = re.compile(
+    r"(?P<action_prefix>^(?:[ \t]*-[ \t]+)?[ \t]*uses:[ \t]+[\w.-]+/[\w./-]+)@"
+    r"(?P<bare_version>" + RELEASE + r")$"
+)
+
+
+def _normalize_bare_action_version(match: re.Match[str]) -> str:
+    if len(match.group("bare_version")) == 40:
+        return match.group(0)
+    return f"{match.group('action_prefix')}@<version>"
+
 
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 
@@ -194,7 +275,75 @@ APK_PIN_ANNOTATED_ARGS = apk_pin_annotated_args()
 PIN_ELIGIBLE_ARGS = RENOVATE_ANNOTATED_ARGS | APK_PIN_ANNOTATED_ARGS
 
 
-def normalize(line: str, path: str = "") -> str:
+# A YAML block scalar opener: `key: |`, `key: >`, with the optional
+# chomping (`-`/`+`) and explicit indentation (a digit) modifiers the spec
+# allows, in either order (`|2-` and `|-2` are both valid YAML), and an
+# optional trailing comment after them. Everything indented more than a
+# line matching this, until a line at or below its own indentation
+# appears, is that block scalar's literal content, not further YAML
+# structure: a `run: |` step body is the shape that matters here, since
+# its content can coincidentally read exactly like a `uses:` field. A
+# CodeRabbit review found and confirmed this: an indented `uses:
+# owner/action@<sha> # v7` inside a run: | block matched ACTION_SHA and
+# BARE_ACTION_VERSION alike, treating shell text as if it were a real
+# GitHub Actions step, which a required check reading `Pin Only` then
+# approves. A later review round found the first regex here only matched
+# one modifier order and no trailing comment, so `run: |2-  # step body`
+# or `run: |-2` opened a block scalar this check could not recognize as
+# one. The Dockerfile has no YAML block scalars, so this only ever
+# matters for the ACTION_SHA/BARE_ACTION_VERSION/REV_PIN branch below,
+# never the ARG branch.
+BLOCK_SCALAR_OPENER = re.compile(
+    r":\s*[|>](?:[+-][1-9]?|[1-9][+-]?)?(?:[ \t]+#.*)?\s*$"
+)
+
+
+def _line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" \t"))
+
+
+def _in_block_scalar(context: list[str], indent: int) -> bool:
+    """Judge, from the lines already seen in this file's diff, whether
+    `indent` sits inside an open YAML block scalar.
+
+    Scans backward for the nearest line indented less than `indent`,
+    skipping blank lines (a block scalar can itself contain one, and its
+    zero indentation must not be mistaken for the boundary that closes the
+    scalar). Inside a block scalar if that nearer line opens one.
+    Conservatively also inside one if no such line is visible at all: the
+    diff is all this script ever sees of the file around a change, so a
+    block scalar whose own opening line sits outside the diff's context
+    cannot be told apart from one that was never open, and refusing the
+    line as a candidate pin either way is the fail closed direction, the
+    same one every other shape in this file takes when it cannot be sure.
+
+    A CodeRabbit review named the residual gap in this precisely: the
+    first shallower line found is trusted as the boundary even when it is
+    itself ordinary scalar content one level further out, rather than the
+    real opener sitting deeper in the scan, so a `uses:` line nested under
+    something like an `if` inside a `run: |` block, both indented past the
+    block's own floor, is not caught. Scanning past a shallower non-opener
+    line to keep looking, rather than trusting it as decisive, would close
+    that gap, but was tried and reverted: it also requires reaching the
+    file's own top level (indentation zero) before a real diff's limited
+    context ever earns a confident "not inside one", and no ordinary `gh
+    pr diff` output carries that much. Verified against
+    docker-torrent-box-with-vpn's own #178, whose real diff never contains
+    the change's enclosing indentation chain down to indentation zero: the
+    deeper version refused it outright, the same result a compromised
+    bot's diff should get, not a clean one. This narrower version is the
+    one actually deployed; the nested case above is an accepted,
+    documented gap rather than a silently unfixed one.
+    """
+    for seen in reversed(context):
+        if not seen.strip():
+            continue
+        if _line_indent(seen) < indent:
+            return bool(BLOCK_SCALAR_OPENER.search(seen))
+    return True
+
+
+def normalize(line: str, path: str = "", in_block_scalar: bool = False) -> str:
     """Reduce a line to everything about it that a version bump may not change."""
     if path.endswith(".tool-versions"):
         return TOOL_VERSION_LINE.sub(r"\g<prefix><version>", line)
@@ -217,7 +366,14 @@ def normalize(line: str, path: str = "") -> str:
         # returned unchanged either way, so any such edit shows up as a
         # structural mismatch instead of being waved through.
         return line
+    # Scoped to .github/workflows/: a block scalar (run: |) is a GitHub
+    # Actions workflow construct, not something .pre-commit-config.yaml's
+    # schema has, so gating that file by it too would only cost real
+    # first-time pins their context there for no matching risk.
+    if in_block_scalar and path.startswith(".github/workflows/"):
+        return line
     line = ACTION_SHA.sub(r"\g<prefix><version>", line)
+    line = BARE_ACTION_VERSION.sub(_normalize_bare_action_version, line)
     line = REV_PIN.sub(r"\g<prefix><version>", line)
     return line
 
@@ -228,6 +384,23 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
     structural: list[str] = []
     path = None
     in_hunk = False
+    # The lines of each side of this file seen so far in the current hunk,
+    # in file order: what a block scalar check has to work with, since the
+    # diff never carries the whole file. Kept separate because a hunk can
+    # add or remove a block scalar's own opening line, which changes
+    # whether a later line on just one side is inside one. Reset on every
+    # hunk header, not only every file header: a hunk boundary means the
+    # diff skips lines in between, and a line just past the gap could
+    # otherwise be judged against context from before it, a shallower line
+    # left over from the previous hunk that is not actually the nearest
+    # one to the real file. Kept context from the file's earlier hunks
+    # cannot be trusted to still be the true boundary once the diff has
+    # jumped past lines neither side of this comparison ever saw; starting
+    # each hunk with nothing visible falls back to the same fail closed
+    # default `_in_block_scalar` already takes when a file's first hunk
+    # opens with no context at all.
+    old_context: list[str] = []
+    new_context: list[str] = []
 
     for line in diff.splitlines():
         header = FILE_HEADER.match(line)
@@ -235,6 +408,8 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
             old, new = header.group("old"), header.group("new")
             path = new
             in_hunk = False
+            old_context = []
+            new_context = []
             changes.setdefault(path, (Counter(), Counter()))
             if old != new:
                 structural.append(f"{old} renamed to {new}")
@@ -242,6 +417,8 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
 
         if line.startswith("@@"):
             in_hunk = True
+            old_context = []
+            new_context = []
             continue
 
         # Everything between a file header and its first hunk is preamble: the
@@ -260,9 +437,22 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
             continue
 
         if line.startswith("-"):
-            changes[path][0][normalize(line[1:], path)] += 1
+            content = line[1:]
+            in_scalar = _in_block_scalar(old_context, _line_indent(content))
+            changes[path][0][normalize(content, path, in_scalar)] += 1
+            old_context.append(content)
         elif line.startswith("+"):
-            changes[path][1][normalize(line[1:], path)] += 1
+            content = line[1:]
+            in_scalar = _in_block_scalar(new_context, _line_indent(content))
+            changes[path][1][normalize(content, path, in_scalar)] += 1
+            new_context.append(content)
+        elif line.startswith(" ") or line == "":
+            # An unchanged context line: not compared itself, but part of
+            # the surrounding structure a block scalar check on a later
+            # line in this file needs to see.
+            content = line[1:] if line else line
+            old_context.append(content)
+            new_context.append(content)
 
     return changes, structural
 

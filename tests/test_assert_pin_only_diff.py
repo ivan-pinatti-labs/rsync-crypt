@@ -52,14 +52,97 @@ def _diff(path: str, body: str, *, header: str = "") -> str:
 
 
 def test_accepts_a_github_action_sha_bump():
+    # A real `gh pr diff` always carries a line or two of unchanged context
+    # around a change; the leading ` - name: Checkout` here mirrors that,
+    # since _in_block_scalar conservatively refuses a candidate pin when the
+    # diff shows it no visible context at all to judge from.
     result = _check(
         _diff(
             ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
             f"-        uses: actions/checkout@{SHA} # v7\n"
             f"+        uses: actions/checkout@{OTHER_SHA} # v7\n",
         )
     )
     assert result.returncode == 0, result.stdout
+
+
+def test_accepts_a_first_time_github_action_pin():
+    # pinDigests adding a SHA to a previously unpinned action, ported from
+    # docker-torrent-box-with-vpn's own PR #178/#183: there is no prior SHA
+    # to compare against, and ACTION_SHA alone had no pattern for that
+    # transition.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_accepts_a_first_time_pin_as_a_yaml_list_item():
+    # A step is also legally written as a bare list item, `- uses: ...`,
+    # with no name: line above it. The anchor has to allow the optional
+    # marker, not just plain indentation.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"     steps:\n"
+            f"-      - uses: actions/checkout@v7\n"
+            f"+      - uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_accepts_an_uppercase_first_time_pin():
+    # GitHub resolves a uses: SHA the same way regardless of case.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA.upper()}\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_refuses_a_first_time_pin_with_no_visible_context():
+    # _in_block_scalar has nothing to judge from when the diff shows no
+    # line shallower than the change at all (a synthetic edge case a real
+    # gh pr diff essentially never produces, since it always carries a
+    # line or two of context), and conservatively refuses rather than
+    # guess, the same fail closed direction every other shape here takes.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_a_non_hex_40_character_token_as_a_first_time_pin():
+    # A third finding on this pattern: RELEASE accepts any alphanumeric
+    # run, hex or not, so a 40 character token that is not real hex slips
+    # past ACTION_SHA (not hex) and was accepted here regardless, since
+    # nothing checked that a first-time pin's target was ever a real SHA.
+    # 40 characters is the shape ACTION_SHA exists to own exclusively, so
+    # anything that length reaching this pattern is refused outright.
+    fake = "0" + "z" * 39
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{fake}\n",
+        )
+    )
+    assert result.returncode == 1
 
 
 def test_accepts_a_pre_commit_hook_rev_bump():
@@ -230,6 +313,50 @@ def test_refuses_a_swapped_name_at_the_same_version():
             ".github/workflows/pull-request-validation.yml",
             f"-        uses: actions/checkout@{SHA}\n"
             f"+        uses: attacker/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_a_first_time_pin_with_a_swapped_owner():
+    # The dependency name stays literal to the left of the `@` for this
+    # shape exactly as it does for every other pin type here.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-        uses: actions/checkout@v7\n+        uses: evil/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_a_run_step_version_bump_disguised_as_a_first_time_pin():
+    # BARE_ACTION_VERSION requires a uses: field and an owner/repo
+    # coordinate, not bare `@RELEASE` anywhere on the line: a run: step's
+    # trailing tool@v7 must not normalize the same way a first-time action
+    # pin does, or that line could grow an unrelated-looking SHA and still
+    # read as pin-only.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-          run: tool@v7\n+          run: tool@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_uses_embedded_in_a_run_step_disguised_as_a_first_time_pin():
+    # CodeRabbit's follow-up finding: \buses: is a word-boundary check, not
+    # a position check, so it matched the substring "uses:" anywhere on the
+    # line, including inside a run: step's own text. BARE_ACTION_VERSION now
+    # anchors to the start of the line, so a run: step that happens to
+    # contain the literal text "uses: owner/repo@version" cannot disguise
+    # itself as a real uses: field this way.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"-          run: uses: actions/checkout@v7\n"
+            f"+          run: uses: actions/checkout@{SHA}\n",
         )
     )
     assert result.returncode == 1
