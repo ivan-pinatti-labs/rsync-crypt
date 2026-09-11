@@ -10,8 +10,8 @@ name: Publish Image
 #
 #   - create-tag (mathieudutour/github-tag-action) computes the next semver
 #     tag and creates the git tag.
-#   - create-release (ncipollo/release-action) turns that tag into a GitHub
-#     Release.
+#   - create-release (gh release create, falling back to gh release edit if
+#     the tag already carries one) turns that tag into a GitHub Release.
 #
 # 'release: published' fires once that second job finishes, and its payload
 # (github.event.release.tag_name) already carries the exact tag create-tag
@@ -29,11 +29,11 @@ name: Publish Image
 # gap.
 #
 # It is also, on its own, a trigger that never fires for the release
-# merge.yml actually creates. create-release calls ncipollo/release-action
-# with no 'token:' override, so it defaults to GITHUB_TOKEN, and GitHub does
-# not start new workflow runs from an event a GITHUB_TOKEN created, release
-# creation through the API included, specifically to stop workflows
-# triggering each other in a loop. This is the exact same restriction
+# merge.yml actually creates. create-release runs 'gh release create' with
+# GH_TOKEN set to the default GITHUB_TOKEN, and GitHub does not start new
+# workflow runs from an event a GITHUB_TOKEN created, release creation
+# through the API included, specifically to stop workflows triggering each
+# other in a loop. This is the exact same restriction
 # CLAUDE.md documents for resolve-apk-pins.yml's push, and the fix is the
 # same shape: merge.yml's own 'trigger-image-publish' job explicitly
 # dispatches this workflow right after create-release finishes, via

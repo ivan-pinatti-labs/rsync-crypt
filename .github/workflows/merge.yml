@@ -82,9 +82,9 @@ jobs:
     timeout-minutes: 3
     permissions:
       # Explicit API dispatch, not a stored credential: the release above is
-      # created with the default GITHUB_TOKEN (no 'token:' override on
-      # ncipollo/release-action), and GitHub does not start new workflow runs
-      # from an event a GITHUB_TOKEN created, release creation included, to
+      # created by 'gh release create' with GH_TOKEN set to the default
+      # GITHUB_TOKEN, and GitHub does not start new workflow runs from an
+      # event a GITHUB_TOKEN created, release creation included, to
       # stop workflows retriggering each other in a loop. That would leave
       # publish-image.yml's 'release: published' trigger permanently unfired
       # for every release this workflow itself creates. The documented
