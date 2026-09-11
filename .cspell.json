@@ -28,6 +28,7 @@
     "dotenv",
     "editmsg",
     "editorconfig",
+    "elif",
     "favicons",
     "fusermount",
     "gobinary",

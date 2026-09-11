@@ -653,11 +653,10 @@ poll setting anywhere in it.
 
 ### The deliberate lint suppressions, and why each exists
 
-There are five, and "nothing is ignored" would be the wrong claim:
+There are four, and "nothing is ignored" would be the wrong claim:
 
 | Suppression | Where | Why |
 | --- | --- | --- |
-| `superfluous-actions` | `.github/zizmor.yml` | zizmor wants `gh release create` instead of a SHA-pinned action carrying `allowUpdates`, which has no equivalent. Tracked in [#71](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/71). |
 | `MD001 MD013 MD033 MD041`, and `MD013 MD033` | two blocks in `README.md` | The centred badge header and the crypto QR table are necessarily raw HTML. Scoped `disable`/`enable` pairs naming specific rules, never a file-wide disable. |
 | `--ignore-checks QuoteCharacter` | the local dotenv hook | `.env.example` quotes its values deliberately. See the dotenv-linter section above. |
 | `ignoreWords` | `.cspell.json` | Identifiers and third-party names, kept separate from the real dictionary `words`. |

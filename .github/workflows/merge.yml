@@ -38,13 +38,42 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh release create rather than ncipollo/release-action: gh ships
+      # preinstalled on the runner and is maintained by GitHub itself, so
+      # using it drops a third party action from this workflow's trust
+      # boundary entirely rather than merely suppressing zizmor's
+      # superfluous-actions finding on it. See #71.
+      #
+      # ncipollo's allowUpdates: true made the step idempotent against a
+      # tag that already carries a release, which matters here because
+      # create-tag has no already-tagged guard: a re-run of this workflow
+      # on a commit whose tag was already minted, or whose release already
+      # exists, would otherwise fail on a plain create. gh release create
+      # has no single flag for that, but the failure is specific and
+      # detectable (a 422 naming tag_name already exists), so falling back
+      # to gh release edit on exactly that failure reproduces the same
+      # create-or-update behaviour. This job does not set
+      # generateReleaseNotes, the one ncipollo capability gh release edit
+      # cannot also do (--generate-notes is create-only), so nothing here
+      # is lost by falling back to edit.
       - name: Create GitHub release
-        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
-        with:
-          tag: ${{ needs.create-tag.outputs.new_tag }}
-          name: Release ${{ needs.create-tag.outputs.new_tag }}
-          body: ${{ needs.create-tag.outputs.changelog }}
-          allowUpdates: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-tag.outputs.new_tag }}
+          NOTES: ${{ needs.create-tag.outputs.changelog }}
+        run: |
+          set -euo pipefail
+          title="Release $TAG"
+          if error=$(gh release create "$TAG" --title "$title" --notes "$NOTES" 2>&1); then
+            echo "$error"
+          elif [[ "$error" == *"already exists"* ]]; then
+            echo "$error"
+            echo "Release for $TAG already exists, updating it instead."
+            gh release edit "$TAG" --title "$title" --notes "$NOTES"
+          else
+            echo "$error" >&2
+            exit 1
+          fi
 
   trigger-image-publish:
     name: Trigger Image Publish
