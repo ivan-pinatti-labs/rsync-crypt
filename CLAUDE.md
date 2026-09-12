@@ -37,6 +37,61 @@ Wiring gocryptfs `-exclude-from` instead of rsync filters is a planned future im
 Upstream: <https://github.com/rfjakob/gocryptfs/issues/1000> proposes a `-filter-from` flag with
 rsync-style first-match-wins semantics.
 
+### Network mounts are excluded through gocryptfs, not through rsync
+
+`BACKUP_EXCLUDE_NETWORK_MOUNTS` (default `true`, and unset or empty means
+`true`) makes `backup.sh` read `/proc/self/mountinfo` before it creates the
+reverse view and pass every network-backed mount nested under the backup
+source to gocryptfs as `-exclude <relative path>`.
+
+`-exclude` rather than generated rsync filter rules is the whole point, and
+follows directly from the gotcha above: with `GOCRYPTFS_ENCRYPT_NAMES=true`
+rsync sees only ciphertext and no filter pattern can match, while gocryptfs
+excludes on the plaintext path before encrypting it. Measured 2026-09-11
+against the image's gocryptfs (2.6.1 then): init a reverse view with and
+without `-plaintextnames`, mount each with `-exclude nas`, and the excluded
+directory is absent from both.
+
+Measured the same day, and worth knowing before doubting the fstype list:
+a real sshfs mount inside the container reports as `fuse.sshfs` in
+`/proc/self/mountinfo`, not as a bare `fuse`. FUSE filesystems that pass a
+subtype (sshfs, rclone, s3fs) carry it into the type field, which is what
+makes matching on the type work at all. One that does not would read as
+`fuse` and go undetected.
+
+Not `rsync --one-file-system`/`-x`, which looks like the obvious
+implementation and is wrong: it drops every filesystem boundary, so a second
+local disk mounted under the source would disappear from the backup too.
+
+The setting travels as `--env`, not as a twelfth positional argument. An env
+file written before it existed then leaves it unset and gets the default,
+instead of shifting every later argument along one slot (see the
+`$(subst ",,${VAR})` gotcha below for what that class of bug already cost).
+
+Four things that are easy to get wrong here, all covered by
+`tests/test_network_mounts.py` against synthetic mountinfo fixtures:
+
+- **The `-` separator has to be searched for.** The optional fields before it
+  vary in number, so a fixed index reads an optional field as the filesystem
+  type and silently stops detecting anything.
+- **Path escapes decode in one left-to-right pass.** A literal backslash is
+  written `\134`, so a directory named `\040` arrives as `\134040`;
+  replacing `\134` first turns it into a space, excluding a path that does
+  not exist while backing up one that does.
+- **Detection is by filesystem type, because Linux has no general "remote"
+  property.** The list is explicit and anything absent is local. `9p` is
+  excluded from the list deliberately: it is a wire protocol, but also how a
+  VM or WSL sees a host directory, which is often where the backed-up data
+  lives.
+- **An unparseable mount table fails the backup.** A table this cannot parse
+  is one it cannot prove is free of network storage; carrying on would copy
+  it silently, which is the exact outcome the feature exists to prevent. The
+  error names `BACKUP_EXCLUDE_NETWORK_MOUNTS=false` as the way past it.
+
+Known gaps, documented rather than fixed: the table is read once at startup,
+so a later mount is not covered, and a dormant autofs mount has no remote
+filesystem type to recognise yet.
+
 ### Alpine gocryptfs version
 
 `ARG GOCRYPTFS_VERSION=2.6` is an apk `~=` constraint, so it pins the major and

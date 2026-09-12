@@ -350,6 +350,7 @@ docker run \
   --volume "${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts" \
   "${passkey_volume[@]}" \
   --env "PARANOID_MODE=${PARANOID_MODE}" \
+  --env "BACKUP_EXCLUDE_NETWORK_MOUNTS=${BACKUP_EXCLUDE_NETWORK_MOUNTS}" \
   --rm \
   --interactive --tty \
   "$IMAGE" \
@@ -373,6 +374,15 @@ means losing the backup permanently: see
 [docs/SECURITY.md](docs/SECURITY.md#the-master-key).
 
 Subsequent runs are incremental; only changed files are transferred.
+
+Mount points **below** `BACKUP_SOURCE_FOLDER` whose storage lives on
+another machine (NAS shares over cifs/nfs, sshfs, rclone, s3fs and the
+like) are skipped by default, since backing them up means pulling every
+byte over the network only to push it out again. Each one is named in the
+log as it is excluded. Set `BACKUP_EXCLUDE_NETWORK_MOUNTS=false` to back
+them up instead; see
+[docs/USAGE.md](docs/USAGE.md#network-mounts) for how detection works and
+what it cannot see.
 
 ### Which image
 

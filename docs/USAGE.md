@@ -17,6 +17,7 @@ Podman is covered in [PODMAN.md](PODMAN.md).
   - [Environment Variables](#environment-variables)
   - [Multiple Configurations](#multiple-configurations)
   - [Filter Rules](#filter-rules)
+  - [Network Mounts](#network-mounts)
 - [Usage](#usage)
   - [Build](#build)
   - [Backup](#backup)
@@ -87,6 +88,7 @@ GOCRYPTFS_PASSKEY_FILE="/home/youruser/.gocrypt-passfile"
 # Backup source
 BACKUP_SOURCE_FOLDER="/home/youruser"
 BACKUP_FILTER_RULES="./conf/backup-filter-rules.txt"
+BACKUP_EXCLUDE_NETWORK_MOUNTS=true # skip NAS/sshfs/rclone mounts under the source
 
 # Root backup: gocryptfs config preserved across runs
 BACKUP_ENCRYPTION_CONF="/home/youruser/.gocryptfs.reverse.conf"
@@ -115,27 +117,28 @@ PARANOID_MODE=false # true = never store passphrase on disk, gocryptfs prompts i
 
 **Variable reference:**
 
-| Variable                      | Description                                                                                                                                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DOCKER_IMAGE_TAG_NAME`       | Image every target runs. A local build tag, or a published image such as `ghcr.io/ivan-pinatti-labs/rsync-crypt`                                                                            |
-| `DOCKER_IMAGE_TAG_VERSION`    | Tag of that image. With a published image, a release version such as `X.Y.Z`                                                                                                                |
-| `SSH_KEY_FILE`                | SSH private key used to authenticate to the remote server                                                                                                                                   |
-| `SSH_KNOWN_HOSTS_FILE`        | Known hosts file to verify the remote server fingerprint                                                                                                                                    |
-| `GOCRYPTFS_PASSKEY_FILE`      | File containing the gocryptfs passphrase. Created interactively if it does not exist                                                                                                        |
-| `BACKUP_SOURCE_FOLDER`        | Directory to back up (user backup)                                                                                                                                                          |
-| `BACKUP_FILTER_RULES`         | rsync filter rules file, controls what is included/excluded                                                                                                                                 |
-| `BACKUP_ENCRYPTION_CONF`      | Path where the gocryptfs reverse config is preserved (root backup)                                                                                                                          |
-| `REMOTE_SERVER`               | `user@host` for the SSH backup destination                                                                                                                                                  |
-| `REMOTE_SERVER_BACKUP_FOLDER` | Path on the remote server where the encrypted backup is stored                                                                                                                              |
-| `RESTORE_DESTINATION`         | Local staging directory for restored files                                                                                                                                                  |
-| `RESTORE_EXCLUDE_LIST`        | rsync exclude list applied during a restore                                                                                                                                                 |
-| `RESTORE_PATHS_FILE`          | File listing specific paths to restore, one per line. Empty restores everything                                                                                                             |
-| `RSYNC_RATE_LIMIT`            | Bandwidth cap in kbytes/s (`0` = no limit)                                                                                                                                                  |
-| `RSYNC_LOOP`                  | `true` to retry rsync automatically on transient errors                                                                                                                                     |
-| `GOCRYPTFS_ENCRYPT_NAMES`     | `false` to keep filenames as plaintext on the remote server (default, required for filter rules to work). `true` scrambles filenames (see [Known Issues](#known-issues-and-limitations))    |
-| `GOCRYPTFS_CIPHER`            | Cipher at first init. Reverse mode implies AES-SIV, so `aes-siv` and `aes-gcm` are equivalent and `xchacha` is rejected with an explanation                                                 |
-| `GOCRYPTFS_SCRYPT_N`          | scrypt key derivation cost exponent (default `16`, meaning 2^16 iterations)                                                                                                                 |
-| `PARANOID_MODE`               | `false` (default). When `true`, the passphrase is never written to disk; gocryptfs prompts interactively on each run. `GOCRYPTFS_PASSKEY_FILE` is ignored. Requires an interactive terminal |
+| Variable                        | Description                                                                                                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DOCKER_IMAGE_TAG_NAME`         | Image every target runs. A local build tag, or a published image such as `ghcr.io/ivan-pinatti-labs/rsync-crypt`                                                                            |
+| `DOCKER_IMAGE_TAG_VERSION`      | Tag of that image. With a published image, a release version such as `X.Y.Z`                                                                                                                |
+| `SSH_KEY_FILE`                  | SSH private key used to authenticate to the remote server                                                                                                                                   |
+| `SSH_KNOWN_HOSTS_FILE`          | Known hosts file to verify the remote server fingerprint                                                                                                                                    |
+| `GOCRYPTFS_PASSKEY_FILE`        | File containing the gocryptfs passphrase. Created interactively if it does not exist                                                                                                        |
+| `BACKUP_SOURCE_FOLDER`          | Directory to back up (user backup)                                                                                                                                                          |
+| `BACKUP_FILTER_RULES`           | rsync filter rules file, controls what is included/excluded                                                                                                                                 |
+| `BACKUP_EXCLUDE_NETWORK_MOUNTS` | `true` (default, and what unset or empty means) skips mount points under the source whose storage lives on another machine. `false` backs them up. See [Network Mounts](#network-mounts)    |
+| `BACKUP_ENCRYPTION_CONF`        | Path where the gocryptfs reverse config is preserved (root backup)                                                                                                                          |
+| `REMOTE_SERVER`                 | `user@host` for the SSH backup destination                                                                                                                                                  |
+| `REMOTE_SERVER_BACKUP_FOLDER`   | Path on the remote server where the encrypted backup is stored                                                                                                                              |
+| `RESTORE_DESTINATION`           | Local staging directory for restored files                                                                                                                                                  |
+| `RESTORE_EXCLUDE_LIST`          | rsync exclude list applied during a restore                                                                                                                                                 |
+| `RESTORE_PATHS_FILE`            | File listing specific paths to restore, one per line. Empty restores everything                                                                                                             |
+| `RSYNC_RATE_LIMIT`              | Bandwidth cap in kbytes/s (`0` = no limit)                                                                                                                                                  |
+| `RSYNC_LOOP`                    | `true` to retry rsync automatically on transient errors                                                                                                                                     |
+| `GOCRYPTFS_ENCRYPT_NAMES`       | `false` to keep filenames as plaintext on the remote server (default, required for filter rules to work). `true` scrambles filenames (see [Known Issues](#known-issues-and-limitations))    |
+| `GOCRYPTFS_CIPHER`              | Cipher at first init. Reverse mode implies AES-SIV, so `aes-siv` and `aes-gcm` are equivalent and `xchacha` is rejected with an explanation                                                 |
+| `GOCRYPTFS_SCRYPT_N`            | scrypt key derivation cost exponent (default `16`, meaning 2^16 iterations)                                                                                                                 |
+| `PARANOID_MODE`                 | `false` (default). When `true`, the passphrase is never written to disk; gocryptfs prompts interactively on each run. `GOCRYPTFS_PASSKEY_FILE` is ignored. Requires an interactive terminal |
 
 > **Note:** the versions baked into the image are deliberately not in this
 > file. They are `ARG` defaults in the `Dockerfile`; see
@@ -192,6 +195,78 @@ data, `.asdf`, Minikube, Steam, Terraform providers.
 > encrypted virtual directory and sees only ciphertext names, so no pattern in
 > the filter file can match them. See
 > [Known Issues](#known-issues-and-limitations) for details.
+
+### Network Mounts
+
+A NAS share, an sshfs mount or an rclone remote mounted somewhere inside
+`BACKUP_SOURCE_FOLDER` is storage that already lives on another machine.
+Backing it up means reading every byte over the network, encrypting it and
+pushing it straight back out to the remote server. **That is skipped by
+default.**
+
+Before it creates the encrypted view, `backup.sh` reads
+`/proc/self/mountinfo`, finds the mount points nested below the backup source
+whose filesystem type is a network one, and passes each to gocryptfs as
+`-exclude <path relative to the source>`. Each exclusion is logged with its
+filesystem type, and a run that finds none says so.
+
+```text
+Excluding network mount (cifs): /backup/src/nas
+Excluding network mount (fuse.sshfs): /backup/src/remote-projects
+2 network-backed mount(s) excluded from this backup (BACKUP_EXCLUDE_NETWORK_MOUNTS=true).
+```
+
+To back them up anyway, set `BACKUP_EXCLUDE_NETWORK_MOUNTS=false`, which skips
+detection entirely and restores the previous behaviour. Any value other than
+`true` or `false` aborts the run rather than guessing which one was meant.
+
+**These exclusions are not filter rules.** They are handed to gocryptfs
+itself, which excludes on the plaintext path *before* encrypting it, so they
+work with `GOCRYPTFS_ENCRYPT_NAMES` set either way. rsync filter rules cannot:
+with filename encryption on, rsync only ever sees ciphertext names (see
+[Known Issues](#known-issues-and-limitations)). `conf/backup-filter-rules.txt`
+is still the right place for ordinary path exclusions; it is simply no longer
+where a network mount has to be listed by hand.
+
+Things worth knowing:
+
+- **Detection is by filesystem type.** Linux exposes no general "this
+  filesystem is remote" property, so the list is explicit: `cifs`, `smb3`,
+  `smbfs`, `nfs`, `nfs4`, `fuse.sshfs`, `fuse.rclone`, `fuse.s3fs`,
+  `fuse.gcsfuse`, `fuse.goofys`, `davfs`, `davfs2`, `fuse.davfs`, `ceph`,
+  `cephfs`, `glusterfs`, `fuse.glusterfs`, `lustre`, `afs`, `coda`,
+  `fuse.gvfsd-fuse` and `fuse.curlftpfs`. Anything else is treated as local.
+  Local disks, removable drives, bind mounts, tmpfs, ext4, XFS and Btrfs are
+  therefore backed up exactly as before. `9p` is deliberately not on the list:
+  it is a wire protocol, but it is also how a VM or WSL sees a host directory,
+  which is frequently where the data being backed up actually lives.
+- **The mount table is read once, at the start of the run.** A share mounted
+  after that point is not covered until the next backup.
+- **A FUSE mount that declares no subtype is not detected.** sshfs, rclone
+  and s3fs report as `fuse.sshfs`, `fuse.rclone` and `fuse.s3fs`, which is
+  what makes matching on the type work. A FUSE filesystem mounted without a
+  subtype reports as a bare `fuse` and cannot be told apart from a local one.
+- **A dormant autofs mount is not classified.** Until something triggers it,
+  autofs is what is mounted and the remote filesystem underneath is not, so
+  there is no filesystem type to recognise. Exclude those by path in
+  `conf/backup-filter-rules.txt` if it matters.
+- **Existing remote content beneath a newly excluded mount is deleted.** rsync
+  runs with `--delete`, so the first backup after enabling this removes the
+  copy already on the remote server. The local data is untouched; only the
+  remote copy goes.
+- **The backup source's own mount is never excluded.** If the source is
+  itself an NFS mount, it is backed up in full. Only mounts strictly below it
+  are in scope.
+
+If the mount table cannot be read, or a line in it cannot be parsed, the
+backup **stops**. A mount table this cannot understand is one it cannot prove
+is free of network storage, and silently copying that storage is the outcome
+the whole feature exists to prevent. The error names
+`BACKUP_EXCLUDE_NETWORK_MOUNTS=false` as the way past it.
+
+> **Note:** rsync's `--one-file-system` (`-x`) is not used and would be the
+> wrong tool. It drops *every* filesystem boundary, so a second local disk
+> mounted under the source would vanish from the backup along with the NAS.
 
 ---
 
@@ -443,13 +518,14 @@ pytest tests -m scripts
 
 The tests run on every pull request via the `Tests` job.
 
-| File                           | Covers                                                                             |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| `test_makefile.py`             | Help output, `ENV_FILE` handling, build-arg overrides, `.env.example` completeness |
-| `test_build.py`                | Image builds, required binaries, the Dockerfile's version pins                     |
-| `test_roundtrip.py`            | Backup, filter rule exclusions, encryption at rest, restore                        |
-| `test_assert_pin_only_diff.py` | The `Pin Only` gate: what a dependency bot's diff may and may not change           |
-| `test_resolve_apk_pins.py`     | Re-resolving the seven apk pins against a new Alpine release                       |
+| File                           | Covers                                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| `test_makefile.py`             | Help output, `ENV_FILE` handling, build-arg overrides, `.env.example` completeness       |
+| `test_build.py`                | Image builds, required binaries, the Dockerfile's version pins                           |
+| `test_roundtrip.py`            | Backup, filter rule exclusions, encryption at rest, restore                              |
+| `test_network_mounts.py`       | Network-mount detection: the flag, mountinfo parsing, the gocryptfs `-exclude` arguments |
+| `test_assert_pin_only_diff.py` | The `Pin Only` gate: what a dependency bot's diff may and may not change                 |
+| `test_resolve_apk_pins.py`     | Re-resolving the seven apk pins against a new Alpine release                             |
 
 The suite runs serially: the Makefile names its container `gocryptfs`, so two
 targets cannot run at the same time.
