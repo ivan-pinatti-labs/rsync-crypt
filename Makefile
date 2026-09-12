@@ -48,10 +48,8 @@ define _missing_env_file_message
 
 Missing ENV_FILE '$(ENV_FILE)'.
 
-Usage:
+Usage, either of these:
   ENV_FILE=.env.myconfig make <target>
-
-You can also use:
   make <target> ENV_FILE=.env.myconfig
 
 If the file does not exist yet, create it first:
@@ -103,11 +101,20 @@ else \
 fi
 endef
 
-.PHONY: all help build backup backup_as_root bb bbr brr \
-        restore restore_to_origin restore_as_root restore_as_root_to_origin \
-        r ro rr rro view view_as_root v vr \
-        run_container run_container_as_root check-passkey clean \
-        third-party-licenses third-party-licenses-check
+# One .PHONY per line, not a backslash continuation. checkmake reads only
+# the first physical line of a .PHONY declaration and silently drops the
+# rest, so a continuation makes it report r, ro, rr, rro, v and vr as
+# undeclared and clean as missing, seven false findings for targets that
+# are right here. Upstream: checkmake#280, fix open as checkmake#281.
+# That fix reaches us only once it merges, checkmake releases it, and
+# pre-commit-checklists moves its own checkmake pin to that release. Until
+# then this form is load bearing. Reverting it afterwards is optional;
+# make treats the two forms identically.
+.PHONY: all help build backup backup_as_root bb bbr brr
+.PHONY: restore restore_to_origin restore_as_root restore_as_root_to_origin
+.PHONY: r ro rr rro view view_as_root v vr
+.PHONY: run_container run_container_as_root check-passkey clean
+.PHONY: third-party-licenses third-party-licenses-check
 
 all: build run_container
 
