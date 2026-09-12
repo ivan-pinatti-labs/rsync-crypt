@@ -269,6 +269,7 @@ backup:
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
 		--env PARANOID_MODE=$$_paranoid \
+		--env BACKUP_EXCLUDE_NETWORK_MOUNTS='$(subst ",,${BACKUP_EXCLUDE_NETWORK_MOUNTS})' \
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/backup.sh \
@@ -305,6 +306,7 @@ backup_as_root:
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
 		--env PARANOID_MODE=$$_paranoid \
+		--env BACKUP_EXCLUDE_NETWORK_MOUNTS='$(subst ",,${BACKUP_EXCLUDE_NETWORK_MOUNTS})' \
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION} \
 		/app/backup.sh \
