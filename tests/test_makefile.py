@@ -143,6 +143,40 @@ def test_help_is_the_default_goal():
     assert "ENV_FILE=.env.myconfig" in result.stdout
 
 
+def _documented_help_targets(help_text):
+    """Target names and shorthand aliases, parsed out of make help's Targets block.
+
+    Each entry reads "  <name>[ (<alias>)]  <description>", so the name is the
+    first field and the alias, where there is one, is the second in parentheses.
+
+    Parsing the names rather than searching the whole help text is the point.
+    A substring check over result.stdout passes for a target that is not
+    documented at all as soon as its name appears inside some other target's
+    description: "backup" sits inside "user-backup" in all's description, so
+    deleting backup's own help line did not fail this test. Parsing also
+    removes the need to hardcode the alias list, which means an alias losing
+    its help line is now caught too.
+    """
+    names = set()
+    aliases = set()
+    in_targets = False
+    for line in help_text.splitlines():
+        if line.startswith("Targets:"):
+            in_targets = True
+            continue
+        if not in_targets:
+            continue
+        # The block ends at the first line that is not an indented entry,
+        # which is the blank line before the env file footer.
+        if not line.startswith("  "):
+            break
+        fields = line.split()
+        names.add(fields[0])
+        if len(fields) > 1 and fields[1].startswith("(") and fields[1].endswith(")"):
+            aliases.add(fields[1][1:-1])
+    return names, aliases
+
+
 def test_help_lists_every_phony_target():
     """Catches a target being added without a matching help line."""
     result = run(["make", "help"])
@@ -165,9 +199,10 @@ def test_help_lists_every_phony_target():
     }
     assert targets, "no .PHONY targets parsed out of the Makefile"
 
-    # Shorthand aliases are intentionally documented next to their long form.
-    aliases = {"r", "ro", "rr", "rro", "v", "vr"}
-    missing = sorted(t for t in targets - aliases if t not in result.stdout)
+    documented, aliases = _documented_help_targets(result.stdout)
+    assert documented, "no targets parsed out of 'make help'"
+
+    missing = sorted(targets - documented - aliases)
     assert not missing, f"targets absent from 'make help': {missing}"
 
 
