@@ -59,9 +59,19 @@ __restore_paths_file=${10:-"/restore/restore-paths.txt"}                 # paths
 readonly __restore_origin="${__remote_server}:${__backup_remote_folder}" # rsync origin dir
 
 # RESTORE_PATHS env var override: if set, write to temp file and use instead of paths file
+#
+# The temp file used to be a fixed path directly under /tmp, so two restores
+# running at once wrote the same name and each could read the other's path
+# list, and the file was left behind afterwards. mktemp -d gives this run its
+# own directory, created 0700 under a name nothing can predict, and the trap
+# removes it however the script ends.
 if [ -n "${RESTORE_PATHS:-}" ]; then
-  printf '%s' "${RESTORE_PATHS}" | tr ' ' '\n' >/tmp/restore-paths-override.txt
-  __restore_paths_file="/tmp/restore-paths-override.txt"
+  __restore_tmp_dir="$(mktemp -d)"
+  # Best-effort teardown after the outcome is already decided, which is why
+  # this is not the general error suppression this repository avoids.
+  trap 'rm -rf "${__restore_tmp_dir}"' EXIT
+  __restore_paths_file="${__restore_tmp_dir}/restore-paths-override.txt"
+  printf '%s' "${RESTORE_PATHS}" | tr ' ' '\n' >"${__restore_paths_file}"
 fi
 
 # display rsync rate
