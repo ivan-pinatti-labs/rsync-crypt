@@ -111,6 +111,7 @@
     "autouse",
     "bookmarkbackups",
     "bwlimit",
+    "cffconvert",
     "coderabbit",
     "coderabbitai",
     "conftest",
