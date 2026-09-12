@@ -186,6 +186,7 @@
     "Rollup",
     "rootdir",
     "sessionstore",
+    "setuid",
     "smbfs",
     "subvol",
     "sysfs",

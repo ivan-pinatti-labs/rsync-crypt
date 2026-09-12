@@ -133,7 +133,21 @@ COPY --chown=crypt:crypt files/bash/* /home/crypt/
 # mounts the real known_hosts over these at run time.
 
 # Numeric, so the id resolves without the container's passwd database (DL3066).
-# Note every `docker run` in the Makefile overrides this with `--user root`.
+#
+# Every `docker run` in the Makefile overrides this with `--user root`, which
+# makes this line govern exactly one case: someone running the published image
+# directly, without the Makefile. Keeping that case unprivileged is the whole
+# of its job, and issue #69 settled that it earns its place on those terms
+# rather than being dead weight.
+#
+# It is not a contradiction of the Makefile, and the reason is written out in
+# full above that file's targets. In short: under this project's default
+# runtime, rootless Podman, the container's root is already the invoking user
+# mapped through a user namespace, so `--user root` there is the unprivileged
+# choice and the only one that can read that user's own files. Root was never
+# what the FUSE mount needed either; fusermount is setuid in this image, which
+# is why `--cap-add SYS_ADMIN --device /dev/fuse` is what the Makefile passes
+# rather than relying on the uid.
 USER 1000
 WORKDIR /app
 ENTRYPOINT ["/usr/bin/gocryptfs"]

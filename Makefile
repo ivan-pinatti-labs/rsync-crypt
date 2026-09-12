@@ -101,6 +101,41 @@ else \
 fi
 endef
 
+# Why every `docker run` below passes `--user root`, and why the image's own
+# `USER 1000` is not a contradiction. Issue #69 asked for this to be written
+# down rather than inferred, having found `USER 1000` inert.
+#
+# The reason people reach for first is wrong. Root is NOT needed for the FUSE
+# mount: /bin/fusermount and /usr/bin/fusermount3 are both setuid root in the
+# image, so the mount helper escalates on its own and its caller does not have
+# to be privileged. A full reverse-mode init, mount, list and unmount cycle as
+# a non-root uid was run to confirm that before this comment was written. So
+# `--cap-add SYS_ADMIN --device /dev/fuse` is what the mount needs, not the
+# uid.
+#
+# The real reason is that under this project's default runtime, rootless
+# Podman, the container's root IS the invoking user, mapped through a user
+# namespace. Nothing runs as real root at any point, and the container gets
+# exactly the access that user already has. `--user root` is therefore both
+# the unprivileged choice and the only one that works: passing `--user $(id
+# -u)` maps that uid to a subuid instead, and the container can then no longer
+# read the user's own files. Measured, not reasoned: a 0600 file owned by the
+# invoking user reads back as root-owned inside the container, and uid 1000
+# gets "Permission denied" on it. The same inversion applies to rootless
+# Docker.
+#
+# The `_as_root` family is a separate case and is named for what it backs up,
+# not for the uid it runs as: /etc, /home, /opt, /root and /srv, which is
+# other users' files and root-owned configuration by definition. Those targets
+# need real host root, which under rootless Podman means `sudo make
+# backup_as_root`, not a different `--user`. See docs/PODMAN.md's "the benefit
+# is full" and "weaker" sections, which split the two families on exactly this
+# line.
+#
+# `USER 1000` in the Dockerfile therefore governs one thing only: what someone
+# running the published image directly, without this Makefile, gets by
+# default. That is worth keeping unprivileged, and it is why the line stays.
+
 # One .PHONY per line, not a backslash continuation. checkmake reads only
 # the first physical line of a .PHONY declaration and silently drops the
 # rest, so a continuation makes it report r, ro, rr, rro, v and vr as
@@ -526,7 +561,8 @@ run_container:
 		--entrypoint /bin/bash \
 		--volume ${BACKUP_SOURCE_FOLDER}:/backup/src \
 		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
-		--volume ${SSH_KEY_FILE}:/home/crypt/.ssh/id_rsa \
+		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
+		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
 		--env PARANOID_MODE=$$_paranoid \
 		--rm \
@@ -550,6 +586,7 @@ run_container_as_root:
 		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
 		--volume ${BACKUP_ENCRYPTION_CONF}:/backup/src/.gocryptfs.reverse.conf.original \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
+		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
 		--env PARANOID_MODE=$$_paranoid \
 		--rm \

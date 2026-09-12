@@ -625,6 +625,39 @@ Alpine publishing a revision overnight, not by anything in a pull request, so
 gating pull requests on it would fail whoever is nearest rather than whoever
 can act.
 
+### `USER 1000` is inert on purpose, and `--user root` is the unprivileged choice
+
+Do not "fix" the Dockerfile's `USER 1000` by making the Makefile honour it.
+Every `docker run` target passes `--user root`, and under this project's
+default runtime, rootless Podman, that *is* the unprivileged choice: the
+container's root is the invoking user mapped through a user namespace, so
+nothing runs as real root and the container gets exactly that user's access.
+
+Passing `--user $(id -u)` instead is actively wrong there. That uid maps to a
+subuid, not to the invoking user, and the container can no longer read the
+user's own files. Measured on rootless Docker, which inverts the same way: a
+0600 file owned by the invoking user reads back as `root`-owned inside the
+container, and uid 1000 gets `Permission denied` on it. The failure looks like
+it works, because the gocryptfs mount still succeeds and the read fails later.
+
+Root is not what the FUSE mount needs either, which is the reason usually
+assumed. `/bin/fusermount` and `/usr/bin/fusermount3` are both setuid root in
+the image, so the helper escalates on its own; a full reverse-mode init,
+mount, list and unmount cycle as a non-root uid confirms it. `--cap-add
+SYS_ADMIN --device /dev/fuse` is what the mount actually needs.
+
+The `_as_root` family is named for *what it backs up* (`/etc`, `/home`,
+`/opt`, `/root`, `/srv`), not for the uid it runs as. Those need real host
+root, which under rootless Podman means `sudo make backup_as_root`, not a
+different `--user`. docs/PODMAN.md splits the two families on exactly this
+line.
+
+So `USER 1000` governs one case only: someone running the published image
+directly, without the Makefile. That is worth keeping unprivileged, which is
+why the line stays. `tests/test_container_user.py` locks the invariant, and
+[#69](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/69) is where it
+was settled.
+
 ### Parallel agents need separate worktrees
 
 More than one agent working in this repository at the same time must each get
