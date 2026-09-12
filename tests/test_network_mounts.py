@@ -23,6 +23,7 @@ against the image's gocryptfs (2.6.1 then), in both name modes.
 
 from __future__ import annotations
 
+import pathlib
 import re
 import subprocess
 
@@ -506,9 +507,8 @@ def test_a_real_mount_table_parses(tmp_path):
     and container runtime actually emit, including any optional-field
     combination the fixtures missed.
     """
-    real = open("/proc/self/mountinfo").read()
     mountinfo = tmp_path / "real"
-    mountinfo.write_text(real)
+    mountinfo.write_text(pathlib.Path("/proc/self/mountinfo").read_text())
     script = (
         "set -o errexit -o pipefail -o nounset\n"
         f"{_lift('network-mount detection')}\n"

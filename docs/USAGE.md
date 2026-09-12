@@ -217,8 +217,11 @@ Excluding network mount (fuse.sshfs): /backup/src/remote-projects
 ```
 
 To back them up anyway, set `BACKUP_EXCLUDE_NETWORK_MOUNTS=false`, which skips
-detection entirely and restores the previous behaviour. Any value other than
-`true` or `false` aborts the run rather than guessing which one was meant.
+detection entirely and restores the previous behaviour. Leaving the variable
+unset, or setting it to an empty value, is the same as `true`, so an env file
+written before this setting existed gets the exclusion without being edited.
+Any other value aborts the run rather than guessing which of the two was
+meant.
 
 **These exclusions are not filter rules.** They are handed to gocryptfs
 itself, which excludes on the plaintext path *before* encrypting it, so they
