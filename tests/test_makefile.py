@@ -148,9 +148,22 @@ def test_help_lists_every_phony_target():
     result = run(["make", "help"])
     assert result.returncode == 0
 
+    # Every .PHONY line, not just the first. The declaration is deliberately
+    # split one per line rather than written as a backslash continuation,
+    # because checkmake reads only the first physical line of a .PHONY and
+    # reports everything after it as undeclared; see the comment above the
+    # declaration in the Makefile. Splitting on the first ".PHONY:" and
+    # reading to the next blank line, which is what this did while the
+    # declaration was a single continuation block, swept the literal
+    # ".PHONY:" of every later line into the target set.
     makefile = (REPO_ROOT / "Makefile").read_text()
-    phony = makefile.split(".PHONY:", 1)[1].split("\n\n", 1)[0]
-    targets = {t for t in phony.replace("\\", " ").split() if t}
+    targets = {
+        t
+        for line in makefile.splitlines()
+        if line.startswith(".PHONY:")
+        for t in line[len(".PHONY:") :].replace("\\", " ").split()
+    }
+    assert targets, "no .PHONY targets parsed out of the Makefile"
 
     # Shorthand aliases are intentionally documented next to their long form.
     aliases = {"r", "ro", "rr", "rro", "v", "vr"}
