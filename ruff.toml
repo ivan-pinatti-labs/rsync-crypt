@@ -14,14 +14,21 @@
 # it ships in the image, which deliberately installs no Python interpreter,
 # but it does gate merges, so a bug here can wave through a bad change.
 
-# Match the interpreter CI actually uses (`python-version: "3.13"` in
-# .github/workflows/pull-request-validation.yml) rather than letting ruff infer
-# one, so a rule that depends on the target version resolves the same locally
-# and in CI. This is also what makes `UP` safe to enable: it rewrites to
-# idioms that only exist from this version onwards, `datetime.UTC` (3.11+)
-# among them, so the target has to be honest or the fixes it suggests would
-# break on the interpreter that runs them.
-target-version = "py313"
+# Match the interpreter CI actually uses (the `python-version` passed to
+# actions/setup-python in .github/workflows/pull-request-validation.yml) rather
+# than letting ruff infer one, so a rule that depends on the target version
+# resolves the same locally and in CI. This is also what makes `UP` safe to
+# enable: it rewrites to idioms that only exist from this version onwards,
+# `datetime.UTC` (3.11+) among them, so the target has to be honest or the
+# fixes it suggests would break on the interpreter that runs them.
+#
+# Nothing derives this value from that one, and no dependency bot watches
+# either any more: .github/renovate.json5 disables the github-actions
+# manager's `uses-with` depType, because a `with:` input is not a pin position
+# `Pin Only` can grade, so a Python bump here is a hand edit of both files
+# forever. tests/test_python_version_pin.py fails when they disagree, which is
+# what keeps the pair honest without anyone having to remember.
+target-version = "py314"
 
 line-length = 88
 
