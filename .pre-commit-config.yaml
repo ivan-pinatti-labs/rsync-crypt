@@ -17,7 +17,7 @@
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   - repo: https://github.com/ivan-pinatti-labs/pre-commit-checklists
-    rev: v2.2.7
+    rev: v2.3.0
     hooks:
       # Large-file, merge-conflict and line-ending hygiene. No selector needed.
       - id: checklist-basic
@@ -74,6 +74,14 @@ repos:
 
       # hadolint-docker. Its own types: [dockerfile] scopes it already.
       - id: checklist-dev-docker
+        stages: [pre-commit]
+
+      # checkmake, against the Makefile. Its own types: [makefile] scopes it
+      # already. Needs checkmake.ini at the repo root, and needs the .PHONY
+      # declaration kept to one per line; see the comment above it in the
+      # Makefile, and the library's docs/hook-catalogue.md under "Makefile
+      # linting" for the two false positive shapes that have no workaround.
+      - id: checklist-dev-make
         stages: [pre-commit]
 
       # actionlint-docker and zizmor.
