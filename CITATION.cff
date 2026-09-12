@@ -1,3 +1,4 @@
+---
 cff-version: 1.2.0
 message: >
   If you use this software, entirely or partially, directly or as inspiration,
@@ -9,9 +10,10 @@ abstract: >
   plaintext data. Includes a read-only viewer mode for browsing decrypted
   backups via any GUI file manager.
 authors:
-  - name: Ivan Pinatti
+  - given-names: Ivan
+    family-names: Pinatti
     alias: ivan-pinatti
-    url: https://github.com/ivan-pinatti
+    website: https://github.com/ivan-pinatti
 license: Apache-2.0
 repository-code: https://github.com/ivan-pinatti-labs/rsync-crypt
 url: https://github.com/ivan-pinatti-labs/rsync-crypt

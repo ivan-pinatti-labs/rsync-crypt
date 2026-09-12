@@ -98,6 +98,67 @@ repos:
         always_run: true
         stages: [pre-commit]
 
+  # CITATION.cff is the one file in this repository that no checklist reaches.
+  # It is YAML, but `identify` tags it only `text`, since the tag comes from
+  # the extension and `.cff` is not one it knows. Widening checklist-yaml's
+  # `types:` selector above cannot help: check-yaml and yamllint both carry
+  # `types: [file, yaml]` in their own manifests, which pre-commit ANDs with
+  # whatever a consumer asks for, so the file is dropped by the hook rather
+  # than by the id's selector. Overriding `types:` on the hook itself is the
+  # way in, and that can only be done where the hook is declared, which is
+  # here.
+  #
+  # Worth covering because GitHub reads this file for the "Cite this
+  # repository" widget, and a file it cannot use simply stops producing one,
+  # with no error anywhere a contributor would see it.
+  #
+  # Two hooks, because neither alone is enough, and that is not a guess: the
+  # first run of the second hook failed on the file as it then stood. It
+  # listed an author with `name:` and `url:`, and `url` is not a key CFF has
+  # at all (the person and entity definitions both spell it `website`), so
+  # the file had never been valid and nothing here could have said so. It
+  # parses as YAML perfectly well, which is exactly why yamllint on its own
+  # would have closed the gap on paper and left the real defect in place.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      # That the file parses, plus the same house style .yamllint.yml
+      # applies to every other YAML file here. Pinned independently of the yamllint the
+      # checklist library runs: it is a separate repo entry and nothing
+      # shares a rev between the two. Renovate's pre-commit manager tracks
+      # this `rev:` like any other, and `Pin Only` grades a `rev:` bump as a
+      # pin, so it stays on the unattended path.
+      - id: yamllint
+        name: yamllint (CITATION.cff)
+        files: ^CITATION\.cff$
+        types: [text]
+        stages: [pre-commit]
+
+  - repo: local
+    hooks:
+      # The half yamllint cannot do: the Citation File Format schema itself.
+      # cffconvert is the reference implementation's own validator, and
+      # `--validate` checks the file against the published 1.2.0 schema.
+      #
+      # A local hook rather than an upstream repo entry because cffconvert
+      # ships no `.pre-commit-hooks.yaml`. The version is therefore pinned in
+      # `additional_dependencies` instead of a `rev:`, which Renovate's
+      # pre-commit manager does not read, so this pin moves by hand.
+      #
+      # pass_filenames: false, with the path written out in the entry:
+      # cffconvert takes its input through `-i` and rejects a bare positional
+      # argument, so an appended filename would fail the hook on a valid
+      # file. `files:` still scopes it, so it runs only when this one file
+      # changes.
+      - id: cffconvert-validate
+        name: cffconvert --validate (CITATION.cff)
+        language: python
+        additional_dependencies: ["cffconvert==2.0.0"]
+        entry: cffconvert --validate -i CITATION.cff
+        files: ^CITATION\.cff$
+        pass_filenames: false
+        stages: [pre-commit]
+
   # dotenv-linter is run directly rather than through checklist-dev-dotenv.
   # That id cannot be passed --ignore-checks: every checklist-* id routes
   # through run-checklist.sh with the checklist name as its first argument, so

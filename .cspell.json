@@ -115,6 +115,7 @@
     "btrfs",
     "bwlimit",
     "cephfs",
+    "cffconvert",
     "cifs",
     "coderabbit",
     "coderabbitai",
