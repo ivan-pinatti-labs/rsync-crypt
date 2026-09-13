@@ -428,13 +428,22 @@ jobs:
             esac
           done
 
-          # counts <version> -> "<base-layer count> <gocryptfs binary count>"
+          # scan <version> <outfile> -> writes "<base count> <binary count>"
+          #
           # Two numbers because they move for different reasons and a single
           # total hides that: base-layer findings clear when Alpine publishes
           # a security update, while the binary's come from the Go toolchain
           # and the vendored dependencies gocryptfs pinned at release time.
-          counts() {
+          #
+          # Writes to a file rather than returning on stdout, and is called
+          # directly rather than inside $(...), so that a failure actually
+          # fails this step. In a command substitution a non-zero return is
+          # swallowed by the subshell and the report is published anyway,
+          # which is the same "green but wrong" outcome this job exists to
+          # avoid.
+          scan() {
             _v="$1"
+            _out="$2"
             _img="alpine:${_v}"
 
             _base=$(docker run --rm aquasec/trivy:0.74.0 image \
@@ -448,27 +457,52 @@ jobs:
             # file a distro package manager owns, so the vendored dependency
             # versions baked into the binary never surface that way. See
             # docs/SECURITY.md, "Image Vulnerability Scanning".
+            #
+            # The exit codes below are a contract, not decoration. An Alpine
+            # release that genuinely does not carry gocryptfs is a real answer
+            # worth reporting; a registry timeout, a volume error or a failed
+            # copy is not, and reporting one as the other would publish a
+            # confident wrong number. 42 is the only code that means absence.
+            # shellcheck disable=SC2016  # deliberate: the $(apk search)
+            # below must expand inside the container, against that release's
+            # package index, not on the runner where apk does not exist.
+            _probe='apk update >/dev/null 2>&1 || exit 10
+              [ -n "$(apk search -e gocryptfs 2>/dev/null)" ] || exit 42
+              apk add --no-cache gocryptfs >/dev/null 2>&1 || exit 11
+              cp /usr/bin/gocryptfs /out/gocryptfs || exit 12'
+
             _dir=$(mktemp -d)
-            _install='apk update >/dev/null 2>&1'
-            _install="${_install} && apk add --no-cache gocryptfs >/dev/null 2>&1"
-            _install="${_install} && cp /usr/bin/gocryptfs /out/gocryptfs"
-            if docker run --rm -v "${_dir}:/out" "$_img" sh -c "$_install"; then
-              _bin=$(docker run --rm -v "${_dir}:/scan:ro" aquasec/trivy:0.74.0 rootfs \
-                --scanners vuln --severity CRITICAL,HIGH --exit-code 0 \
-                --skip-version-check --quiet --format json /scan \
-                | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
-            else
-              # An Alpine release that does not carry gocryptfs at all is a
-              # real answer to report, not a failure to hide: it means this
-              # bump cannot be taken as proposed.
-              _bin="unavailable"
-            fi
+            _rc=0
+            docker run --rm -v "${_dir}:/out" "$_img" sh -c "$_probe" || _rc=$?
+
+            case "$_rc" in
+              0)
+                _bin=$(docker run --rm -v "${_dir}:/scan:ro" \
+                  aquasec/trivy:0.74.0 rootfs \
+                  --scanners vuln --severity CRITICAL,HIGH --exit-code 0 \
+                  --skip-version-check --quiet --format json /scan \
+                  | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+                ;;
+              42)
+                _bin="unavailable"
+                ;;
+              *)
+                rm -rf "${_dir}"
+                echo "::error::gocryptfs probe failed for ${_img}," \
+                  "exit ${_rc}. That is an infrastructure failure, not a" \
+                  "missing package. Refusing to publish a wrong profile."
+                return 1
+                ;;
+            esac
+
             rm -rf "${_dir}"
-            printf '%s %s' "$_base" "$_bin"
+            printf '%s %s\n' "$_base" "$_bin" > "$_out"
           }
 
-          read -r old_base old_bin <<<"$(counts "$OLD_ALPINE")"
-          read -r new_base new_bin <<<"$(counts "$NEW_ALPINE")"
+          scan "$OLD_ALPINE" old-counts.txt
+          scan "$NEW_ALPINE" new-counts.txt
+          read -r old_base old_bin < old-counts.txt
+          read -r new_base new_bin < new-counts.txt
 
           delta() {
             if [ "$1" = "unavailable" ] || [ "$2" = "unavailable" ]; then
