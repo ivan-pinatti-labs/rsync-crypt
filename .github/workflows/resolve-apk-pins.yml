@@ -160,6 +160,10 @@ jobs:
     permissions:
       contents: write
       actions: write
+    outputs:
+      alpine_changed: ${{ steps.fetch.outputs.alpine_changed }}
+      alpine_version: ${{ steps.fetch.outputs.alpine_version }}
+      base_alpine_version: ${{ steps.fetch.outputs.base_alpine_version }}
     steps:
       - name: Check out the default branch
         # Explicit, and load-bearing: this is what makes scripts/resolve-apk-pins.py
@@ -220,12 +224,21 @@ jobs:
           # is cheaper than trusting a second layer to catch what the first
           # one should never have let through.
           alpine_version=$(printf '%s\n' "$head_alpine" | sed -E 's/^ARG ALPINE_VERSION=(.*)$/\1/')
-          case "$alpine_version" in
-            '' | *[!0-9.]*)
-              echo "::error::ALPINE_VERSION=$alpine_version is not digits and dots only."
-              exit 1
-              ;;
-          esac
+          base_alpine_version=$(printf '%s\n' "$base_alpine" \
+            | sed -E 's/^ARG ALPINE_VERSION=(.*)$/\1/')
+          for v in "$alpine_version" "$base_alpine_version"; do
+            case "$v" in
+              '' | *[!0-9.]*)
+                echo "::error::ALPINE_VERSION=$v is not digits and dots only."
+                exit 1
+                ;;
+            esac
+          done
+          # The base branch's value too, so the reporting job below can scan
+          # both and show a difference rather than a bare number nobody can
+          # calibrate. Validated identically, because it reaches `docker run`
+          # the same way the head's does.
+          echo "base_alpine_version=$base_alpine_version" >> "$GITHUB_OUTPUT"
           echo "alpine_version=$alpine_version" >> "$GITHUB_OUTPUT"
 
       - name: Resolve apk pins
@@ -346,3 +359,184 @@ jobs:
           gh workflow run coderabbit-gate.yml \
             --repo "$REPO" \
             --field "pr_number=$PR_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # The CVE profile this bump actually produces, measured and posted, never
+  # blocking.
+  #
+  # docs/SECURITY.md's rule is that a check blocks only when the person it
+  # stops can fix what it found, and nobody can patch an Alpine package from
+  # here. So this reports. What it is for is the one question an
+  # ALPINE_VERSION bump actually raises and nothing else answers at the moment
+  # it is asked: does this base leave the image better or worse than the one
+  # it replaces?
+  #
+  # That question is not rhetorical. Alpine bumps are not monotonic. Measured
+  # 2026-09-08 and recorded in CLAUDE.md: edge carried 20 CRITICAL/HIGH
+  # against the extracted binary where 3.24 carried 12, because edge's
+  # gocryptfs was built with an *older* Go toolchain and so reintroduced
+  # stdlib findings 3.24 had already shed. Without a measurement at this
+  # point, that is invisible until the nightly runs, after the merge.
+  #
+  # Why this scans apk's own packages rather than building the Dockerfile.
+  # This workflow is pull_request_target and holds a token; its header is
+  # explicit that every script it runs comes from the base branch and never
+  # from the pull request. `docker build` on the pull request's Dockerfile
+  # would execute whatever that file's RUN lines say, which is a different
+  # risk class from reading it as text, gate or no gate. Installing Alpine's
+  # own published package inside `alpine:<version>` runs only what Alpine
+  # ships, keeps the property the header claims, and still reaches both
+  # halves that matter: the base layer, and the Go binary whose stdlib CVEs
+  # move with whatever toolchain Alpine built it with.
+  #
+  # This is deliberately not the same scan as the image scan in
+  # publish-image.yml, which covers the real built image and is the blocking
+  # one. This is a comparison of two bases, which is what the decision here
+  # needs.
+  cve-profile:
+    name: Report the CVE profile of the proposed Alpine version
+    needs: resolve
+    if: needs.resolve.outputs.alpine_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Scan both Alpine versions and post the difference
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEW_ALPINE: ${{ needs.resolve.outputs.alpine_version }}
+          OLD_ALPINE: ${{ needs.resolve.outputs.base_alpine_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Both values already passed the digits-and-dots check in the
+          # resolve job before reaching this point. Re-checked here anyway,
+          # because this is where they are interpolated into a command and a
+          # guard that lives only in another job is a guard someone can
+          # delete without noticing what depended on it.
+          for v in "$NEW_ALPINE" "$OLD_ALPINE"; do
+            case "$v" in
+              '' | *[!0-9.]*)
+                echo "::error::Refusing to scan ALPINE_VERSION=$v"
+                exit 1
+                ;;
+            esac
+          done
+
+          # scan <version> <outfile> -> writes "<base count> <binary count>"
+          #
+          # Two numbers because they move for different reasons and a single
+          # total hides that: base-layer findings clear when Alpine publishes
+          # a security update, while the binary's come from the Go toolchain
+          # and the vendored dependencies gocryptfs pinned at release time.
+          #
+          # Writes to a file rather than returning on stdout, and is called
+          # directly rather than inside $(...), so that a failure actually
+          # fails this step. In a command substitution a non-zero return is
+          # swallowed by the subshell and the report is published anyway,
+          # which is the same "green but wrong" outcome this job exists to
+          # avoid.
+          scan() {
+            _v="$1"
+            _out="$2"
+            _img="alpine:${_v}"
+
+            _base=$(docker run --rm aquasec/trivy:0.74.0 image \
+              --severity CRITICAL,HIGH --exit-code 0 --skip-version-check \
+              --quiet --format json "$_img" \
+              | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+
+            # gocryptfs installed from Alpine's own repository, then scanned
+            # as a binary. `trivy image` cannot see these: it tracks gocryptfs
+            # as the apk package and does not run its gobinary analyzer over a
+            # file a distro package manager owns, so the vendored dependency
+            # versions baked into the binary never surface that way. See
+            # docs/SECURITY.md, "Image Vulnerability Scanning".
+            #
+            # The exit codes below are a contract, not decoration. An Alpine
+            # release that genuinely does not carry gocryptfs is a real answer
+            # worth reporting; a registry timeout, a volume error or a failed
+            # copy is not, and reporting one as the other would publish a
+            # confident wrong number. 42 is the only code that means absence.
+            # shellcheck disable=SC2016  # deliberate: the $(apk search)
+            # below must expand inside the container, against that release's
+            # package index, not on the runner where apk does not exist.
+            _probe='apk update >/dev/null 2>&1 || exit 10
+              [ -n "$(apk search -e gocryptfs 2>/dev/null)" ] || exit 42
+              apk add --no-cache gocryptfs >/dev/null 2>&1 || exit 11
+              cp /usr/bin/gocryptfs /out/gocryptfs || exit 12'
+
+            _dir=$(mktemp -d)
+            _rc=0
+            docker run --rm -v "${_dir}:/out" "$_img" sh -c "$_probe" || _rc=$?
+
+            case "$_rc" in
+              0)
+                _bin=$(docker run --rm -v "${_dir}:/scan:ro" \
+                  aquasec/trivy:0.74.0 rootfs \
+                  --scanners vuln --severity CRITICAL,HIGH --exit-code 0 \
+                  --skip-version-check --quiet --format json /scan \
+                  | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+                ;;
+              42)
+                _bin="unavailable"
+                ;;
+              *)
+                rm -rf "${_dir}"
+                echo "::error::gocryptfs probe failed for ${_img}," \
+                  "exit ${_rc}. That is an infrastructure failure, not a" \
+                  "missing package. Refusing to publish a wrong profile."
+                return 1
+                ;;
+            esac
+
+            rm -rf "${_dir}"
+            printf '%s %s\n' "$_base" "$_bin" > "$_out"
+          }
+
+          scan "$OLD_ALPINE" old-counts.txt
+          scan "$NEW_ALPINE" new-counts.txt
+          read -r old_base old_bin < old-counts.txt
+          read -r new_base new_bin < new-counts.txt
+
+          delta() {
+            if [ "$1" = "unavailable" ] || [ "$2" = "unavailable" ]; then
+              printf 'n/a'
+            elif [ "$2" -gt "$1" ]; then
+              printf '+%s, worse' "$(( $2 - $1 ))"
+            elif [ "$2" -lt "$1" ]; then
+              printf '%s, better' "$(( $2 - $1 ))"
+            else
+              printf 'unchanged'
+            fi
+          }
+
+          {
+            echo "## CVE profile for Alpine ${OLD_ALPINE} to ${NEW_ALPINE}"
+            echo
+            echo "CRITICAL and HIGH only, unignored, measured on this run."
+            echo
+            echo "| Surface | ${OLD_ALPINE} | ${NEW_ALPINE} | Change |"
+            echo "| --- | --- | --- | --- |"
+            base_delta=$(delta "$old_base" "$new_base")
+            bin_delta=$(delta "$old_bin" "$new_bin")
+            echo "| Alpine base layer | ${old_base} | ${new_base} | ${base_delta} |"
+            echo "| gocryptfs binary | ${old_bin} | ${new_bin} | ${bin_delta} |"
+            echo
+            echo "Reported, not gated. Nobody here can patch an Alpine package,"
+            echo "so this never fails the pull request; see docs/SECURITY.md."
+            echo "It is here because an Alpine bump is not automatically an"
+            echo "improvement, and this is the only point where that is"
+            echo "measured before the merge rather than after."
+            echo
+            echo "A worse profile is not by itself a reason to reject the bump."
+            echo "It is a reason to decide on purpose, and to check whether"
+            echo ".trivyignore.yaml still says what is true."
+          } > comment.md
+
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file comment.md

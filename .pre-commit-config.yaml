@@ -245,11 +245,36 @@ repos:
       # gone, a daemon hiccup) and skip the `rm` calls right after it,
       # leaking a full image archive and the extracted binary into the system
       # temp directory on every such run.
+      # Report-only. Both scans below pass --exit-code 0, and verbose: true
+      # makes pre-commit print the report on a green run, so the findings are
+      # read rather than silently discarded.
+      #
+      # This used to fail the push on CRITICAL or HIGH. That was the wrong
+      # gate in the wrong place, and this repository had already written the
+      # argument down, about the nightly: a job "hard-failing every night on
+      # an upstream CVE nobody can fix from this side" is noise. See
+      # docs/SECURITY.md, "Image Vulnerability Scanning". The same sentence
+      # describes a developer pushing an unrelated change on a morning when
+      # Alpine published an advisory. They cannot patch an apk package, and
+      # the only ways past a red gate are to wait for upstream or to add a
+      # .trivyignore.yaml entry, which turns a risk-acceptance decision into
+      # whatever the person who happened to push that day felt like doing.
+      #
+      # Nothing is lost by reporting. The nightly runs Scout and Trivy across
+      # both architectures and uploads all four results to code scanning,
+      # which is strictly more coverage than this hook's single local
+      # architecture, and security-ignore-audit.yml re-checks every
+      # suppression on a schedule and opens a tracking issue.
+      #
+      # Blocking still exists where it belongs: publish-image.yml. That is the
+      # moment this project chooses to ship, and shipping a known CRITICAL is
+      # a decision someone should make on purpose.
       - id: trivy-image-scan
-        name: trivy image scan (aquasecurity/trivy)
+        name: trivy image scan (aquasecurity/trivy, report-only)
         language: system
         files: "^(Dockerfile|Makefile|scripts/|files/bash/)"
         pass_filenames: false
+        verbose: true
         stages: [pre-push]
         entry: >-
           bash -c '
@@ -278,7 +303,7 @@ repos:
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
           docker.io/aquasec/trivy:0.74.0 image
-          --severity CRITICAL,HIGH --exit-code 1
+          --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml --input /image.tar;
           container="$("${runtime}" create "${tag}")";
           "${runtime}" cp "${container}:/usr/bin/gocryptfs"
@@ -288,6 +313,6 @@ repos:
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
           docker.io/aquasec/trivy:0.74.0 rootfs
-          --scanners vuln --severity CRITICAL,HIGH --exit-code 1
+          --scanners vuln --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml /scan
           '
