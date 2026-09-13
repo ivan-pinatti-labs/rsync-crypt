@@ -235,6 +235,12 @@ in the image can execute Python, but they had no business being there.
 > given", and re-measure before relying on one. Where a version has no date
 > next to it, assume it has drifted.
 
+This image is Alpine plus a handful of apk packages. Some of them carry known
+`CRITICAL` and `HIGH` findings, that is expected rather than exceptional, and
+this project ships anyway and says so. Tracking them so users can see what
+they are getting is the goal; pretending they are absent is not, and neither
+is blocking our own work over something upstream has not fixed yet.
+
 Every published image, `nightly` included, is scanned by both
 [Docker Scout](https://docs.docker.com/scout/) and
 [Trivy](https://trivy.dev/), in three places: locally before a push
@@ -244,12 +250,33 @@ full image build is too slow to run on every commit) and again in CI
 the nightly rebuild). Docker Scout is report-only everywhere it runs, its
 findings surfaced through this repository's code scanning tab rather than as
 a release gate (see that step's own comment for why, including the retired
-Dashboard health-score badge). Trivy is the blocking check on a release: an
-unignored `CRITICAL` or `HIGH` finding fails both the local pre-push hook and
-the CI job. On the nightly rebuild Trivy runs report-only instead, same as
-Scout, since a scheduled job hard-failing every night on an upstream CVE
-nobody can fix from this side, with no pull request to block, would only be
-noise; a genuinely new finding still shows up in that run's SARIF upload.
+Dashboard health-score badge).
+
+**Trivy blocks in exactly one place: a release.** `publish-image.yml` fails on
+an unignored `CRITICAL` or `HIGH`. The local pre-push hook and the nightly
+rebuild both run report-only.
+
+That split is the whole posture, so it is worth stating the rule behind it
+rather than leaving three separate decisions that happen to agree. **A check
+blocks only when the person it stops can fix what it found.** The packages in
+this image come from Alpine. When one of them gets a CVE, nobody on this side
+can patch it: the fix is an Alpine rebuild, or a gocryptfs release, or
+nothing. Failing a developer's push for that stops the wrong person, and the
+only ways past are to wait for upstream or to add a `.trivyignore.yaml` entry,
+which turns a risk-acceptance decision into whatever whoever pushed that
+morning felt like doing.
+
+A release is different. Shipping an image with a known `CRITICAL` is a real
+decision with a real audience, and someone should make it deliberately, which
+is what a blocking gate at that point forces.
+
+The pre-push hook used to block, and stopped on 2026-09-13. Nothing was given
+up: the nightly runs Scout and Trivy over both architectures and uploads all
+four results to code scanning, which is more coverage than the local hook's
+single architecture, and `security-ignore-audit.yml` re-checks every
+suppression on a schedule and opens a tracking issue. The hook still prints
+its report at push time so a Dockerfile change that makes the profile worse is
+visible to the person making it.
 
 ### Accepted-risk CVEs
 
