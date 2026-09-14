@@ -145,7 +145,7 @@ def test_matches_every_current_pin_exactly():
     # The point of the whole script: resolving alpine:3.24 today must
     # reproduce every one of the seven values .env.example already carries,
     # since that is what alpine:3.24 was verified against by hand before
-    # this script existed (see CLAUDE.md, "Alpine gocryptfs version").
+    # this script existed (see AGENTS.md, "Alpine gocryptfs version").
     versions = resolve_apk_pins.parse_apk_policy(ALPINE_3_24_POLICY)
     for pkg, var in resolve_apk_pins.PACKAGE_TO_VAR.items():
         resolved = resolve_apk_pins.match_precision(versions[pkg], CURRENT_PINS[var])

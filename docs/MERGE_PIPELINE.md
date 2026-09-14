@@ -312,4 +312,4 @@ transfer, so their survival was never tested and should not be assumed.
 
 ---
 
-See also: [README.md](../README.md), [CLAUDE.md](../CLAUDE.md)
+See also: [README.md](../README.md), [AGENTS.md](../AGENTS.md)

@@ -25,7 +25,7 @@ suppressing.
 This never edits `.trivyignore.yaml`, never dismisses or reopens an alert,
 and never fails a build. It only produces a report; whoever reads the
 tracking issue it feeds decides what to do. See "CI never autofixes" in
-CLAUDE.md.
+AGENTS.md.
 
 Used by .github/workflows/security-ignore-audit.yml, which fetches the open
 and dismissed alert lists with `gh api` and passes them to this script as

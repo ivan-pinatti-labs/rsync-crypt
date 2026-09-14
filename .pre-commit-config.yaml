@@ -1,6 +1,6 @@
 ---
 # Hooks come from ivan-pinatti-labs/pre-commit-checklists. See docs/hook-catalogue.md
-# in that repository for what each id runs, and CLAUDE.md here for the two
+# in that repository for what each id runs, and AGENTS.md here for the two
 # selectors below that deviate from its shipped templates.
 #
 # checklist-git-commit-msg runs at the commit-msg git stage rather than
@@ -13,7 +13,7 @@
 # There is deliberately no `ci:` block. That block configures pre-commit.ci,
 # whose autofix_prs would commit and push fixes back to a pull request branch.
 # CI here is a gate: a hook that finds something fixable fails the run and the
-# author fixes it. See "CI never autofixes" in CLAUDE.md.
+# author fixes it. See "CI never autofixes" in AGENTS.md.
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   - repo: https://github.com/ivan-pinatti-labs/pre-commit-checklists

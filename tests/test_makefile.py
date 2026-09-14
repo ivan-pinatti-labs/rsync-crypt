@@ -439,7 +439,7 @@ def test_no_build_pin_is_left_in_the_example_env():
 
 
 def test_no_blanket_error_suppression_in_the_makefile():
-    """CLAUDE.md forbids '|| true' as a general error suppressor."""
+    """AGENTS.md forbids '|| true' as a general error suppressor."""
     offenders = [
         f"{n}: {line.strip()}"
         for n, line in enumerate((REPO_ROOT / "Makefile").read_text().splitlines(), 1)
@@ -474,11 +474,11 @@ def test_blank_env_var_does_not_shift_script_arguments(
 
 
 def test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_path):
-    """The exact scenario CLAUDE.md's Makefile-quoting and filter-rule gotchas
+    """The exact scenario AGENTS.md's Makefile-quoting and filter-rule gotchas
     describe: blanking GOCRYPTFS_CIPHER must not shift GOCRYPTFS_SCRYPT_N
     into the cipher slot and push GOCRYPTFS_ENCRYPT_NAMES out of the argument
     list entirely, which previously made backup.sh fall back to its 'true'
-    default and silently defeat every rsync filter rule (CLAUDE.md:
+    default and silently defeat every rsync filter rule (AGENTS.md:
     GOCRYPTFS_ENCRYPT_NAMES must be false for filter rules to match).
     """
     example_text = (REPO_ROOT / ".env.example").read_text()
@@ -551,7 +551,7 @@ def test_quoted_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_p
     test_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default already
     covers an unquoted blank (GOCRYPTFS_CIPHER=). This is the same scenario
     with GOCRYPTFS_CIPHER="" instead, which is how .env.example's own
-    convention would spell an empty value. CLAUDE.md records this
+    convention would spell an empty value. AGENTS.md records this
     as one of the three cases $(subst ",,$(VAR)) was verified against: a
     value with a space, a value without one, and an empty value.
     """

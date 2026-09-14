@@ -15,7 +15,7 @@ the difference between a network filesystem and a local one.
 
 Why gocryptfs -exclude rather than generated rsync filter rules: with
 GOCRYPTFS_ENCRYPT_NAMES=true rsync only ever sees ciphertext names and no
-filter pattern can match them (CLAUDE.md, "GOCRYPTFS_ENCRYPT_NAMES must be
+filter pattern can match them (AGENTS.md, "GOCRYPTFS_ENCRYPT_NAMES must be
 false for filter rules to work"), while gocryptfs excludes on the plaintext
 path before encrypting it and so works either way. Measured 2026-09-11
 against the image's gocryptfs (2.6.1 then), in both name modes.

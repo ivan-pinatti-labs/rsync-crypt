@@ -8,7 +8,7 @@
 # They are kept anyway because the reasoning is a set of measurements, and a
 # measurement without its subject cannot be re-checked: "an older x/crypto has
 # CVEs" is unverifiable where "x/crypto v0.33.0, measured on this date with this
-# command" is. Re-measure before acting on one; see CLAUDE.md's "Do not write
+# command" is. Re-measure before acting on one; see AGENTS.md's "Do not write
 # specific versions into prose" for the convention.
 #
 # YAML format (Trivy's `.trivyignore.yaml`, still marked experimental
@@ -36,7 +36,7 @@
 # on a schedule and opens or updates a tracking issue when one is stale (no
 # longer reproducing) or approaching/past its `expired_at`. It never edits
 # this file or the CRITICAL/HIGH gate itself: see "CI never autofixes" in
-# CLAUDE.md. The `expired_at` mechanism above is what actually enforces
+# AGENTS.md. The `expired_at` mechanism above is what actually enforces
 # re-review if that workflow is ever broken or ignored; the audit workflow
 # is the early warning, not the enforcement.
 #

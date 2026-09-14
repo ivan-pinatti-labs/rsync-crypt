@@ -20,7 +20,7 @@ name: Third-Party Licenses Audit
 # deliberately looking.
 #
 # Why not open a pull request with the regenerated file: that needs a second
-# workflow holding `contents: write`, and CLAUDE.md documents
+# workflow holding `contents: write`, and AGENTS.md documents
 # resolve-apk-pins.yml as the single deliberate exception to "CI never
 # autofixes". This is a warning, the same shape security-ignore-audit.yml
 # already uses. Nothing here commits, pushes, or changes what any gate
