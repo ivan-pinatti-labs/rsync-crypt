@@ -34,7 +34,7 @@ name: Publish Image
 # workflow runs from an event a GITHUB_TOKEN created, release creation
 # through the API included, specifically to stop workflows triggering each
 # other in a loop. This is the exact same restriction
-# CLAUDE.md documents for resolve-apk-pins.yml's push, and the fix is the
+# AGENTS.md documents for resolve-apk-pins.yml's push, and the fix is the
 # same shape: merge.yml's own 'trigger-image-publish' job explicitly
 # dispatches this workflow right after create-release finishes, via
 # 'gh workflow run publish-image.yml --field tag=<tag> --field

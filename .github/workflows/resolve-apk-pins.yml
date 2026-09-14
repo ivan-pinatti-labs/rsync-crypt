@@ -372,7 +372,7 @@ jobs:
   # it replaces?
   #
   # That question is not rhetorical. Alpine bumps are not monotonic. Measured
-  # 2026-09-08 and recorded in CLAUDE.md: edge carried 20 CRITICAL/HIGH
+  # 2026-09-08 and recorded in AGENTS.md: edge carried 20 CRITICAL/HIGH
   # against the extracted binary where 3.24 carried 12, because edge's
   # gocryptfs was built with an *older* Go toolchain and so reintroduced
   # stdlib findings 3.24 had already shed. Without a measurement at this

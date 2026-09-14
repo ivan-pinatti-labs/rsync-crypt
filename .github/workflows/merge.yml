@@ -93,7 +93,7 @@ jobs:
       # carrying the tag create-tag already minted so publish-image.yml never
       # has to recompute it. Same shape as resolve-apk-pins.yml's own
       # workflow_dispatch re-trigger of pull-request-validation.yml; see
-      # CLAUDE.md.
+      # AGENTS.md.
       actions: write
     steps:
       - name: Dispatch publish-image.yml

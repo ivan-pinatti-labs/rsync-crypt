@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.json
 #
-# CodeRabbit automatically uses CLAUDE.md as review guidance.
+# CodeRabbit automatically uses AGENTS.md as review guidance.
 
 language: en-US
 

@@ -140,7 +140,7 @@ def test_gocryptfs_version_matches_the_pin(image):
 def test_block_size_flag_is_not_supported(image):
     """Guards the documented gotcha that this build rejects -bs.
 
-    CLAUDE.md records that the Alpine package does not accept the block size
+    AGENTS.md records that the Alpine package does not accept the block size
     flag and that it must not be reintroduced. If a future bump starts
     accepting it, this test fails and the note can be revisited.
     """
@@ -157,4 +157,4 @@ def test_block_size_flag_is_not_supported(image):
             "-version",
         ]
     )
-    assert result.returncode != 0, "-bs is now accepted; revisit the note in CLAUDE.md"
+    assert result.returncode != 0, "-bs is now accepted; revisit the note in AGENTS.md"

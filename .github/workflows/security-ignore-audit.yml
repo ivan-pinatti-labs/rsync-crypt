@@ -34,7 +34,7 @@ name: Security Ignore Audit
 # This never writes to `.trivyignore.yaml`, never dismisses or reopens a code
 # scanning alert, and never fails the job on what it finds: it only opens,
 # updates, or closes the one tracking issue below. See "CI never autofixes"
-# in CLAUDE.md; resolve-apk-pins.yml is documented there as the one exception
+# in AGENTS.md; resolve-apk-pins.yml is documented there as the one exception
 # to that policy, and this is not a second one, since nothing here commits,
 # pushes, or changes what any gate enforces.
 on:

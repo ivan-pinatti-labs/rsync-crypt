@@ -167,7 +167,7 @@ def test_missing_argument_falls_back_to_the_default():
     `"$(subst ",,${VAR})"`, so a blank variable arrives as an empty argument
     and nothing shifts;
     `tests/test_makefile.py::test_blank_env_var_does_not_shift_script_arguments`
-    is what asserts that, and CLAUDE.md's "Makefile expansions are wrapped in
+    is what asserts that, and AGENTS.md's "Makefile expansions are wrapped in
     $(subst) on purpose" explains why the wrapping is there. Unquoted
     expansions did once make a blank value vanish, which is the bug that
     wrapping fixed; this test guards the script's own fallback so it stays

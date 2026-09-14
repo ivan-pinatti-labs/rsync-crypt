@@ -37,3 +37,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 tests/.venv/
+
+# Personal AI agent files, never committed (see AGENTS.md)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/agents/local/
+.claude/worktrees/

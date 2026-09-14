@@ -132,7 +132,7 @@
     // major/minor/patch semver Dependabot used to classify on its own pull
     // requests through bot-auto-merge.yml's use of dependabot/fetch-metadata,
     // which retired along with its `updates:` configuration. An Alpine major
-    // is exactly the case CLAUDE.md already says needs a person: apk drops
+    // is exactly the case AGENTS.md already says needs a person: apk drops
     // and renames packages across major releases, which is what forced the
     // apk pins in the Dockerfile to be re-resolved by hand the last time this
     // repository's base image moved; a major GitHub Action or pre-commit

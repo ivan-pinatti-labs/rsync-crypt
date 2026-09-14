@@ -457,7 +457,7 @@ updates a single tracking issue when something needs attention. It is a
 warning system, not the enforcement; `expired_at` is what actually forces
 the re-decision if that workflow is ever broken, disabled, or its issue
 ignored. It also never edits `.trivyignore.yaml` or the alerts it audits:
-see "CI never autofixes" in `CLAUDE.md`.
+see "CI never autofixes" in `AGENTS.md`.
 
 ### Why not build gocryptfs from source
 
