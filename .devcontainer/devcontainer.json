@@ -7,7 +7,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind,relabel=private",
   "workspaceFolder": "${localWorkspaceFolder}",
   "runArgs": [
-    "--userns=keep-id",
+    "--userns=keep-id:uid=1000,gid=1000",
     "--security-opt",
     "label=type:container_engine_t",
     "--security-opt",

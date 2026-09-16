@@ -117,7 +117,7 @@ in Container**.
 
 | Argument | Why |
 | --- | --- |
-| `--userns=keep-id` | Files in the mounted clone keep your own user id on the host. |
+| `--userns=keep-id:uid=1000,gid=1000` | Maps your host account to the container's `dev` account, so files in the mounted clone stay yours. The uid is spelled out because plain `keep-id` maps your account to the same number inside, which lines up with `dev` only when your own uid happens to be 1000. |
 | `label=type:container_engine_t` | The confined SELinux domain that allows a container engine to run inside, so the hooks and tests that start containers work without turning SELinux labeling off. |
 | `label=level:s0:c555,c666` | The same SELinux category as the ssh-agent container; a different category cannot connect to its socket. |
 | `--device /dev/fuse` | The nested container storage driver needs it, and the test suite passes it on to the containers that mount gocryptfs. |
