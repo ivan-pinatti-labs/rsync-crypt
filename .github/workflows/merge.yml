@@ -56,9 +56,21 @@ jobs:
       # generateReleaseNotes, the one ncipollo capability gh release edit
       # cannot also do (--generate-notes is create-only), so nothing here
       # is lost by falling back to edit.
+      #
+      # GH_REPO is what that migration missed, and this job ran without a
+      # checkout for four days before anyone noticed. ncipollo took the
+      # repository from the workflow context; gh resolves it from the local
+      # git remote instead, and there is no clone in this job, so every run
+      # died on "failed to run git: fatal: not a git repository" after
+      # create-tag had already minted the tag. Tags therefore existed with no
+      # release, and trigger-image-publish, which needs this job, was skipped
+      # every time, so no image was published for any of them either. Setting
+      # it here covers both gh calls below; the sibling job passes the same
+      # value as --repo. See #102.
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.create-tag.outputs.new_tag }}
           NOTES: ${{ needs.create-tag.outputs.changelog }}
         run: |
