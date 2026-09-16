@@ -66,7 +66,7 @@ podman run -d --name devcontainer-ssh-agent \
   --security-opt label=level:s0:c555,c666 \
   -v "${XDG_RUNTIME_DIR}/devcontainer-ssh:/sock:Z" \
   -v "${HOME}/.ssh/devcontainer:/key:ro,Z" \
-  ghcr.io/ivan-pinatti-labs/devcontainer-base@sha256:422d159cc15e46e4ae806bcf718d63ea5bd080fa701ab7a980e45b55d955b602 \
+  ghcr.io/ivan-pinatti-labs/devcontainer-base@sha256:74e631649377b25522b908664ca72174ad36cec065b205d35020ec208bb2cc2f \
   ssh-agent -D -a /sock/agent.sock
 ```
 
