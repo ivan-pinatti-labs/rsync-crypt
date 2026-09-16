@@ -189,12 +189,22 @@
     // does not grade .devcontainer/Dockerfile as a pin surface either, so
     // `Pin Only` would refuse it regardless; this rule means the outcome does
     // not rest on that.
+    // GHCR returns no release timestamp for a digest, so under Renovate's
+    // default minimumReleaseAgeBehaviour (timestamp-required) the seven day
+    // window above would hold every base image bump forever and, with
+    // internalChecksFilter strict, never open the pull request at all.
+    // Measured with a dry-run=full: "digest update of
+    // ghcr.io/ivan-pinatti-labs/devcontainer-base has no releaseTimestamp to
+    // age against". timestamp-optional lets the update be offered; the review
+    // stands in for the age window, exactly as it does for the asdf plugin
+    // commits above.
     {
       matchManagers: ["dockerfile"],
       matchFileNames: [".devcontainer/Dockerfile"],
       groupName: "development container base image",
       groupSlug: "devcontainer-base",
       labels: ["dependencies", "tooling"],
+      minimumReleaseAgeBehaviour: "timestamp-optional",
       automerge: false,
     },
     // The root Dockerfile belongs to the custom.regex manager below, and
