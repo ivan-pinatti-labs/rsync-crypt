@@ -167,9 +167,41 @@
       groupSlug: "asdf-tools",
       labels: ["dependencies", "tooling"],
     },
+    // Scoped to the datasource rather than to the manager: the second custom
+    // regex manager below watches asdf plugin commits through git-refs, which
+    // are not a Docker tag and get their own rule further down.
     {
       matchManagers: ["custom.regex"],
+      matchDatasources: ["docker"],
       labels: ["dependencies", "docker"],
+    },
+    // An asdf plugin is code: `asdf install` runs its scripts to download and
+    // install each tool, inside a development container that holds a GitHub
+    // token. A new plugin commit therefore waits for a person to read what
+    // changed in that plugin.
+    //
+    // automerge: false is load-bearing here in a way it is not in the sibling
+    // repositories. This repository grants automerge to `digest` updates
+    // (see the first rule above, for the action SHA refreshes that are its
+    // routine case), and a git-refs commit bump is a digest update, so
+    // without this rule a plugin commit would merge unattended on the
+    // strength of a grant meant for something else. Later rules win on a
+    // shared key, so this one has to sit after that grant, which it does.
+    //
+    // git-refs publishes no release timestamps, and under Renovate's default
+    // minimumReleaseAgeBehaviour (timestamp-required) the 7 day window above
+    // would then hold every plugin commit back forever, silently.
+    // timestamp-optional lets the update be offered; the review stands in for
+    // the age window here.
+    {
+      matchManagers: ["custom.regex"],
+      matchDatasources: ["git-refs"],
+      matchFileNames: [".devcontainer/asdf-plugins"],
+      groupName: "asdf plugins",
+      groupSlug: "asdf-plugins",
+      labels: ["dependencies", "tooling"],
+      minimumReleaseAgeBehaviour: "timestamp-optional",
+      automerge: false,
     },
     // The two ecosystems that moved here from Dependabot, each grouped the
     // way Dependabot grouped it: one pull request per ecosystem
@@ -250,6 +282,21 @@
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+ARG [A-Z0-9_]+=(?<currentValue>[^\\s]+)",
       ],
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+    },
+    {
+      // The asdf plugin commits the development container pins in
+      // .devcontainer/asdf-plugins, one line per plugin: name, repository
+      // URL, branch, commit. git-refs reads the named branch's current
+      // commit, so a new commit there arrives as a digest update to that
+      // line. See the matching packageRules entry above for why a person
+      // reviews every one of these, which is the opposite of how this
+      // repository treats every other digest update.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.devcontainer/asdf-plugins$/"],
+      matchStrings: [
+        "(?<depName>[a-z0-9-]+) (?<packageName>https://\\S+) (?<currentValue>\\S+) (?<currentDigest>[0-9a-f]{40})",
+      ],
+      datasourceTemplate: "git-refs",
     },
   ],
 }
