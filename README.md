@@ -137,6 +137,10 @@ locally needs more than the tool itself does:
 
 Everything else is fetched and cached by `pre-commit` on first run.
 
+The [development container](.devcontainer/README.md) carries all of it, plus
+the test suite's own dependencies, so the host needs only rootless Podman and
+the one time setup that README describes.
+
 CI never rewrites your branch. A hook that can fix something will fix it on
 your machine, but in CI the same finding fails the job and waits for you to
 push the fix.
