@@ -60,11 +60,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # bumped and none of these markers annotate. Leaving it listed would widen the
 # allowlist to a file nothing here manages, which is the opposite of what an
 # allowlist is for, so it came off along with the pins.
+# `.devcontainer/Dockerfile` is listed separately from `Dockerfile` on
+# purpose: the check below is `path.startswith(ALLOWED_PATHS)`, and
+# `.devcontainer/Dockerfile` does not start with `Dockerfile`, so the root
+# entry never covered it. Renovate has been watching its base image digest
+# since the development container landed, and every bump was refused as
+# "not a dependency pin file" until this entry existed.
 ALLOWED_PATHS = (
     "Dockerfile",
     ".pre-commit-config.yaml",
     ".github/workflows/",
     ".tool-versions",
+    ".devcontainer/Dockerfile",
 )
 
 # A released version, always starting with a digit (an optional single
@@ -187,6 +194,20 @@ def _normalize_bare_action_version(match: re.Match[str]) -> str:
         return match.group(0)
     return f"{match.group('action_prefix')}@<version>"
 
+
+# The development container base image, pinned by digest in
+# `.devcontainer/Dockerfile` as `ARG BASE_IMAGE=<image>@sha256:<64 hex>`.
+#
+# Distinct from the ARG_LINE and ARG_VALUE pair below, which grade the root
+# Dockerfile's annotated pins by ARG name against the annotations read off
+# main's own copy of that file. This one grades a digest instead, and only
+# the digest becomes a placeholder: the image reference to the left of the
+# `@` stays literal, so a bump that also pointed the ARG at a different
+# image or registry reads as a structural change and is refused, the same
+# way a swapped owner is for a `uses:` pin.
+IMAGE_DIGEST = re.compile(
+    r"(?P<prefix>^ARG [A-Z0-9_]+=[\w./-]+(?::[\w.-]+)?@)sha256:[0-9a-f]{64}$"
+)
 
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
 
@@ -378,6 +399,12 @@ def normalize(line: str, path: str = "", in_block_scalar: bool = False) -> str:
     # first-time pins their context there for no matching risk.
     if in_block_scalar and path.startswith(".github/workflows/"):
         return line
+    # Exact equality, like the root Dockerfile branch above: this grades the
+    # development container's base image digest and nothing else, so another
+    # Dockerfile added under .devcontainer/ later would be read raw rather
+    # than against this grammar.
+    if path == ".devcontainer/Dockerfile":
+        return IMAGE_DIGEST.sub(r"\g<prefix><digest>", line)
     line = ACTION_SHA.sub(r"\g<prefix><version>", line)
     line = BARE_ACTION_VERSION.sub(_normalize_bare_action_version, line)
     line = REV_PIN.sub(r"\g<prefix><version>", line)
