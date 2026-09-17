@@ -51,9 +51,12 @@
   // `dockerfile` is enabled and scoped, not left off. Unscoped it would read
   // the root Dockerfile's `FROM alpine:${ALPINE_VERSION}` line that the
   // custom.regex manager below already owns, which is the duplicate this
-  // allowlist has always existed to prevent. The packageRules entry further
-  // down limits it to .devcontainer/Dockerfile, whose base image digest no
-  // other manager here watches, so the two never see the same line.
+  // allowlist has always existed to prevent. A pair of packageRules entries
+  // further down is what scopes it: the first disables everything the
+  // dockerfile manager finds, the second enables .devcontainer/Dockerfile
+  // alone, whose base image digest no other manager here watches, so the two
+  // never see the same line. Scoping by rule alone would not do it, because
+  // matchFileNames narrows a rule and not what a manager reads.
   enabledManagers: [
     "asdf",
     "custom.regex",
@@ -175,12 +178,39 @@
       groupSlug: "asdf-tools",
       labels: ["dependencies", "tooling"],
     },
+    // Everything the dockerfile manager finds is disabled here, and the one
+    // path this repository wants watched is enabled again by the rule below.
+    // Both halves are load-bearing, for two different reasons.
+    //
+    // The root Dockerfile belongs to the custom.regex manager further down,
+    // which owns `ARG ALPINE_VERSION` along with the seven apk `~=` pins
+    // that deliberately sit outside Renovate's reach for the reasons in
+    // AGENTS.md. Enabling the dockerfile manager makes Renovate extract
+    // every Dockerfile in the repository: confirmed with a dry-run=extract,
+    // which read `ARG ALPINE_VERSION=3.24` a second time, once through this
+    // manager and once through the annotated custom regex that has always
+    // owned it. Two managers proposing the same pin is the duplicate the
+    // enabledManagers allowlist above was written to prevent. Disabling the
+    // manager rather than one file by name leaves custom.regex untouched,
+    // since matchManagers scopes this rule to the dockerfile manager alone.
+    //
+    // Naming the file instead would not hold. matchFileNames on a rule
+    // scopes that rule, never which files a manager reads, so an exclusion
+    // written as matchFileNames: ["Dockerfile"] covers only the Dockerfile
+    // that exists today and leaves any added later watched. That matters
+    // more here than in the sibling repositories: the first rule above
+    // grants automerge to `digest` updates, for the action SHA refreshes
+    // that are its routine case, so a future Dockerfile's digest bump would
+    // merge unattended on the strength of a grant meant for something else.
+    // Disabling the manager wholesale and re-enabling one path cannot drift
+    // that way. Raised by CodeRabbit on ivan-pinatti-labs/.github#13 and
+    // fixed the same way there.
+    {
+      matchManagers: ["dockerfile"],
+      enabled: false,
+    },
     // The development container's base image, pinned by digest in
-    // .devcontainer/Dockerfile. matchFileNames is load-bearing here: it is
-    // what stops the dockerfile manager reading the root Dockerfile's
-    // `FROM alpine:${ALPINE_VERSION}` line, which the custom.regex manager
-    // below owns along with the seven apk pins that deliberately sit outside
-    // Renovate's reach.
+    // .devcontainer/Dockerfile.
     //
     // automerge: false is load-bearing too. The first rule above grants
     // automerge to `digest` updates, for the action SHA refreshes that are
@@ -201,27 +231,12 @@
     {
       matchManagers: ["dockerfile"],
       matchFileNames: [".devcontainer/Dockerfile"],
+      enabled: true,
       groupName: "development container base image",
       groupSlug: "devcontainer-base",
       labels: ["dependencies", "tooling"],
       minimumReleaseAgeBehaviour: "timestamp-optional",
       automerge: false,
-    },
-    // The root Dockerfile belongs to the custom.regex manager below, and
-    // this is what keeps it there. Enabling the dockerfile manager makes
-    // Renovate extract every Dockerfile in the repository: confirmed with a
-    // dry-run=extract, which read `ARG ALPINE_VERSION=3.24` a second time,
-    // once through this manager and once through the annotated custom regex
-    // that has always owned it. Two managers proposing the same pin is the
-    // duplicate the enabledManagers allowlist above was written to prevent,
-    // and matchFileNames on the rule above scopes only grouping and
-    // automerge policy, never extraction, so the exclusion needs saying
-    // outright here. The seven apk `~=` pins stay outside Renovate entirely
-    // for the reasons in AGENTS.md; nothing here changes that.
-    {
-      matchManagers: ["dockerfile"],
-      matchFileNames: ["Dockerfile"],
-      enabled: false,
     },
     // Scoped to the datasource rather than to the manager: the second custom
     // regex manager below watches asdf plugin commits through git-refs, which
