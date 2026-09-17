@@ -100,9 +100,29 @@ TOOL_VERSION_LINE = re.compile(
 REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 
 # A GitHub Actions pin, always a full 40 character commit SHA in this
-# repository (the dependency bot updates it that way; a trailing `# v7`
-# comment is left as ordinary text and not touched here). The negative
-# lookahead stops a
+# repository (the dependency bot updates it that way), optionally followed
+# by a trailing release comment (`# v7`, `# v4.38.0`), which the bot
+# rewrites on the same bump whenever the tag it resolves the SHA from
+# changes.
+#
+# Both have to normalize together, and this script did not do that until
+# now: it normalized only the SHA and left the comment as ordinary text, so
+# an ordinary bump that also moved `# v4.37.9` to `# v4.38.0` compared as
+# `@<version> # v4.37.9` against `@<version> # v4.38.0`, read as a
+# structural change, and `Pin Only` refused it. Since every Renovate action
+# bump rewrites that comment, no action SHA bump could ever be approved
+# here: the only four pull requests ever merged unattended in this
+# repository were three `.tool-versions` bumps and one
+# `.pre-commit-config.yaml` rev bump, and #105 is the one that finally
+# surfaced it. github-template,
+# pre-commit-checklists and pre-commit-checklists-demo have carried the
+# fix below for some time; this copy had simply never received it, and its
+# own tests pinned `# v7` on both sides of the bump, so nothing caught the
+# shape that actually occurs.
+#
+# The comment is folded into the same placeholder only when it is a release
+# token, so a change to unrelated trailing text after the SHA is still
+# caught as structural. The negative lookahead stops a
 # 40 character prefix of a longer hex run from matching and silently
 # swallowing the character that would have made the shapes differ.
 #
@@ -127,14 +147,29 @@ REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 ACTION_SHA = re.compile(
     r"(?P<prefix>^(?:[ \t]*-[ \t]+)?[ \t]*uses:[ \t]+[\w.-]+/[\w./-]+@)"
     r"[0-9a-fA-F]{40}(?![0-9a-fA-F])"
+    r"(?P<comment>[ \t]+#[ \t]*" + RELEASE + r")?"
 )
 
+
+def _normalize_action_pin(match: re.Match[str]) -> str:
+    """Collapse a `@<sha>` pin and its optional trailing release comment."""
+    normalized = f"{match.group('prefix')}<version>"
+    if match.group("comment"):
+        normalized += " # <version>"
+    return normalized
+
+
 # A first-time `pinDigests` bump on a GitHub Action changes
-# `uses: actions/checkout@v7` to `uses: actions/checkout@<sha>` in one step:
-# there is no prior SHA to compare against. ACTION_SHA above normalizes the
-# pinned side to `@<version>`; this pattern gives the unpinned side the
-# identical placeholder, so the two sides of a first-time pin compare equal
-# the same way an ordinary SHA-to-SHA bump does.
+# `uses: actions/checkout@v7` to `uses: actions/checkout@<sha> # v7` in one
+# step: there is no prior SHA to compare against, and the trailing release
+# comment appears for the first time alongside it. ACTION_SHA above
+# normalizes the pinned side to `@<version> # <version>` whenever a comment
+# trails the SHA, which every first-time pin does in practice; this pattern
+# gives the unpinned side the identical placeholder, so the two sides of a
+# first-time pin compare equal the same way an ordinary SHA-to-SHA bump
+# does. A first-time pin arriving with no comment at all still reads as
+# structural and gets refused, which is the fail closed outcome for a shape
+# that does not occur on a clean bump.
 #
 # Requires a `uses:` field and an owner/repo-shaped coordinate immediately
 # before the `@`, not bare `@RELEASE` anywhere on the line: an unscoped
@@ -183,9 +218,13 @@ BARE_ACTION_VERSION = re.compile(
 
 
 def _normalize_bare_action_version(match: re.Match[str]) -> str:
+    # `# <version>` is appended here too, matching what _normalize_action_pin
+    # produces for the pinned side: a first-time pin gains its release
+    # comment in the same edit that gains the SHA, so the placeholder has to
+    # carry one for the two sides to compare equal.
     if len(match.group("bare_version")) == 40:
         return match.group(0)
-    return f"{match.group('action_prefix')}@<version>"
+    return f"{match.group('action_prefix')}@<version> # <version>"
 
 
 FILE_HEADER = re.compile(r"^diff --git a/(?P<old>.+) b/(?P<new>.+)$")
@@ -378,7 +417,7 @@ def normalize(line: str, path: str = "", in_block_scalar: bool = False) -> str:
     # first-time pins their context there for no matching risk.
     if in_block_scalar and path.startswith(".github/workflows/"):
         return line
-    line = ACTION_SHA.sub(r"\g<prefix><version>", line)
+    line = ACTION_SHA.sub(_normalize_action_pin, line)
     line = BARE_ACTION_VERSION.sub(_normalize_bare_action_version, line)
     line = REV_PIN.sub(r"\g<prefix><version>", line)
     return line
