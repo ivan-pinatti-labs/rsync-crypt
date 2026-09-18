@@ -945,6 +945,63 @@ def test_new_profile_without_a_name_prints_usage(profile_workspace):
     assert "Usage: make new-profile NAME=<profile>" in result.stderr
 
 
+@pytest.mark.parametrize("name", ["banana", "foo.example", "example.txt"])
+def test_new_profile_output_is_always_gitignored(profile_workspace, name):
+    """No profile name can produce a tracked conf file.
+
+    The shipped templates used to be un-ignored with a '!conf/*.example.txt'
+    glob. Because a profile name may contain a dot, NAME=foo.example produced
+    conf/backup-filter-rules.foo.example.txt, which that glob matched, so the
+    generated copies became tracked files and the convention promised
+    something it did not deliver. Caught by CodeRabbit on #112; the three
+    templates are named individually now.
+
+    Asked of the real .gitignore via git check-ignore, rather than by
+    re-implementing its matching rules here.
+    """
+    assert _new_profile(name, profile_workspace).returncode == 0
+
+    generated = [
+        f"conf/backup-filter-rules.{name}.txt",
+        f"conf/restore-exclude-list.{name}.txt",
+        f"conf/restore-paths.{name}.txt",
+    ]
+    not_ignored = [
+        path
+        for path in generated
+        if subprocess.run(
+            ["git", "check-ignore", "-q", path],
+            cwd=REPO_ROOT,
+            check=False,
+        ).returncode
+        != 0
+    ]
+    assert not not_ignored, f"NAME={name} produces tracked files: {not_ignored}"
+
+
+def test_shipped_conf_templates_are_tracked():
+    """The other direction: the templates themselves must not be ignored.
+
+    A .gitignore narrow enough to catch every profile copy could just as
+    easily exclude the templates a fresh clone needs.
+    """
+    for template in (
+        "backup-filter-rules",
+        "restore-exclude-list",
+        "restore-paths",
+    ):
+        path = f"conf/{template}.example.txt"
+        assert (REPO_ROOT / path).is_file(), f"missing template: {path}"
+        assert (
+            subprocess.run(
+                ["git", "check-ignore", "-q", path],
+                cwd=REPO_ROOT,
+                check=False,
+            ).returncode
+            != 0
+        ), f"shipped template is gitignored: {path}"
+
+
 def test_new_profile_needs_no_env_file(profile_workspace):
     """It is the target that creates one, so requiring one first is circular."""
     assert not (profile_workspace / ".env").exists()

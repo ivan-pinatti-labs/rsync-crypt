@@ -856,8 +856,14 @@ to the invoking user, so it has exactly the access this check does. See
 ### `conf/*.example.txt` are templates; a user's own copies are gitignored
 
 `conf/` ships three `.example.txt` files and `.gitignore` carries `conf/*.txt`
-with a `!conf/*.example.txt` negation, so any other `.txt` there is somebody's
-own copy and never reaches a commit. `.env.example` points at the example files
+with the three un-ignored **by name**, so any other `.txt` there is somebody's
+own copy and never reaches a commit. Not a `!conf/*.example.txt` glob: a
+profile name may contain a dot, so `make new-profile NAME=foo.example` writes
+`conf/backup-filter-rules.foo.example.txt`, which that glob matches, and the
+generated copies would become tracked files. Found on #112.
+`test_new_profile_output_is_always_gitignored` asks the real `.gitignore`
+through `git check-ignore`, and `test_shipped_conf_templates_are_tracked`
+guards the other direction. `.env.example` points at the example files
 directly, which is what keeps a fresh clone working with no copy step.
 
 `make new-profile NAME=<profile>` writes `.env.<profile>` plus a
