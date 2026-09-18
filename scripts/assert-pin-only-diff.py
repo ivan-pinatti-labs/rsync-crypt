@@ -495,9 +495,11 @@ def _apply_hunks(
     """Rebuild the file's head side from its base and the diff's hunks.
 
     Every context and removed line has to match the base where the hunk
-    header says it sits, and every hunk has to land where its header says
-    it does on the head side too. Any disagreement means the diff and the
-    base are not describing the same file, and the answer is None.
+    header says it sits, every hunk has to land where its header says it
+    does on the head side too, and each hunk body has to carry exactly the
+    line counts its header declares on both sides. Any disagreement means
+    the diff and the base are not describing the same file, or the diff
+    was cut short, and the answer is None.
     """
     head: list[str] = []
     cursor = 0
@@ -511,6 +513,7 @@ def _apply_hunks(
         if len(head) != int(header.group("new_start")) - (1 if new_len else 0):
             return None
         position = start
+        added = 0
         for line in body:
             tag, content = (line[:1], line[1:]) if line else (" ", "")
             if tag in (" ", "-"):
@@ -519,10 +522,14 @@ def _apply_hunks(
                 position += 1
                 if tag == " ":
                     head.append(content)
+                    added += 1
             elif tag == "+":
                 head.append(content)
+                added += 1
             elif tag != "\\":
                 return None
+        if position - start != old_len or added != new_len:
+            return None
         cursor = position
     head.extend(base[cursor:])
     return head

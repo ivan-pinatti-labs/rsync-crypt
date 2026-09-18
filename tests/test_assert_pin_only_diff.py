@@ -775,3 +775,26 @@ def test_falls_back_when_the_hunks_disagree_with_the_base(tmp_path):
         check=False,
     )
     assert result.returncode == 1, result.stdout
+
+
+def test_falls_back_when_a_hunk_is_shorter_than_its_header(tmp_path):
+    # Valid context, but the header declares more lines than the body
+    # carries: a truncated diff. The whole-file view is discarded rather
+    # than filled in from the base, and the context judgment refuses.
+    before = STEP_WITH_COMMENT.format(sha=SHA)
+    after = STEP_WITH_COMMENT.format(sha=OTHER_SHA)
+    assert _check_in_repo(tmp_path, before, after).returncode == 0
+    workflow = tmp_path / ".github" / "workflows" / "scan.yml"
+    workflow.write_text(after)
+    lines = _git(tmp_path, "diff").splitlines()
+    diff = "\n".join(lines[:-1]) + "\n"
+    workflow.write_text(before)
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "scripts" / SCRIPT.name)],
+        input=diff,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout
