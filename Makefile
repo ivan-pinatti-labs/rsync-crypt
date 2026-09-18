@@ -658,8 +658,7 @@ restore_as_root_to_origin:
 # Serves the decrypted backup read-only over SFTP on host port 2222 (user backup).
 # Connect your file manager to: sftp://root@localhost:2222/gocrypt-view/decrypted
 view:
-	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
-	$(call _passkey_check,/gocrypt-view/passfile); \
+	@$(call _passkey_check,/gocrypt-view/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -685,8 +684,7 @@ view:
 # Serves the decrypted backup read-only over SFTP on host port 2222 (root backup).
 # Connect your file manager to: sftp://root@localhost:2222/gocrypt-view/decrypted
 view_as_root:
-	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
-	$(call _passkey_check,/gocrypt-view/passfile); \
+	@$(call _passkey_check,/gocrypt-view/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -710,7 +708,8 @@ view_as_root:
 			"/gocrypt-view/decrypted"
 
 run_container:
-	@$(call _passkey_check,/backup/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/backup/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -729,7 +728,8 @@ run_container:
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
 
 run_container_as_root:
-	@$(call _passkey_check,/backup/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/backup/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \

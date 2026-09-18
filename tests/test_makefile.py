@@ -792,6 +792,66 @@ def test_env_file_in_the_working_directory_is_not_announced():
     assert "which is outside" not in result.stdout
 
 
+def _recipe_bodies():
+    """Every target's recipe text, keyed by target name.
+
+    A target line is unindented and ends in a colon; its recipe is the run of
+    tab-indented lines that follows. Good enough for this Makefile, and the
+    point is to read the recipes rather than trust that a call was pasted
+    into the right one.
+    """
+    bodies = {}
+    current = None
+    for line in (REPO_ROOT / "Makefile").read_text().splitlines():
+        if line.startswith("\t"):
+            if current:
+                bodies[current] += line + "\n"
+            continue
+        if line and not line[0].isspace() and ":" in line:
+            name = line.split(":", 1)[0].strip()
+            if name and not name.startswith(".") and " " not in name:
+                current = name
+                bodies.setdefault(current, "")
+                continue
+        current = None
+    return bodies
+
+
+@pytest.mark.parametrize(
+    ("var", "resolved"),
+    [
+        ("BACKUP_FILTER_RULES", "_backup_filter_rules"),
+        ("RESTORE_EXCLUDE_LIST", "_restore_exclude_list"),
+        ("RESTORE_PATHS_FILE", "_restore_paths_file"),
+    ],
+)
+def test_every_target_that_mounts_a_config_file_also_validates_it(var, resolved):
+    """Mounting and validating must be the same set of targets, both ways.
+
+    Two failures this catches, one in each direction, and the first shipped:
+
+    - A target mounts the file without validating it, so a missing source
+      reaches Docker and becomes an empty directory bind mount, which is the
+      failure _require_config_file exists to prevent. run_container and
+      run_container_as_root were in this state.
+    - A target validates a file it never mounts, so an unrelated missing file
+      blocks a perfectly valid run. view and view_as_root were in this state,
+      and view.sh takes no filter rules argument at all.
+
+    Both were found by CodeRabbit on #112 after the checks were attached by
+    matching each recipe's passkey path rather than by reading what it mounts.
+    """
+    bodies = _recipe_bodies()
+    mounts = {t for t, b in bodies.items() if f"--volume $({resolved})" in b}
+    checks = {t for t, b in bodies.items() if f"_require_config_file,{var}" in b}
+
+    assert mounts, f"no target mounts $({resolved}); the patterns have drifted"
+    assert mounts == checks, (
+        f"{var}: mounted without validation in {sorted(mounts - checks)}; "
+        f"validated without mounting in {sorted(checks - mounts)}"
+    )
+
+
 # --------------------------------------------------------------------------
 # new-profile.
 # --------------------------------------------------------------------------

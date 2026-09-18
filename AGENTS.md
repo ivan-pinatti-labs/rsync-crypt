@@ -836,6 +836,16 @@ the container gets a directory where it expects a file and the real cause never
 surfaces. `GOCRYPTFS_PASSKEY_FILE` already carried a guard against the same
 artifact.
 
+Which targets carry that check is decided by what each recipe **mounts**, not
+by what it looks like it should need. `view` and `view_as_root` never mount the
+filter rules and `view.sh` takes no such argument, so a check there only blocks
+a valid run; `run_container` and `run_container_as_root` do mount them and so
+need one. Attaching the calls by matching each recipe's passkey path instead
+got both pairs backwards on #112.
+`test_every_target_that_mounts_a_config_file_also_validates_it` asserts the two
+sets are equal in both directions, which is the invariant rather than the two
+instances.
+
 That check tests `-r` as well as `-f`, so it matches what its own error
 message claims. A regular file the invoking user cannot read would otherwise
 pass and fail inside the container instead, and under rootless Podman or
