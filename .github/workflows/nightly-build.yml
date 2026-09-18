@@ -181,7 +181,7 @@ jobs:
         # commit is how code scanning dedupes, so without distinct
         # categories each later upload would silently replace an earlier
         # one on this run's commit instead of appearing alongside it.
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: scout-results-amd64.sarif
           category: scout-amd64
@@ -198,7 +198,7 @@ jobs:
           sarif-file: scout-results-arm64.sarif
 
       - name: Upload the Docker Scout (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: scout-results-arm64.sarif
           category: scout-arm64
@@ -231,7 +231,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (amd64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: trivy-results-amd64.sarif
           category: trivy-amd64
@@ -250,7 +250,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           sarif_file: trivy-results-arm64.sarif
           category: trivy-arm64
