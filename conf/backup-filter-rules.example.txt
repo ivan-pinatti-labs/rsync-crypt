@@ -64,9 +64,16 @@
 # and rsync stats each entry on every run, and a package cache is mostly
 # enormous numbers of tiny files.
 #
-# Measured on one developer home directory: excluding these took the transfer
-# from 616,235 entries to 181,693, a drop of 70 percent, and from 57.1 GiB to
-# 49.2 GiB. The npm cache alone was 356,067 of those entries.
+# Measured 2026-09-18 over one developer home directory, with
+#   rsync -a -n --filter='. <this file>' --out-format='%l %n' "$HOME"/ /nope/
+# counting lines and summing the first field. Excluding these took the
+# transfer from 619,140 entries to 184,555, a drop of 70 percent, and from
+# 57.1 GiB to 49.9 GiB. The npm cache alone was 356,067 of those entries,
+# 58 percent of the whole file count, for 5.7 GiB.
+#
+# The absolute numbers are one machine on one day and will not reproduce
+# anywhere else; the command is here so the shape of the result can be
+# checked against your own home directory rather than taken on faith.
 # =============================================================================
 
 # npm: _cacache (content addressed tarballs) and _npx (throwaway package
@@ -95,10 +102,14 @@
 - .local/share/virtualenv
 
 # JVM, Rust and Go module caches
-# .gradle is excluded whole, which also drops ~/.gradle/gradle.properties.
-# Narrow this to .gradle/caches and .gradle/wrapper/dists if you keep signing
-# configuration there.
-- .gradle
+# Only the regenerable parts of ~/.gradle, never the directory as a whole:
+# gradle.properties lives there too and often carries signing configuration
+# and credentials, which nothing can regenerate. Same reason .m2/repository
+# is named rather than .m2, which holds settings.xml.
+- .gradle/caches
+- .gradle/wrapper/dists
+- .gradle/daemon
+- .gradle/native
 - .m2/repository
 - .cargo/registry
 - .rustup/toolchains

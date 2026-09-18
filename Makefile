@@ -13,26 +13,30 @@ ENV_FILE ?= .env
 _env_dir := $(dir $(abspath $(ENV_FILE)))
 
 # Resolve one env file value to a path make can hand to 'docker run
-# --volume'. An absolute value is returned byte for byte, its env file quotes
-# included: those quotes are the only quoting the shell sees at a --volume
-# site, so stripping them would split a path containing a space into two
-# arguments. See the AGENTS.md section on why Makefile expansions are wrapped
-# in subst, and note that this is the opposite case to the positional
-# arguments, which do get stripped because make adds its own quotes there.
+# --volume'. Both branches strip the env file's own quotes and the result is
+# wrapped in exactly one pair, so the shell sees a single argument whether or
+# not the author quoted the value. This is the same reasoning as the
+# positional arguments (see the AGENTS.md section on why Makefile expansions
+# are wrapped in subst), and the reason --volume sites are otherwise left
+# alone does not apply once a value is being rewritten anyway.
 #
-# $(filter /%,...) has to see past those quotes to judge absoluteness, hence
-# the inner $(subst ",,...). $(filter) splits on whitespace, so a value like
-# /mnt/my backups/rules.txt arrives as two words, but only the first word can
-# carry the leading slash and matching any word is enough, so a space in an
-# absolute path is still recognised. A relative value never has a first word
-# starting with /, so the two cases stay distinguishable.
+# Quoting on both branches rather than passing an absolute value through
+# untouched: an unquoted absolute value is legal in an env file, and
+# '/mnt/my backups/rules.txt' written without quotes would otherwise reach
+# the shell bare and split into two arguments, mounting neither path.
 #
-# The rewritten branch re-adds the quotes the caller's value may not have had
-# and collapses the /./ that joining a trailing-slash directory to a leading
-# ./ value produces. $(subst) rather than $(patsubst) for that collapse:
-# patsubst operates on whitespace-separated words and would mangle a path
-# with a space, the same trap documented in AGENTS.md.
-env_rel = $(if $(filter /%,$(subst ",,$(1))),$(1),"$(subst /./,/,$(_env_dir)$(subst ",,$(1)))")
+# $(filter /%,...) has to see past the quotes to judge absoluteness, hence
+# the inner $(subst ",,...). $(filter) splits on whitespace, so that same
+# value arrives as two words, but only the first word can carry the leading
+# slash and matching any word is enough, so a space in an absolute path is
+# still recognised. A relative value never has a first word starting with /,
+# so the two cases stay distinguishable.
+#
+# The relative branch also collapses the /./ that joining a trailing-slash
+# directory to a leading ./ value produces. $(subst) rather than $(patsubst)
+# for that collapse: patsubst operates on whitespace-separated words and
+# would mangle a path with a space, the same trap documented in AGENTS.md.
+env_rel = "$(if $(filter /%,$(subst ",,$(1))),$(subst ",,$(1)),$(subst /./,/,$(_env_dir)$(subst ",,$(1))))"
 
 # Fail before 'docker run' when a resolved config path is not a readable
 # file. Without this the container runtime silently creates an empty
@@ -40,8 +44,14 @@ env_rel = $(if $(filter /%,$(subst ",,$(1))),$(1),"$(subst /./,/,$(_env_dir)$(su
 # directory where it expects a file and the real cause never surfaces. The
 # Makefile already guards GOCRYPTFS_PASSKEY_FILE against the same artifact.
 # $(1) is the variable name, $(2) its resolved and quoted path.
+#
+# -r as well as -f, so the check matches what the error message claims. A
+# regular file the invoking user cannot read passes -f and then fails inside
+# the container, which is the late and unclear failure this exists to
+# prevent: under rootless Podman or Docker the container's root maps back to
+# that same user, so it has no more access to the file than this check does.
 define _require_config_file
-if [ ! -f $(2) ]; then \
+if [ ! -f $(2) ] || [ ! -r $(2) ]; then \
 	printf '%s\n' \
 		"Error: $(1) does not name a readable file." \
 		"  resolved to: "$(2) \

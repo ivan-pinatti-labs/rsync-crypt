@@ -676,7 +676,7 @@ def test_relative_config_path_containing_a_space_stays_one_argument(tmp_path):
 
 
 def test_absolute_config_path_containing_a_space_stays_one_argument(tmp_path):
-    """The absolute branch keeps the caller's quotes rather than re-adding them."""
+    """A quoted absolute path with a space survives as one argument."""
     conf_dir = tmp_path / "abs space"
     conf_dir.mkdir()
     rules = conf_dir / "rules.txt"
@@ -685,6 +685,51 @@ def test_absolute_config_path_containing_a_space_stays_one_argument(tmp_path):
     env_file = _env_file_with_overrides(tmp_path, {"BACKUP_FILTER_RULES": f'"{rules}"'})
     source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
     assert source == str(rules)
+
+
+def test_unquoted_absolute_path_containing_a_space_stays_one_argument(tmp_path):
+    """The absolute branch has to add quotes, not assume the author did.
+
+    An unquoted value is a legal way to write a path in an env file, and
+    _env_file_with_overrides writes overrides exactly as given for that
+    reason. An earlier env_rel returned an absolute value untouched on the
+    theory that the env file's own quotes were the only quoting a --volume
+    site sees, which is true only while a value is passed through unchanged.
+    Without quotes of its own the path split into two arguments and neither
+    half named a real file. Caught by CodeRabbit on #112.
+    """
+    conf_dir = tmp_path / "abs unquoted"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {"BACKUP_FILTER_RULES": str(rules)})
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(rules)
+
+
+def test_unreadable_config_file_fails_before_docker_runs(tmp_path):
+    """The check tests readability, which is what its error message claims.
+
+    A regular file with no read permission passes -f. Under rootless Podman
+    or Docker the container's root maps back to the invoking user, so it
+    cannot read the file either and the run fails later and less clearly.
+    """
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+    rules.chmod(0o000)
+    try:
+        env_file = _env_file_with_overrides(
+            tmp_path, {"BACKUP_FILTER_RULES": "./conf/rules.txt"}
+        )
+        result = run(["make", "backup", f"ENV_FILE={env_file}"])
+        assert result.returncode != 0
+        assert "BACKUP_FILTER_RULES" in result.stderr
+        assert str(rules) in result.stderr
+    finally:
+        rules.chmod(0o600)
 
 
 @pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)

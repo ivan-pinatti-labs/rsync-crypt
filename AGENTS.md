@@ -810,10 +810,15 @@ than documenting. Filed as
 
 Three things about `env_rel` that look like they could be simplified and cannot:
 
-- **An absolute value is returned byte for byte, quotes included.** Those
-  quotes are the only quoting the shell sees at a `--volume` site, per the
-  section above, so re-emitting a stripped value would split a path containing
-  a space into two arguments.
+- **Both branches strip the env file's quotes and the whole result takes
+  exactly one pair.** Passing an absolute value through untouched looks
+  tempting, since the section above says a `--volume` site relies on the env
+  file's own quotes. It is wrong here: an unquoted absolute value is legal in
+  an env file, and `/mnt/my backups/x.txt` written without quotes would reach
+  the shell bare and split into two arguments, mounting neither path. That
+  reasoning only holds while a value is passed through unchanged, and this one
+  is being rewritten anyway. CodeRabbit caught it on #112 after the first
+  version quoted the relative branch alone.
 - **`$(filter /%,...)` has to strip quotes first, and tolerates the split.**
   `filter` operates on whitespace-separated words, so `/mnt/my backups/x.txt`
   arrives as two words. Matching any word is enough, because only the first
@@ -830,6 +835,13 @@ missing bind mount source is to create an empty *directory* and mount that, so
 the container gets a directory where it expects a file and the real cause never
 surfaces. `GOCRYPTFS_PASSKEY_FILE` already carried a guard against the same
 artifact.
+
+That check tests `-r` as well as `-f`, so it matches what its own error
+message claims. A regular file the invoking user cannot read would otherwise
+pass and fail inside the container instead, and under rootless Podman or
+Docker that is not a case the container can recover: `--user root` maps back
+to the invoking user, so it has exactly the access this check does. See
+"`USER 1000` is inert on purpose" below.
 
 ### `conf/*.example.txt` are templates; a user's own copies are gitignored
 
