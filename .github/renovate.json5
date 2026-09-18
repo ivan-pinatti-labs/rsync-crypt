@@ -212,22 +212,27 @@
     // The development container's base image, pinned by digest in
     // .devcontainer/Dockerfile.
     //
-    // automerge: false is load-bearing too. The first rule above grants
-    // automerge to `digest` updates, for the action SHA refreshes that are
-    // its routine case, and a base image digest bump is a digest update, so
-    // without this it would merge unattended. scripts/assert-pin-only-diff.py
-    // does not grade .devcontainer/Dockerfile as a pin surface either, so
-    // `Pin Only` would refuse it regardless; this rule means the outcome does
-    // not rest on that.
+    // Merged unattended, granted here rather than inherited: the first rule
+    // above already grants automerge to digests, but stating it here keeps this
+    // policy independent of that grant. asdf plugin commits below still wait
+    // for a person. This is the
+    // organization's own image, built by ivan-pinatti-labs/devcontainer-images,
+    // and the quality gate lives there rather than in each consumer: that
+    // repository ages its own upstream inputs through a seven day
+    // minimumReleaseAge, sends Ubuntu minor and major moves and asdf bumps to a
+    // person, and only publishes from a reviewed merge to main. A digest
+    // arriving here has therefore already passed that gate, and `Pin Only`
+    // grades the `ARG BASE_IMAGE=<image>@sha256:<digest>` line (IMAGE_DIGEST in
+    // scripts/assert-pin-only-diff.py), so the ordinary bot lane approves it.
     // GHCR returns no release timestamp for a digest, so under Renovate's
     // default minimumReleaseAgeBehaviour (timestamp-required) the seven day
     // window above would hold every base image bump forever and, with
     // internalChecksFilter strict, never open the pull request at all.
     // Measured with a dry-run=full: "digest update of
     // ghcr.io/ivan-pinatti-labs/devcontainer-base has no releaseTimestamp to
-    // age against". timestamp-optional lets the update be offered; the review
-    // stands in for the age window, exactly as it does for the asdf plugin
-    // commits above.
+    // age against". timestamp-optional lets the update be offered; the seven
+    // day window is applied upstream instead, in devcontainer-images, where the
+    // image's own inputs are aged before anything is published.
     {
       matchManagers: ["dockerfile"],
       matchFileNames: [".devcontainer/Dockerfile"],
@@ -236,7 +241,8 @@
       groupSlug: "devcontainer-base",
       labels: ["dependencies", "tooling"],
       minimumReleaseAgeBehaviour: "timestamp-optional",
-      automerge: false,
+      automerge: true,
+      addLabels: ["automerge"],
     },
     // Scoped to the datasource rather than to the manager: the second custom
     // regex manager below watches asdf plugin commits through git-refs, which
