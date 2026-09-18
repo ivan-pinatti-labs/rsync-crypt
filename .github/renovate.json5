@@ -212,7 +212,10 @@
     // The development container's base image, pinned by digest in
     // .devcontainer/Dockerfile.
     //
-    // Merged unattended, like every other pin here. This is the
+    // Merged unattended, granted here rather than inherited: the first rule
+    // above already grants automerge to digests, but stating it here keeps this
+    // policy independent of that grant. asdf plugin commits below still wait
+    // for a person. This is the
     // organization's own image, built by ivan-pinatti-labs/devcontainer-images,
     // and the quality gate lives there rather than in each consumer: that
     // repository ages its own upstream inputs through a seven day
