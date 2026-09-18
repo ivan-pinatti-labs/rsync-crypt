@@ -77,7 +77,7 @@ def test_accepts_a_first_time_github_action_pin():
             ".github/workflows/pull-request-validation.yml",
             f"       - name: Checkout\n"
             f"-        uses: actions/checkout@v7\n"
-            f"+        uses: actions/checkout@{SHA}\n",
+            f"+        uses: actions/checkout@{SHA} # v7\n",
         )
     )
     assert result.returncode == 0, result.stdout
@@ -92,7 +92,7 @@ def test_accepts_a_first_time_pin_as_a_yaml_list_item():
             ".github/workflows/pull-request-validation.yml",
             f"     steps:\n"
             f"-      - uses: actions/checkout@v7\n"
-            f"+      - uses: actions/checkout@{SHA}\n",
+            f"+      - uses: actions/checkout@{SHA} # v7\n",
         )
     )
     assert result.returncode == 0, result.stdout
@@ -105,10 +105,64 @@ def test_accepts_an_uppercase_first_time_pin():
             ".github/workflows/pull-request-validation.yml",
             f"       - name: Checkout\n"
             f"-        uses: actions/checkout@v7\n"
-            f"+        uses: actions/checkout@{SHA.upper()}\n",
+            f"+        uses: actions/checkout@{SHA.upper()} # v7\n",
         )
     )
     assert result.returncode == 0, result.stdout
+
+
+def test_accepts_a_sha_bump_that_also_moves_the_version_comment():
+    # The shape every real Renovate action bump has, and the one this script
+    # refused until ACTION_SHA learned to fold the comment into the same
+    # placeholder: the SHA moves and the trailing release comment moves with
+    # it, because the tag the SHA was resolved from changed too. The fixtures
+    # above pinned `# v7` on both sides, so nothing here ever exercised it.
+    #
+    # Measured on #105, a github/codeql-action bump across three workflows,
+    # which sat refused with "removed a line that was not re-added" for every
+    # pin in it. No action SHA bump had ever reached an unattended merge in
+    # this repository before that was fixed.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
+            f"-        uses: actions/checkout@{SHA} # v4.37.9\n"
+            f"+        uses: actions/checkout@{OTHER_SHA} # v4.38.0\n",
+        )
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_refuses_a_first_time_pin_that_arrives_with_no_version_comment():
+    # pinDigests writes the release comment in the same edit that adds the
+    # SHA, so a first-time pin carrying no comment is not a shape a clean
+    # bump produces. It reads as structural and waits for a person, the same
+    # fail closed direction every other shape in this file takes.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
+            f"-        uses: actions/checkout@v7\n"
+            f"+        uses: actions/checkout@{SHA}\n",
+        )
+    )
+    assert result.returncode == 1
+
+
+def test_refuses_trailing_text_changing_beside_a_real_sha_bump():
+    # Only a release token immediately after the SHA is folded into the
+    # placeholder. Anything else trailing the pin stays literal, so an edit
+    # hidden there is still caught even though the SHA itself moved
+    # legitimately.
+    result = _check(
+        _diff(
+            ".github/workflows/pull-request-validation.yml",
+            f"       - name: Checkout\n"
+            f"-        uses: actions/checkout@{SHA} # v7 keep\n"
+            f"+        uses: actions/checkout@{OTHER_SHA} # v8 changed\n",
+        )
+    )
+    assert result.returncode == 1
 
 
 def test_refuses_a_first_time_pin_with_no_visible_context():
@@ -121,7 +175,7 @@ def test_refuses_a_first_time_pin_with_no_visible_context():
         _diff(
             ".github/workflows/pull-request-validation.yml",
             f"-        uses: actions/checkout@v7\n"
-            f"+        uses: actions/checkout@{SHA}\n",
+            f"+        uses: actions/checkout@{SHA} # v7\n",
         )
     )
     assert result.returncode == 1
