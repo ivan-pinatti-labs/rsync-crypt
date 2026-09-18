@@ -19,6 +19,9 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The shipped conf templates. Named once so the env file the fixtures
+# write stays inside the line length the editorconfig check enforces.
+CONF_DIR = REPO_ROOT / "conf"
 
 # Tagged separately from the default local/gocryptfs so the suite cannot
 # overwrite an image the user relies on.
@@ -114,7 +117,7 @@ def workspace(tmp_path_factory):
     (src / ".config" / "Code" / "User" / "settings.json").write_text('{"a": 1}\n')
 
     # Files the filter rules should drop. The lock and cache patterns are
-    # written as '**/...' in conf/backup-filter-rules.txt, so they are placed
+    # written as '**/...' in conf/backup-filter-rules.example.txt, so they are placed
     # in a subdirectory where that pattern applies. 'backup' is excluded by a
     # bare basename rule and so is checked at the top level.
     (src / "Documents" / "app.lock").write_text("lock\n")
@@ -386,12 +389,12 @@ def env_file(workspace, remote, initialised_source):
                 f'GOCRYPTFS_PASSKEY_FILE="{workspace["passkey"]}"',
                 "PARANOID_MODE=false",
                 f'BACKUP_SOURCE_FOLDER="{workspace["src"]}"',
-                f'BACKUP_FILTER_RULES="{REPO_ROOT}/conf/backup-filter-rules.txt"',
+                f'BACKUP_FILTER_RULES="{CONF_DIR}/backup-filter-rules.example.txt"',
                 f'REMOTE_SERVER="{remote["target"]}"',
                 f'REMOTE_SERVER_BACKUP_FOLDER="{REMOTE_BACKUP_DIR}"',
                 f'RESTORE_DESTINATION="{workspace["restore"]}"',
-                f'RESTORE_EXCLUDE_LIST="{REPO_ROOT}/conf/restore-exclude-list.txt"',
-                f'RESTORE_PATHS_FILE="{REPO_ROOT}/conf/restore-paths.txt"',
+                f'RESTORE_EXCLUDE_LIST="{CONF_DIR}/restore-exclude-list.example.txt"',
+                f'RESTORE_PATHS_FILE="{CONF_DIR}/restore-paths.example.txt"',
                 "RSYNC_RATE_LIMIT=0",
                 # false so a genuine failure surfaces as a failed test instead
                 # of retrying with backoff until the timeout expires.

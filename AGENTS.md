@@ -82,16 +82,17 @@ Makefile-driven. Alpine image. Key binaries: gocryptfs, rsync, sshfs, openssh (s
 
 ## Key Files
 
-| File                            | Purpose                                                                    |
-| ------------------------------- | -------------------------------------------------------------------------- |
-| `Makefile`                      | All targets; reads env file via `ENV_FILE ?= .env` + `include $(ENV_FILE)` |
-| `.env`                          | User config (not committed); `.env.example` is the template                |
-| `scripts/backup.sh`             | Main backup script, called inside Docker                                   |
-| `scripts/restore.sh`            | Restore script                                                             |
-| `scripts/view.sh`               | SFTP view mode via sshd inside container                                   |
-| `conf/backup-filter-rules.txt`  | rsync filter rules (+ include, - exclude)                                  |
-| `conf/restore-exclude-list.txt` | Restore exclusions                                                         |
-| `conf/restore-paths.txt`        | Selective restore paths (empty = restore all)                              |
+| File                                    | Purpose                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| `Makefile`                              | All targets; reads env file via `ENV_FILE ?= .env` + `include $(ENV_FILE)` |
+| `.env`                                  | User config (not committed); `.env.example` is the template                |
+| `scripts/backup.sh`                     | Main backup script, called inside Docker                                   |
+| `scripts/restore.sh`                    | Restore script                                                             |
+| `scripts/view.sh`                       | SFTP view mode via sshd inside container                                   |
+| `conf/backup-filter-rules.example.txt`  | rsync filter rules (+ include, - exclude)                                  |
+| `conf/restore-exclude-list.example.txt` | Restore exclusions                                                         |
+| `conf/restore-paths.example.txt`        | Selective restore paths (empty = restore all)                              |
+| `conf/*.<profile>.txt`                  | A user's own copies, gitignored; `make new-profile NAME=<profile>`         |
 
 ## Architecture
 
@@ -789,6 +790,65 @@ Only the seven variables that reach positional arguments are wrapped.
 the env file's own quotes are the only quoting the shell sees, so a value with a
 space already parses as one word, and stripping them without adding real quotes
 would regress that.
+
+### Config paths resolve against the env file, not the working directory
+
+`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST` and `RESTORE_PATHS_FILE` are the
+three variables documented with relative defaults, and `env_rel` at the top of
+the `Makefile` resolves each against `$(dir $(abspath $(ENV_FILE)))` before it
+reaches `docker run --volume`. Every other path variable is documented absolute
+and is left alone, deliberately: a relative `BACKUP_SOURCE_FOLDER` is a bug
+worth failing on rather than quietly resolving.
+
+Before this, a relative value was handed to the container runtime untouched and
+resolved against make's working directory, so `ENV_FILE=/elsewhere/.env.mine
+make backup` (a combination `docs/USAGE.md` recommends) mounted whatever
+happened to sit at that relative path *here*. When the two checkouts had not
+diverged there was no symptom at all, which is what made it worth fixing rather
+than documenting. Filed as
+[#111](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/111).
+
+Three things about `env_rel` that look like they could be simplified and cannot:
+
+- **An absolute value is returned byte for byte, quotes included.** Those
+  quotes are the only quoting the shell sees at a `--volume` site, per the
+  section above, so re-emitting a stripped value would split a path containing
+  a space into two arguments.
+- **`$(filter /%,...)` has to strip quotes first, and tolerates the split.**
+  `filter` operates on whitespace-separated words, so `/mnt/my backups/x.txt`
+  arrives as two words. Matching any word is enough, because only the first
+  word can carry the leading slash and a relative value never starts with one.
+- **`$(subst /./,/,...)` collapses the join, not `$(patsubst ./%,%,...)`.**
+  `patsubst` is word-based and mangles a path with a space, the same trap the
+  section above documents.
+
+The resolution is stated rather than inferred: when `$(dir $(abspath
+$(ENV_FILE)))` differs from `$(CURDIR)`, the Makefile prints a two line note
+naming both. And `_require_config_file` fails before `docker run` when a
+resolved path is not a readable file, because the runtime's response to a
+missing bind mount source is to create an empty *directory* and mount that, so
+the container gets a directory where it expects a file and the real cause never
+surfaces. `GOCRYPTFS_PASSKEY_FILE` already carried a guard against the same
+artifact.
+
+### `conf/*.example.txt` are templates; a user's own copies are gitignored
+
+`conf/` ships three `.example.txt` files and `.gitignore` carries `conf/*.txt`
+with a `!conf/*.example.txt` negation, so any other `.txt` there is somebody's
+own copy and never reaches a commit. `.env.example` points at the example files
+directly, which is what keeps a fresh clone working with no copy step.
+
+`make new-profile NAME=<profile>` writes `.env.<profile>` plus a
+`conf/<file>.<profile>.txt` copy of each example and rewrites the three path
+variables in the generated env file to point at those copies, using relative
+paths so the profile survives being moved. It refuses to overwrite an existing
+file and rejects a `NAME` that is not usable as a filename suffix. It sits
+alongside `help` in the `filter-out` list that decides whether a target
+requires an env file, because it is the target that creates one.
+
+Do not "fix" a customised filter list by editing `conf/backup-filter-rules.example.txt`.
+That file is the shipped default every fresh clone starts from; local rules
+belong in a profile copy.
 
 ### `pre-commit run --all-files` only sees tracked files
 

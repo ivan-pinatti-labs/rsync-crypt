@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
+import subprocess
 
 import pytest
 from conftest import REPO_ROOT, _read_var, run
@@ -566,3 +568,279 @@ def test_quoted_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_p
     assert args[8] == ""  # GOCRYPTFS_CIPHER: quoted-and-empty, not vanished
     assert args[9] == _read_var(example_text, "GOCRYPTFS_SCRYPT_N")
     assert args[10] == _read_var(example_text, "GOCRYPTFS_ENCRYPT_NAMES")
+
+
+# --------------------------------------------------------------------------
+# Config path resolution (issue #111).
+#
+# BACKUP_FILTER_RULES, RESTORE_EXCLUDE_LIST and RESTORE_PATHS_FILE are the
+# three variables .env.example documents with relative defaults, and the
+# Makefile hands each straight to 'docker run --volume'. A relative value used
+# to be resolved by the container runtime against make's working directory
+# rather than against the env file, so an env file kept elsewhere mounted
+# whatever happened to sit at that relative path here, silently and with no
+# symptom while the two copies agreed.
+# --------------------------------------------------------------------------
+
+_CONFIG_PATH_VARS = (
+    ("BACKUP_FILTER_RULES", "backup", "/backup/brave-filter-rules.txt"),
+    ("RESTORE_EXCLUDE_LIST", "restore", "/restore/restore-exclude-list.txt"),
+    ("RESTORE_PATHS_FILE", "restore", "/restore/restore-paths.txt"),
+)
+
+
+def _volume_source(target, env_file, container_path):
+    """The host side of the --volume flag mounting container_path.
+
+    Reads the flag out of 'make --dry-run' and shlex-parses just that token,
+    so the assertion sees the path the shell would, with the env file's own
+    quote characters already resolved.
+    """
+    result = run(["make", "--dry-run", target, f"ENV_FILE={env_file}"])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    matches = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if "--volume" in line and line.strip().endswith(f":{container_path} \\")
+    ]
+    assert len(matches) == 1, f"expected one mount of {container_path}, got {matches}"
+
+    flag = matches[0].rstrip("\\").strip()
+    spec = shlex.split(flag)[1]  # drop the literal '--volume'
+    return spec[: -len(f":{container_path}")]
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_relative_config_path_resolves_against_the_env_file(
+    tmp_path, var, target, container_path
+):
+    """A relative value follows the env file, not make's working directory.
+
+    The env file lives in tmp_path while make runs in REPO_ROOT, which is the
+    combination docs/USAGE.md recommends and the one that used to break.
+    """
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {var: "./conf/rules.txt"})
+    source = _volume_source(target, env_file, container_path)
+
+    assert source == str(conf_dir / "rules.txt")
+    assert "/./" not in source  # the trailing-slash join is collapsed
+    assert not source.startswith(str(REPO_ROOT))
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_absolute_config_path_passes_through_unchanged(
+    tmp_path, var, target, container_path
+):
+    """An absolute value is never rewritten, wherever the env file lives."""
+    rules = tmp_path / "somewhere-else.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {var: str(rules)})
+    assert _volume_source(target, env_file, container_path) == str(rules)
+
+
+def test_default_env_file_at_the_repo_root_is_unchanged(tmp_path):
+    """The pre-existing default resolves exactly where it always did.
+
+    .env.example ships relative conf paths and the overwhelming majority of
+    users run make from the repository root with an env file beside it, so
+    this is the case the change must not disturb.
+    """
+    source = _volume_source(
+        "backup", REPO_ROOT / ".env.example", "/backup/brave-filter-rules.txt"
+    )
+    assert source == str(REPO_ROOT / "conf" / "backup-filter-rules.example.txt")
+
+
+def test_relative_config_path_containing_a_space_stays_one_argument(tmp_path):
+    """A rewritten path with a space must not split into two arguments.
+
+    The env file's own quotes are the only quoting the shell sees at a
+    --volume site, so env_rel has to re-quote the value it rewrites. Without
+    that, 'docker run' would receive two arguments and mount neither path.
+    """
+    conf_dir = tmp_path / "my conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(
+        tmp_path, {"BACKUP_FILTER_RULES": '"./my conf/rules.txt"'}
+    )
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(conf_dir / "rules.txt")
+
+
+def test_absolute_config_path_containing_a_space_stays_one_argument(tmp_path):
+    """The absolute branch keeps the caller's quotes rather than re-adding them."""
+    conf_dir = tmp_path / "abs space"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {"BACKUP_FILTER_RULES": f'"{rules}"'})
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(rules)
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_missing_config_file_fails_before_docker_runs(
+    tmp_path, var, target, container_path
+):
+    """A path that names no file stops the run with an actionable message.
+
+    Left unchecked, the container runtime creates an empty directory at a
+    missing bind mount source and mounts that, so the container receives a
+    directory where it expects a file and the real cause never surfaces.
+
+    Every config variable the target reads except the one under test is
+    pinned to a real file, because a target checks them in order and would
+    otherwise fail on whichever sibling the env file's own relative default
+    happens to resolve to first.
+    """
+    overrides = {
+        other: str(REPO_ROOT / "conf" / f"{stem}.example.txt")
+        for other, stem in (
+            ("BACKUP_FILTER_RULES", "backup-filter-rules"),
+            ("RESTORE_EXCLUDE_LIST", "restore-exclude-list"),
+            ("RESTORE_PATHS_FILE", "restore-paths"),
+        )
+        if other != var
+    }
+    overrides[var] = "./conf/absent.txt"
+
+    env_file = _env_file_with_overrides(tmp_path, overrides)
+    result = run(["make", target, f"ENV_FILE={env_file}"])
+
+    assert result.returncode != 0
+    assert var in result.stderr
+    assert str(tmp_path / "conf" / "absent.txt") in result.stderr
+    assert str(env_file) in result.stderr
+
+
+def test_env_file_outside_the_working_directory_is_announced(tmp_path):
+    """The resolution is stated rather than left to be inferred."""
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(
+        tmp_path, {"BACKUP_FILTER_RULES": "./conf/rules.txt"}
+    )
+    result = run(["make", "--dry-run", "backup", f"ENV_FILE={env_file}"])
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert str(env_file) in result.stdout
+    assert f"{tmp_path}{os.sep}" in result.stdout
+
+
+def test_env_file_in_the_working_directory_is_not_announced():
+    """No note when there is nothing surprising to report."""
+    result = run(
+        ["make", "--dry-run", "backup", f"ENV_FILE={REPO_ROOT / '.env.example'}"]
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "which is outside" not in result.stdout
+
+
+# --------------------------------------------------------------------------
+# new-profile.
+# --------------------------------------------------------------------------
+
+
+def _new_profile(name, cwd):
+    return subprocess.run(
+        ["make", "new-profile", f"NAME={name}"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+
+@pytest.fixture
+def profile_workspace(tmp_path):
+    """A throwaway copy of the files new-profile reads and writes.
+
+    Copied rather than used in place so a test run never leaves .env.<name>
+    or conf/*.<name>.txt behind in the working tree.
+    """
+    shutil.copy(REPO_ROOT / "Makefile", tmp_path / "Makefile")
+    shutil.copy(REPO_ROOT / ".env.example", tmp_path / ".env.example")
+    shutil.copytree(REPO_ROOT / "conf", tmp_path / "conf")
+    return tmp_path
+
+
+def test_new_profile_creates_the_env_file_and_its_conf_copies(profile_workspace):
+    result = _new_profile("banana", profile_workspace)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    for created in (
+        ".env.banana",
+        "conf/backup-filter-rules.banana.txt",
+        "conf/restore-exclude-list.banana.txt",
+        "conf/restore-paths.banana.txt",
+    ):
+        assert (profile_workspace / created).is_file(), created
+
+    env_text = (profile_workspace / ".env.banana").read_text()
+    assert _read_var(env_text, "BACKUP_FILTER_RULES") == (
+        "./conf/backup-filter-rules.banana.txt"
+    )
+    assert _read_var(env_text, "RESTORE_EXCLUDE_LIST") == (
+        "./conf/restore-exclude-list.banana.txt"
+    )
+    assert _read_var(env_text, "RESTORE_PATHS_FILE") == (
+        "./conf/restore-paths.banana.txt"
+    )
+
+
+def test_new_profile_copies_rather_than_links_the_examples(profile_workspace):
+    """The copy is independent, so editing it cannot touch the tracked file."""
+    assert _new_profile("banana", profile_workspace).returncode == 0
+
+    copy = profile_workspace / "conf" / "backup-filter-rules.banana.txt"
+    example = profile_workspace / "conf" / "backup-filter-rules.example.txt"
+    assert copy.read_text() == example.read_text()
+
+    copy.write_text("- everything\n")
+    assert example.read_text() != copy.read_text()
+
+
+def test_new_profile_refuses_to_overwrite(profile_workspace):
+    assert _new_profile("banana", profile_workspace).returncode == 0
+
+    again = _new_profile("banana", profile_workspace)
+    assert again.returncode != 0
+    assert "already exists" in again.stderr
+
+
+@pytest.mark.parametrize("name", ["../evil", "a/b", "with space", ".", ".."])
+def test_new_profile_rejects_an_unusable_name(profile_workspace, name):
+    result = _new_profile(name, profile_workspace)
+    assert result.returncode != 0
+    assert "not usable as a file name suffix" in result.stderr
+
+
+def test_new_profile_without_a_name_prints_usage(profile_workspace):
+    result = subprocess.run(
+        ["make", "new-profile"],
+        cwd=profile_workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert result.returncode != 0
+    assert "Usage: make new-profile NAME=<profile>" in result.stderr
+
+
+def test_new_profile_needs_no_env_file(profile_workspace):
+    """It is the target that creates one, so requiring one first is circular."""
+    assert not (profile_workspace / ".env").exists()
+    assert _new_profile("banana", profile_workspace).returncode == 0

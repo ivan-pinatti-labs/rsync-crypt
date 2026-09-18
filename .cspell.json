@@ -108,6 +108,7 @@
     "zstd"
   ],
   "ignoreWords": [
+    "abspath",
     "addopts",
     "adduser",
     "argjson",
@@ -116,6 +117,7 @@
     "bookmarkbackups",
     "btrfs",
     "bwlimit",
+    "cacache",
     "cephfs",
     "cffconvert",
     "checkmake",
@@ -125,6 +127,7 @@
     "coderabbitai",
     "conftest",
     "crun",
+    "CURDIR",
     "curlftpfs",
     "datareporting",
     "davfs",
@@ -133,6 +136,7 @@
     "deprioritises",
     "deprioritized",
     "deprioritizes",
+    "dists",
     "dotenvlinter",
     "encfs",
     "endef",
@@ -169,6 +173,7 @@
     "mountinfo",
     "mozlz",
     "myconfig",
+    "mypy",
     "ncipollo",
     "nodev",
     "nodocker",
@@ -187,6 +192,7 @@
     "relatime",
     "Rollup",
     "rootdir",
+    "rustup",
     "semodule",
     "sessionstore",
     "setuid",
@@ -194,6 +200,7 @@
     "subvol",
     "sysfs",
     "testpaths",
+    "tflint",
     "Thunar",
     "timestampexpanded",
     "tmpfs",
@@ -207,6 +214,7 @@
     "userns",
     "vfat",
     "virtualenv",
+    "virtualenvs",
     "youruser",
     "zizmor"
   ]

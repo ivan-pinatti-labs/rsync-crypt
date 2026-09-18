@@ -259,13 +259,19 @@ curl -fsSL -o .env \
   "https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/${ref}/.env.example"
 
 # Which files get backed up
-curl -fsSL -o conf/backup-filter-rules.txt \
-  "https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/${ref}/conf/backup-filter-rules.txt"
+curl -fsSL -o conf/backup-filter-rules.example.txt \
+  "https://raw.githubusercontent.com/ivan-pinatti-labs/rsync-crypt/${ref}/conf/backup-filter-rules.example.txt"
 ```
 
 Both work equally well with `wget -O <file> <url>` if you prefer it. Read
 `.env` before sourcing it in the steps below regardless: it is a config
 template, but sourcing any file executes it as shell.
+
+The filter rules keep their `.example.txt` name above because that is what the
+downloaded `.env` already points at, so the pair works unedited. Rename it if
+you prefer, and set `BACKUP_FILTER_RULES` to match. A relative value there is
+resolved against the directory holding `.env`, so the two stay together
+wherever you put them.
 
 ### 2. Edit `.env`
 

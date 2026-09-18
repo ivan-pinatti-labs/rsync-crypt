@@ -29,6 +29,14 @@ jspm_packages/
 .env.*
 !.env.example
 
+# conf profiles ###
+# The .example.txt files are the shipped templates and are tracked. Every
+# other .txt in conf/ is somebody's own copy, made by hand or by
+# 'make new-profile NAME=<profile>', and stays local so a pull never
+# conflicts with a customised filter list.
+conf/*.txt
+!conf/*.example.txt
+
 # known hosts
 files/ssh/known_hosts
 

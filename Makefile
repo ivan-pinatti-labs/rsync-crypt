@@ -1,6 +1,61 @@
 ENV_FILE ?= .env
 .DEFAULT_GOAL := help
 
+# The directory holding ENV_FILE, absolute and with a trailing slash. Every
+# relative config path in that file is resolved against this rather than
+# against make's working directory, so an env file kept next to its conf
+# files keeps working when make runs from somewhere else entirely.
+#
+# $(abspath) is deliberate over $(realpath): it is pure string manipulation
+# and does not require the file to exist, which matters because the missing
+# ENV_FILE error below has to be reachable with a useful message rather than
+# collapsing to an empty directory first.
+_env_dir := $(dir $(abspath $(ENV_FILE)))
+
+# Resolve one env file value to a path make can hand to 'docker run
+# --volume'. An absolute value is returned byte for byte, its env file quotes
+# included: those quotes are the only quoting the shell sees at a --volume
+# site, so stripping them would split a path containing a space into two
+# arguments. See the AGENTS.md section on why Makefile expansions are wrapped
+# in subst, and note that this is the opposite case to the positional
+# arguments, which do get stripped because make adds its own quotes there.
+#
+# $(filter /%,...) has to see past those quotes to judge absoluteness, hence
+# the inner $(subst ",,...). $(filter) splits on whitespace, so a value like
+# /mnt/my backups/rules.txt arrives as two words, but only the first word can
+# carry the leading slash and matching any word is enough, so a space in an
+# absolute path is still recognised. A relative value never has a first word
+# starting with /, so the two cases stay distinguishable.
+#
+# The rewritten branch re-adds the quotes the caller's value may not have had
+# and collapses the /./ that joining a trailing-slash directory to a leading
+# ./ value produces. $(subst) rather than $(patsubst) for that collapse:
+# patsubst operates on whitespace-separated words and would mangle a path
+# with a space, the same trap documented in AGENTS.md.
+env_rel = $(if $(filter /%,$(subst ",,$(1))),$(1),"$(subst /./,/,$(_env_dir)$(subst ",,$(1)))")
+
+# Fail before 'docker run' when a resolved config path is not a readable
+# file. Without this the container runtime silently creates an empty
+# directory at the source path and bind mounts that, so the container gets a
+# directory where it expects a file and the real cause never surfaces. The
+# Makefile already guards GOCRYPTFS_PASSKEY_FILE against the same artifact.
+# $(1) is the variable name, $(2) its resolved and quoted path.
+define _require_config_file
+if [ ! -f $(2) ]; then \
+	printf '%s\n' \
+		"Error: $(1) does not name a readable file." \
+		"  resolved to: "$(2) \
+		"  env file:    $(abspath $(ENV_FILE))" \
+		"" \
+		"A relative value in the env file resolves against that file's own" \
+		"directory, not against the directory make was run from." \
+		"" \
+		"To create a profile's env file and its conf copies together:" \
+		"  make new-profile NAME=<profile>" >&2; \
+	exit 1; \
+fi
+endef
+
 # The eight version pins that live in the Dockerfile now, as ARG defaults,
 # not in the env file (see 'build' below). Listed once, here, and reused by
 # both the pre-include snapshot immediately below and the 'build' recipe
@@ -53,15 +108,39 @@ Usage, either of these:
   make <target> ENV_FILE=.env.myconfig
 
 If the file does not exist yet, create it first:
-  cp .env.example .env.myconfig
+  make new-profile NAME=myconfig    (env file plus its own conf copies)
+  cp .env.example .env.myconfig     (env file only)
 endef
 
-ifneq ($(filter-out help,$(MAKECMDGOALS)),)
+# 'new-profile' joins 'help' in not requiring an env file: it is the target
+# that creates one, so demanding one first would make it unreachable on a
+# fresh clone, which is exactly when it is most useful.
+ifneq ($(filter-out help new-profile,$(MAKECMDGOALS)),)
 ifeq ($(wildcard $(ENV_FILE)),)
 $(error $(_missing_env_file_message))
 endif
 
 include $(ENV_FILE)
+
+# Resolved once, here, rather than at each of the twelve --volume sites, so
+# the path a target mounts and the path _require_config_file reports are the
+# same string by construction and cannot drift apart.
+_backup_filter_rules  := $(call env_rel,${BACKUP_FILTER_RULES})
+_restore_exclude_list := $(call env_rel,${RESTORE_EXCLUDE_LIST})
+_restore_paths_file   := $(call env_rel,${RESTORE_PATHS_FILE})
+
+# Say so when the env file is not in the directory make is running from.
+# That combination is supported and documented, but it is also the one where
+# a relative config path used to resolve somewhere nobody intended, so the
+# resolution is stated rather than left to be inferred.
+#
+# The wording carries no colon on purpose. checkmake parses any line holding
+# one as a target declaration, so '$(info Note: ...)' is reported as an
+# undeclared phony target named '$(info Note'.
+ifneq ($(_env_dir),$(CURDIR)/)
+$(info Using env file $(abspath $(ENV_FILE)), which is outside $(CURDIR).)
+$(info Relative config paths in it resolve against $(_env_dir))
+endif
 endif
 
 SHELL := /bin/bash
@@ -148,7 +227,7 @@ endef
 .PHONY: all help build backup backup_as_root bb bbr brr
 .PHONY: restore restore_to_origin restore_as_root restore_as_root_to_origin
 .PHONY: r ro rr rro view view_as_root v vr
-.PHONY: run_container run_container_as_root check-passkey clean
+.PHONY: run_container run_container_as_root check-passkey clean new-profile
 .PHONY: third-party-licenses third-party-licenses-check
 
 all: build run_container
@@ -177,13 +256,15 @@ help:
 		'  run_container               Start an interactive user-backup container.' \
 		'  run_container_as_root       Start an interactive system-backup container.' \
 		'  check-passkey               Create or verify the passkey file.' \
+		'  new-profile NAME=<profile>  Create .env.<profile> and its own conf copies.' \
 		'  clean                       Remove backup state and image (prompts; destructive).' \
 		'  third-party-licenses        Regenerate THIRD_PARTY_LICENSES.md from the built image.' \
 		'  third-party-licenses-check  Fail if THIRD_PARTY_LICENSES.md has drifted from it.' \
 		'  help                        Show this help.' \
 		'' \
 		'If the env file does not exist, create it first:' \
-		'  cp .env.example .env.myconfig'
+		'  make new-profile NAME=myconfig    (env file plus its own conf copies)' \
+		'  cp .env.example .env.myconfig     (env file only)'
 
 # build and backup
 bb: build backup
@@ -201,6 +282,63 @@ rr:  restore_as_root
 rro: restore_as_root_to_origin
 v:   view
 vr:  view_as_root
+
+# Create a named profile: an env file plus its own copy of each shipped conf
+# example, every one carrying the profile's name. The point is that local
+# rules never touch the tracked examples, so 'git pull' cannot conflict with
+# them and a customised filter list is never at risk of being committed.
+#
+# The generated env file points at the generated copies with relative paths.
+# Those resolve against the env file's own directory rather than make's
+# working directory (see env_rel at the top), so the profile keeps working
+# when it is moved elsewhere or used from another checkout.
+#
+# Runs from the repository root, because that is where the conf examples it
+# copies live.
+new-profile:
+	@if [ -z "$(NAME)" ]; then \
+		printf '%s\n' \
+			"Usage: make new-profile NAME=<profile>" \
+			"" \
+			"Creates .env.<profile> and a conf/<file>.<profile>.txt copy of each" \
+			"shipped example, then points the env file at those copies." >&2; \
+		exit 1; \
+	fi
+	@case "$(NAME)" in \
+		""|.|..|*[!A-Za-z0-9._-]*) \
+			printf '%s\n' \
+				"Error: NAME '$(NAME)' is not usable as a file name suffix." \
+				"Allowed: letters, digits, dot, underscore and hyphen." >&2; \
+			exit 1 ;; \
+	esac
+	@for f in .env.$(NAME) \
+			conf/backup-filter-rules.$(NAME).txt \
+			conf/restore-exclude-list.$(NAME).txt \
+			conf/restore-paths.$(NAME).txt; do \
+		if [ -e "$$f" ]; then \
+			printf '%s\n' \
+				"Error: $$f already exists." \
+				"Remove it first, or choose another NAME." >&2; \
+			exit 1; \
+		fi; \
+	done
+	@cp conf/backup-filter-rules.example.txt conf/backup-filter-rules.$(NAME).txt && \
+	cp conf/restore-exclude-list.example.txt conf/restore-exclude-list.$(NAME).txt && \
+	cp conf/restore-paths.example.txt conf/restore-paths.$(NAME).txt && \
+	sed \
+		-e 's|^BACKUP_FILTER_RULES=.*|BACKUP_FILTER_RULES="./conf/backup-filter-rules.$(NAME).txt"|' \
+		-e 's|^RESTORE_EXCLUDE_LIST=.*|RESTORE_EXCLUDE_LIST="./conf/restore-exclude-list.$(NAME).txt"|' \
+		-e 's|^RESTORE_PATHS_FILE=.*|RESTORE_PATHS_FILE="./conf/restore-paths.$(NAME).txt"|' \
+		.env.example > .env.$(NAME) && \
+	printf '%s\n' \
+		"Created:" \
+		"  .env.$(NAME)" \
+		"  conf/backup-filter-rules.$(NAME).txt" \
+		"  conf/restore-exclude-list.$(NAME).txt" \
+		"  conf/restore-paths.$(NAME).txt" \
+		"" \
+		"All four are gitignored. Fill in .env.$(NAME), then run:" \
+		"  ENV_FILE=.env.$(NAME) make backup"
 
 # The eight version pins live in the Dockerfile now, as ARG defaults, not in
 # the env file. So this target passes no --build-arg at all by default and the
@@ -296,7 +434,8 @@ check-passkey:
 	fi
 
 backup:
-	@$(call _passkey_check,/backup/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/backup/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -306,7 +445,7 @@ backup:
 		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume ${BACKUP_SOURCE_FOLDER}:/backup/src \
-		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
+		--volume $(_backup_filter_rules):/backup/brave-filter-rules.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -328,7 +467,8 @@ backup:
 			"$(subst ",,${GOCRYPTFS_ENCRYPT_NAMES})"
 
 backup_as_root:
-	@$(call _passkey_check,/backup/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/backup/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -342,7 +482,7 @@ backup_as_root:
 		--volume /opt:/backup/src/opt \
 		--volume /root:/backup/src/root \
 		--volume /srv:/backup/src/srv \
-		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
+		--volume $(_backup_filter_rules):/backup/brave-filter-rules.txt \
 		--volume ${BACKUP_ENCRYPTION_CONF}:/backup/src/.gocryptfs.reverse.conf.original \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
@@ -366,7 +506,9 @@ backup_as_root:
 
 # Restore user backup to a staging directory (safe, review before moving)
 restore:
-	@$(call _passkey_check,/restore/passfile); \
+	@$(call _require_config_file,RESTORE_EXCLUDE_LIST,$(_restore_exclude_list)); \
+	$(call _require_config_file,RESTORE_PATHS_FILE,$(_restore_paths_file)); \
+	$(call _passkey_check,/restore/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -375,8 +517,8 @@ restore:
 		--security-opt apparmor:unconfined \
 		--entrypoint /bin/bash \
 		--volume ${RESTORE_DESTINATION}:/restore/origin \
-		--volume ${RESTORE_PATHS_FILE}:/restore/restore-paths.txt \
-		--volume ${RESTORE_EXCLUDE_LIST}:/restore/restore-exclude-list.txt \
+		--volume $(_restore_paths_file):/restore/restore-paths.txt \
+		--volume $(_restore_exclude_list):/restore/restore-exclude-list.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -398,7 +540,9 @@ restore:
 
 # Restore user backup directly to original home directory
 restore_to_origin:
-	@$(call _passkey_check,/restore/passfile); \
+	@$(call _require_config_file,RESTORE_EXCLUDE_LIST,$(_restore_exclude_list)); \
+	$(call _require_config_file,RESTORE_PATHS_FILE,$(_restore_paths_file)); \
+	$(call _passkey_check,/restore/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -407,8 +551,8 @@ restore_to_origin:
 		--security-opt apparmor:unconfined \
 		--entrypoint /bin/bash \
 		--volume ${BACKUP_SOURCE_FOLDER}:/restore/origin \
-		--volume ${RESTORE_PATHS_FILE}:/restore/restore-paths.txt \
-		--volume ${RESTORE_EXCLUDE_LIST}:/restore/restore-exclude-list.txt \
+		--volume $(_restore_paths_file):/restore/restore-paths.txt \
+		--volume $(_restore_exclude_list):/restore/restore-exclude-list.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -430,7 +574,9 @@ restore_to_origin:
 
 # Restore root backup to a staging directory (safe, review before moving)
 restore_as_root:
-	@$(call _passkey_check,/restore/passfile); \
+	@$(call _require_config_file,RESTORE_EXCLUDE_LIST,$(_restore_exclude_list)); \
+	$(call _require_config_file,RESTORE_PATHS_FILE,$(_restore_paths_file)); \
+	$(call _passkey_check,/restore/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -439,8 +585,8 @@ restore_as_root:
 		--security-opt apparmor:unconfined \
 		--entrypoint /bin/bash \
 		--volume ${RESTORE_DESTINATION}:/restore/origin \
-		--volume ${RESTORE_PATHS_FILE}:/restore/restore-paths.txt \
-		--volume ${RESTORE_EXCLUDE_LIST}:/restore/restore-exclude-list.txt \
+		--volume $(_restore_paths_file):/restore/restore-paths.txt \
+		--volume $(_restore_exclude_list):/restore/restore-exclude-list.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -462,7 +608,9 @@ restore_as_root:
 
 # Restore root backup directly to original system paths (/etc, /home, /opt, /root, /srv)
 restore_as_root_to_origin:
-	@$(call _passkey_check,/restore/passfile); \
+	@$(call _require_config_file,RESTORE_EXCLUDE_LIST,$(_restore_exclude_list)); \
+	$(call _require_config_file,RESTORE_PATHS_FILE,$(_restore_paths_file)); \
+	$(call _passkey_check,/restore/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -476,8 +624,8 @@ restore_as_root_to_origin:
 		--volume /opt:/restore/origin/opt \
 		--volume /root:/restore/origin/root \
 		--volume /srv:/restore/origin/srv \
-		--volume ${RESTORE_PATHS_FILE}:/restore/restore-paths.txt \
-		--volume ${RESTORE_EXCLUDE_LIST}:/restore/restore-exclude-list.txt \
+		--volume $(_restore_paths_file):/restore/restore-paths.txt \
+		--volume $(_restore_exclude_list):/restore/restore-exclude-list.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -500,7 +648,8 @@ restore_as_root_to_origin:
 # Serves the decrypted backup read-only over SFTP on host port 2222 (user backup).
 # Connect your file manager to: sftp://root@localhost:2222/gocrypt-view/decrypted
 view:
-	@$(call _passkey_check,/gocrypt-view/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/gocrypt-view/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -526,7 +675,8 @@ view:
 # Serves the decrypted backup read-only over SFTP on host port 2222 (root backup).
 # Connect your file manager to: sftp://root@localhost:2222/gocrypt-view/decrypted
 view_as_root:
-	@$(call _passkey_check,/gocrypt-view/passfile); \
+	@$(call _require_config_file,BACKUP_FILTER_RULES,$(_backup_filter_rules)); \
+	$(call _passkey_check,/gocrypt-view/passfile); \
 	docker run \
 		--name gocryptfs \
 		--user root \
@@ -560,7 +710,7 @@ run_container:
 		--security-opt label=disable \
 		--entrypoint /bin/bash \
 		--volume ${BACKUP_SOURCE_FOLDER}:/backup/src \
-		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
+		--volume $(_backup_filter_rules):/backup/brave-filter-rules.txt \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \
 		$$_pv \
@@ -583,7 +733,7 @@ run_container_as_root:
 		--volume /opt:/backup/src/opt \
 		--volume /root:/backup/src/root \
 		--volume /srv:/backup/src/srv \
-		--volume ${BACKUP_FILTER_RULES}:/backup/brave-filter-rules.txt \
+		--volume $(_backup_filter_rules):/backup/brave-filter-rules.txt \
 		--volume ${BACKUP_ENCRYPTION_CONF}:/backup/src/.gocryptfs.reverse.conf.original \
 		--volume ${SSH_KEY_FILE}:/root/.ssh/id_rsa \
 		--volume ${SSH_KNOWN_HOSTS_FILE}:/root/.ssh/known_hosts \

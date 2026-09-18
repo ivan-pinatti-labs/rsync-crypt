@@ -87,7 +87,7 @@ GOCRYPTFS_PASSKEY_FILE="/home/youruser/.gocrypt-passfile"
 
 # Backup source
 BACKUP_SOURCE_FOLDER="/home/youruser"
-BACKUP_FILTER_RULES="./conf/backup-filter-rules.txt"
+BACKUP_FILTER_RULES="./conf/backup-filter-rules.example.txt"
 BACKUP_EXCLUDE_NETWORK_MOUNTS=true # skip NAS/sshfs/rclone mounts under the source
 
 # Root backup: gocryptfs config preserved across runs
@@ -99,8 +99,8 @@ REMOTE_SERVER_BACKUP_FOLDER="/mnt/backups/youruser"
 
 # Restore
 RESTORE_DESTINATION="/tmp/restore"
-RESTORE_EXCLUDE_LIST="./conf/restore-exclude-list.txt"
-RESTORE_PATHS_FILE="./conf/restore-paths.txt"
+RESTORE_EXCLUDE_LIST="./conf/restore-exclude-list.example.txt"
+RESTORE_PATHS_FILE="./conf/restore-paths.example.txt"
 
 # rsync options
 RSYNC_RATE_LIMIT=0          # kbytes/s, 0 = unlimited
@@ -157,17 +157,70 @@ make backup ENV_FILE=.env.myconfig
 ENV_FILE=.env.myconfig make backup
 ```
 
-Copy `.env.example` to `.env.myconfig` (or `.env.personal`, etc.) and fill in
-the values for each profile. The default is `.env` when `ENV_FILE` is not set,
-so existing setups are unaffected.
+The fastest way to create one is `make new-profile`, which writes the env file
+and a private copy of each conf file in one step:
 
-> **Note:** `.env` and `.env.*` are both listed in `.gitignore`, so all profile
-> files are excluded from version control by default.
+```bash
+make new-profile NAME=myconfig
+```
+
+That creates `.env.myconfig` plus `conf/backup-filter-rules.myconfig.txt`,
+`conf/restore-exclude-list.myconfig.txt` and `conf/restore-paths.myconfig.txt`,
+and points the new env file at those copies. It refuses to overwrite anything
+that already exists. Fill in `.env.myconfig` and run
+`ENV_FILE=.env.myconfig make backup`.
+
+If you only want the env file, `cp .env.example .env.myconfig` still works and
+leaves it pointing at the shipped conf examples. The default is `.env` when
+`ENV_FILE` is not set, so existing setups are unaffected.
+
+#### How paths inside an env file are resolved
+
+`BACKUP_FILTER_RULES`, `RESTORE_EXCLUDE_LIST` and `RESTORE_PATHS_FILE` accept
+either form:
+
+- **A relative path** is resolved against the directory holding the env file,
+  not against the directory `make` runs in. So a profile whose env file and
+  conf copies sit together keeps working wherever you invoke it from.
+- **An absolute path** is used exactly as written.
+
+Every other path setting (`SSH_KEY_FILE`, `GOCRYPTFS_PASSKEY_FILE`,
+`BACKUP_ENCRYPTION_CONF`, `BACKUP_SOURCE_FOLDER`, `RESTORE_DESTINATION`) must
+be absolute.
+
+When the env file is not in the directory you are running from, `make` says so
+before it does anything:
+
+```text
+Using env file /srv/profiles/.env.myconfig, which is outside /opt/rsync-crypt.
+Relative config paths in it resolve against /srv/profiles/
+```
+
+If a resolved config path does not name a readable file, the run stops with an
+error naming the variable, the path it resolved to and the env file it came
+from. That check exists because a missing bind mount source makes the container
+runtime create an empty directory and mount that instead, which fails later and
+much less clearly.
+
+> **Note:** `.env` and `.env.*` are listed in `.gitignore`, as is every
+> `conf/*.txt` that is not an `.example.txt`, so profile files and your own
+> filter rules are excluded from version control by default.
 
 ### Filter Rules
 
-Edit `conf/backup-filter-rules.txt` to control what gets backed up. The file
-uses rsync filter rule syntax (`+` to include, `-` to exclude).
+`conf/backup-filter-rules.example.txt` controls what gets backed up, using
+rsync filter rule syntax (`+` to include, `-` to exclude).
+
+It is the shipped default that a fresh clone starts from, so rather than
+editing it in place, make your own copy and point the env file at that:
+
+```bash
+make new-profile NAME=myconfig   # writes conf/backup-filter-rules.myconfig.txt
+$EDITOR conf/backup-filter-rules.myconfig.txt
+```
+
+Every `conf/*.txt` that is not an `.example.txt` is gitignored, so your rules
+stay local and a `git pull` can never conflict with them.
 
 The default rules back up:
 
@@ -227,7 +280,7 @@ meant.
 itself, which excludes on the plaintext path *before* encrypting it, so they
 work with `GOCRYPTFS_ENCRYPT_NAMES` set either way. rsync filter rules cannot:
 with filename encryption on, rsync only ever sees ciphertext names (see
-[Known Issues](#known-issues-and-limitations)). `conf/backup-filter-rules.txt`
+[Known Issues](#known-issues-and-limitations)). `conf/backup-filter-rules.example.txt`
 is still the right place for ordinary path exclusions; it is simply no longer
 where a network mount has to be listed by hand.
 
@@ -252,7 +305,7 @@ Things worth knowing:
 - **A dormant autofs mount is not classified.** Until something triggers it,
   autofs is what is mounted and the remote filesystem underneath is not, so
   there is no filesystem type to recognise. Exclude those by path in
-  `conf/backup-filter-rules.txt` if it matters.
+  `conf/backup-filter-rules.example.txt` if it matters.
 - **Existing remote content beneath a newly excluded mount is deleted.** rsync
   runs with `--delete`, so the first backup after enabling this removes the
   copy already on the remote server. The local data is untouched; only the
@@ -448,12 +501,17 @@ Restrict a restore to specific paths in either of two ways:
 # One-off, on the command line
 make restore RESTORE_PATHS="Documents/ .config/Code/User/"
 
-# Persistently, one relative path per line
-$EDITOR conf/restore-paths.txt
+# Persistently, one relative path per line, in the file RESTORE_PATHS_FILE names
+$EDITOR conf/restore-paths.example.txt
 ```
 
+Edit your own profile copy (`conf/restore-paths.myconfig.txt`) rather than the
+shipped example if you have one; see
+[Multiple Configurations](#multiple-configurations).
+
 An empty `RESTORE_PATHS_FILE` restores everything. `RESTORE_EXCLUDE_LIST`
-(`conf/restore-exclude-list.txt`) is applied on top either way.
+(`conf/restore-exclude-list.example.txt` by default) is applied on top either
+way.
 
 ---
 
@@ -546,7 +604,7 @@ working entirely.
 rsync reads from) contains scrambled filenames and directory names. A path
 like `.config/BraveSoftware/Brave-Browser/Default/Bookmarks` becomes something
 like `gCqj/UKVCWfRmkXfp/nLpFwA==`. The rsync filter rules in
-`conf/backup-filter-rules.txt` match on human-readable paths, so no rule can
+`conf/backup-filter-rules.example.txt` match on human-readable paths, so no rule can
 ever match a scrambled name. The result is that rsync sees the entire
 encrypted directory as-is, ignores all filter rules, and transfers everything,
 including directories you intended to exclude.
@@ -574,7 +632,7 @@ solve this cleanly.
 
 **If you want scrambled filenames today** and are willing to trade
 fine-grained filtering for privacy: set `GOCRYPTFS_ENCRYPT_NAMES=true` and
-simplify `conf/backup-filter-rules.txt` to keep only the top-level exclusion
+simplify `conf/backup-filter-rules.example.txt` to keep only the top-level exclusion
 rules (the `- **/.cache`, `- .local/share/Trash/**`, etc. lines under "General
 exclusions"). Then pass a plain exclude list to gocryptfs's `-exclude-from`
 flag instead of rsync. This requires manual changes to `scripts/backup.sh` and
