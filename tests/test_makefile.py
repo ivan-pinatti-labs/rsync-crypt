@@ -1002,6 +1002,51 @@ def test_shipped_conf_templates_are_tracked():
         ), f"shipped template is gitignored: {path}"
 
 
+@pytest.mark.parametrize(
+    "target_name",
+    [".env.banana", "conf/backup-filter-rules.banana.txt"],
+)
+def test_new_profile_refuses_a_dangling_symlink(
+    profile_workspace, tmp_path, target_name
+):
+    """A dangling link must be refused, not written through.
+
+    `test -e` is false for a dangling symbolic link, so the overwrite guard
+    used to pass and the write followed the link to wherever it pointed.
+    GNU cp declines ("not writing through dangling symlink"), but the shell
+    redirection that writes the env file does not: on #112 it created its
+    target outside the repository, 179 lines of it, while new-profile printed
+    "Created:" and exited 0. Anything the user can write was reachable from a
+    link planted in the working tree.
+
+    Parametrised over both write mechanisms, because only one of them was
+    protected by coreutils and the guard must not depend on which is which.
+    """
+    victim = tmp_path / "victim"
+    assert not victim.exists()
+    link = profile_workspace / target_name
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(victim)
+
+    result = _new_profile("banana", profile_workspace)
+
+    assert result.returncode != 0, result.stdout
+    assert "already exists" in result.stderr
+    assert not victim.exists(), f"wrote through the dangling link to {victim}"
+
+
+def test_new_profile_refuses_a_symlink_to_an_existing_file(profile_workspace, tmp_path):
+    """The non-dangling case, which -e already covered, stays covered."""
+    victim = tmp_path / "victim"
+    victim.write_text("ORIGINAL\n")
+    (profile_workspace / ".env.banana").symlink_to(victim)
+
+    result = _new_profile("banana", profile_workspace)
+
+    assert result.returncode != 0
+    assert victim.read_text() == "ORIGINAL\n"
+
+
 def test_new_profile_needs_no_env_file(profile_workspace):
     """It is the target that creates one, so requiring one first is circular."""
     assert not (profile_workspace / ".env").exists()

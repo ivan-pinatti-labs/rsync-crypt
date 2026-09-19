@@ -870,7 +870,19 @@ directly, which is what keeps a fresh clone working with no copy step.
 `conf/<file>.<profile>.txt` copy of each example and rewrites the three path
 variables in the generated env file to point at those copies, using relative
 paths so the profile survives being moved. It refuses to overwrite an existing
-file and rejects a `NAME` that is not usable as a filename suffix. It sits
+file and rejects a `NAME` that is not usable as a filename suffix.
+
+That overwrite guard tests `-L` as well as `-e`. `-e` is false for a dangling
+symbolic link, and the two writes do not behave the same way about one: GNU
+`cp` declines ("not writing through dangling symlink"), but the shell
+redirection that writes the env file follows the link and creates its target,
+so a link planted in the working tree redirected a write to any path the user
+could write. Measured on #112, where 179 lines landed outside the repository
+while the target printed "Created:" and exited 0. Do not rely on `cp`'s
+refusal: it covers one of the two writes and is a coreutils behaviour rather
+than a guarantee of this Makefile.
+`test_new_profile_refuses_a_dangling_symlink` is parametrised over both write
+mechanisms for that reason. It sits
 alongside `help` in the `filter-out` list that decides whether a target
 requires an env file, because it is the target that creates one.
 

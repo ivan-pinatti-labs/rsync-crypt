@@ -321,11 +321,19 @@ new-profile:
 				"Allowed: letters, digits, dot, underscore and hyphen." >&2; \
 			exit 1 ;; \
 	esac
+	@# -L as well as -e: -e is false for a dangling symbolic link, and the
+	@# writes below do not all refuse one. GNU cp declines ("not writing
+	@# through dangling symlink"), but the shell redirection that writes the
+	@# env file follows the link and creates its target, so a link planted in
+	@# the working tree redirects the write to any path the user can write.
+	@# Measured on #112: 179 lines landed outside the repository while this
+	@# target reported success. -L catches the link itself, whatever it points
+	@# at, and a link to a file that does exist is already caught by -e.
 	@for f in .env.$(NAME) \
 			conf/backup-filter-rules.$(NAME).txt \
 			conf/restore-exclude-list.$(NAME).txt \
 			conf/restore-paths.$(NAME).txt; do \
-		if [ -e "$$f" ]; then \
+		if [ -e "$$f" ] || [ -L "$$f" ]; then \
 			printf '%s\n' \
 				"Error: $$f already exists." \
 				"Remove it first, or choose another NAME." >&2; \

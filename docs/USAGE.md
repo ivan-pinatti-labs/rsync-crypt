@@ -203,8 +203,11 @@ runtime create an empty directory and mount that instead, which fails later and
 much less clearly.
 
 > **Note:** `.env` and `.env.*` are listed in `.gitignore`, as is every
-> `conf/*.txt` that is not an `.example.txt`, so profile files and your own
-> filter rules are excluded from version control by default.
+> `conf/*.txt` apart from the three shipped templates
+> (`backup-filter-rules.example.txt`, `restore-exclude-list.example.txt` and
+> `restore-paths.example.txt`), which are named individually. So profile files
+> and your own filter rules are excluded from version control by default, and
+> a name such as `myconfig.example` is ignored like any other.
 
 ### Filter Rules
 
@@ -219,8 +222,10 @@ make new-profile NAME=myconfig   # writes conf/backup-filter-rules.myconfig.txt
 $EDITOR conf/backup-filter-rules.myconfig.txt
 ```
 
-Every `conf/*.txt` that is not an `.example.txt` is gitignored, so your rules
-stay local and a `git pull` can never conflict with them.
+Every `conf/*.txt` is gitignored except the three shipped templates, which are
+un-ignored by name rather than by an `*.example.txt` pattern, so your rules stay
+local whatever you call the profile and a `git pull` can never conflict with
+them.
 
 The default rules back up:
 
