@@ -369,8 +369,29 @@ PIN_ELIGIBLE_ARGS = RENOVATE_ANNOTATED_ARGS | APK_PIN_ANNOTATED_ARGS
 # has no YAML block scalars, so this only ever matters for the
 # ACTION_SHA/BARE_ACTION_VERSION/REV_PIN branch below, never the ARG
 # branch.
+#
+# YAML also allows node properties, an anchor (`&body`) and a tag (`!!str`,
+# `!local`), between the colon or dash and the indicator, in either order:
+# `run: &body |2-` and `run: !!str |-` open a block scalar just as `run: |`
+# does. A CodeRabbit review found the pattern missed them, which let a
+# `uses:` shaped line inside an anchored or tagged `run:` body read as a
+# real step. Confirmed with PyYAML before the fix.
 BLOCK_SCALAR_OPENER = re.compile(
-    r"(?::|^[ \t]*-)\s*[|>](?:[+-][1-9]?|[1-9][+-]?)?(?:[ \t]+#.*)?\s*$"
+    r"(?::|^[ \t]*-)(?:[ \t]+[&!]\S*)*\s*[|>](?:[+-][1-9]?|[1-9][+-]?)?"
+    r"(?:[ \t]+#.*)?\s*$"
+)
+# The sequence markers leading a line, each a dash followed by whitespace,
+# and the node properties (anchors, tags) that may lead a node after one.
+SEQUENCE_MARKER = re.compile(r"-[ \t]+")
+NODE_PROPERTIES = re.compile(r"(?:[&!]\S*(?:[ \t]+|$))*")
+# A block scalar indicator alone on its line, optionally after node
+# properties: the value of the key on an earlier line. `run: &body` or a
+# bare `run:` followed by an indented `|` is as much a block scalar as
+# `run: |` (confirmed with PyYAML), and its content may sit at the very
+# column of that `|`. A CodeRabbit review found the scan missed it.
+STANDALONE_INDICATOR = re.compile(
+    r"^[ \t]*(?:[&!]\S*[ \t]+)*[|>](?:[+-][1-9]?|[1-9][+-]?)?"
+    r"(?:[ \t]+#.*)?\s*$"
 )
 
 
@@ -378,50 +399,45 @@ def _line_indent(line: str) -> int:
     return len(line) - len(line.lstrip(" \t"))
 
 
-def _in_block_scalar(context: list[str], indent: int) -> bool:
-    """Judge, from the lines already seen in this file's diff, whether
-    `indent` sits inside an open YAML block scalar.
+def _block_scalar_floor(line: str) -> int:
+    """The indentation a block scalar opened on `line` has to exceed.
 
-    Scans backward for the nearest line indented less than `indent`,
-    skipping blank lines (a block scalar can itself contain one, and its
-    zero indentation must not be mistaken for the boundary that closes the
-    scalar). Inside a block scalar if that nearer line opens one.
-    Conservatively also inside one if no such line is visible at all: the
-    diff is all this script ever sees of the file around a change, so a
-    block scalar whose own opening line sits outside the diff's context
-    cannot be told apart from one that was never open, and refusing the
-    line as a candidate pin either way is the fail closed direction, the
-    same one every other shape in this file takes when it cannot be sure.
-
-    A CodeRabbit review named the residual gap in this precisely: the
-    first shallower line found is trusted as the boundary even when it is
-    itself ordinary scalar content one level further out, rather than the
-    real opener sitting deeper in the scan, so a `uses:` line nested under
-    something like an `if` inside a `run: |` block, both indented past the
-    block's own floor, is not caught. Scanning past a shallower non-opener
-    line to keep looking, rather than trusting it as decisive, would close
-    that gap, but was tried and reverted: it also requires reaching the
-    file's own top level (indentation zero) before a real diff's limited
-    context ever earns a confident "not inside one", and no ordinary `gh
-    pr diff` output carries that much. Verified against
-    docker-torrent-box-with-vpn's own #178, whose real diff never contains
-    the change's enclosing indentation chain down to indentation zero: the
-    deeper version refused it outright, the same result a compromised
-    bot's diff should get, not a clean one. This narrower version is the
-    one actually deployed for a diff it cannot see past.
-
-    It is now the fallback rather than the rule. When the file's base side
-    can be read whole and proven to be the diff's own base, which is the
-    ordinary case, `_whole_file_block_scalars` below decides instead, from
-    every line of the file rather than from three lines of context, and
-    that also closes the nested gap described above.
+    For `key: |` that is the key's own column. After a sequence marker,
+    `- name: |`, it is still the key's column rather than the dash's: YAML
+    reads a line starting at that column as the key's sibling, not as
+    scalar content (confirmed with PyYAML), so a step's `uses:` beside a
+    `- name: |` is ordinary structure. Only when the sequence item itself
+    is the scalar, `- |` or `- &body |`, is the dash the floor. Properties
+    leading a compact mapping, `- &step name: |`, belong to the mapping,
+    which starts where they do, so they are skipped before deciding.
     """
-    for seen in reversed(context):
-        if not seen.strip():
-            continue
-        if _line_indent(seen) < indent:
-            return bool(BLOCK_SCALAR_OPENER.search(seen))
-    return True
+    column = _line_indent(line)
+    rest = line[column:]
+    while True:
+        marker = SEQUENCE_MARKER.match(rest)
+        if not marker:
+            return column
+        after = rest[marker.end() :]
+        value = after[NODE_PROPERTIES.match(after).end() :]
+        if not value or value[0] in "|>":
+            return column
+        column += marker.end()
+        rest = after
+
+
+def _standalone_floor() -> int:
+    """The floor of a block scalar whose indicator stands alone on its line.
+
+    None at all: every later line in the file counts as its content. Which
+    node owns a lone indicator, and so where its content may start, depends
+    on lines above it (a bare `- &body`, a property on a line of its own, an
+    explicit indentation digit measured from that owner), and each attempt
+    to derive it from them was found to under-mark some valid YAML, fuzzed
+    against PyYAML. No workflow here uses a lone indicator, so treating the
+    rest of the file as content costs nothing today and only ever refuses
+    more: a pin below one waits for a person.
+    """
+    return -1
 
 
 def _block_scalar_lines(lines: list[str]) -> list[bool]:
@@ -431,11 +447,11 @@ def _block_scalar_lines(lines: list[str]) -> list[bool]:
     every following line that is blank or indented deeper than the opener
     is that scalar's literal content, until a non-blank line at or below
     the opener's own indentation closes it. Content is never read as an
-    opener itself, which is what the diff context version above cannot
+    opener itself, which three lines of diff context never could
     guarantee: a `uses:` nested under an `if` inside a `run: |` block is
-    content here, however deep. Anything that merely looks like an opener
-    (a comment ending in `: |`, say) marks what follows as content, which
-    only ever refuses more, never less.
+    content here, however deep. A line that merely looks like an opener
+    marks what follows as content, which only ever refuses more; comment
+    lines are the exception and are skipped (see below).
     """
     marks: list[bool] = []
     floor: int | None = None
@@ -446,8 +462,16 @@ def _block_scalar_lines(lines: list[str]) -> list[bool]:
                 continue
             floor = None
         marks.append(False)
+        # Outside a scalar, a line starting with `#` is a comment, never an
+        # opener: reading `# note: |` as one would mark what follows as its
+        # content, and a real opener among those lines would go unseen.
+        # Fuzzing against PyYAML found exactly that.
+        if line.lstrip().startswith("#"):
+            continue
         if BLOCK_SCALAR_OPENER.search(line):
-            floor = _line_indent(line)
+            floor = _block_scalar_floor(line)
+        elif STANDALONE_INDICATOR.match(line):
+            floor = _standalone_floor()
     return marks
 
 
@@ -469,8 +493,8 @@ def _base_lines(path: str, blob: str) -> list[str] | None:
     the diff's own base only while main has not moved the file since the
     pull request branched, which is what comparing the git blob id against
     the diff's `index` line proves. If main has moved it, or the path
-    leaves the checkout, the answer is None and the caller falls back to
-    judging from the diff's context.
+    leaves the checkout, the answer is None and every pin in the file is
+    refused.
     """
     root = REPO_ROOT.resolve()
     target = (root / path).resolve()
@@ -543,9 +567,9 @@ def _whole_file_block_scalars(
 
     Keyed by path; each value holds the base side's marks and the head
     side's, indexed by line number minus one. A file missing from the
-    result is judged by `_in_block_scalar` from the diff alone, exactly as
-    before this existed. Only `.github/workflows/` is read, the one place
-    `normalize` consults the answer.
+    result has every line treated as block scalar content, so any pin in it
+    is refused (see `parse`). Only `.github/workflows/` is read, the one
+    place `normalize` consults the answer.
     """
     files: dict[str, tuple[str | None, list[tuple[re.Match[str], list[str]]]]] = {}
     path = None
@@ -633,25 +657,14 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
     structural: list[str] = []
     path = None
     in_hunk = False
-    # The lines of each side of this file seen so far in the current hunk,
-    # in file order: what a block scalar check has to work with, since the
-    # diff never carries the whole file. Kept separate because a hunk can
-    # add or remove a block scalar's own opening line, which changes
-    # whether a later line on just one side is inside one. Reset on every
-    # hunk header, not only every file header: a hunk boundary means the
-    # diff skips lines in between, and a line just past the gap could
-    # otherwise be judged against context from before it, a shallower line
-    # left over from the previous hunk that is not actually the nearest
-    # one to the real file. Kept context from the file's earlier hunks
-    # cannot be trusted to still be the true boundary once the diff has
-    # jumped past lines neither side of this comparison ever saw; starting
-    # each hunk with nothing visible falls back to the same fail closed
-    # default `_in_block_scalar` already takes when a file's first hunk
-    # opens with no context at all.
-    old_context: list[str] = []
-    new_context: list[str] = []
     # Whole-file marks where the base could be proven, and each side's
-    # current line number (zero based) to look a line up in them by.
+    # current line number (zero based) to look a line up in them by. With no
+    # marks, every line counts as block scalar content: three lines of diff
+    # context cannot prove a line sits outside a `run: |` body, and judging
+    # from them was a documented gap (a `uses:` line under an `if` inside
+    # one read as a step). A workflow diff whose base cannot be proven is
+    # therefore refused, and waits for the dependency bot to rebase it onto
+    # main, where it can be.
     diff_lines = diff.splitlines()
     whole_file = _whole_file_block_scalars(diff_lines)
     marks = None
@@ -663,9 +676,17 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
             old, new = header.group("old"), header.group("new")
             path = new
             in_hunk = False
-            old_context = []
-            new_context = []
             marks = whole_file.get(path) if old == new else None
+            # Refused as a whole, not only by withholding pin normalization
+            # from its lines: a workflow also carries pins no block scalar
+            # check guards (a pip pin in a `run:` step, say), and none of
+            # them is graded without a proven base.
+            if marks is None and path.startswith(".github/workflows/"):
+                structural.append(
+                    f"{path}: its base on main could not be proven to be this "
+                    "diff's, so nothing in it is graded as a pin until the "
+                    "branch is rebased onto main"
+                )
             changes.setdefault(path, (Counter(), Counter()))
             if old != new:
                 structural.append(f"{old} renamed to {new}")
@@ -673,8 +694,6 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
 
         if line.startswith("@@"):
             in_hunk = True
-            old_context = []
-            new_context = []
             hunk = HUNK_HEADER.match(line)
             if hunk:
                 old_number = int(hunk.group("old_start")) - 1
@@ -700,31 +719,17 @@ def parse(diff: str) -> tuple[dict[str, tuple[Counter, Counter]], list[str]]:
 
         if line.startswith("-"):
             content = line[1:]
-            in_scalar = (
-                marks[0][old_number]
-                if marks
-                else _in_block_scalar(old_context, _line_indent(content))
-            )
+            in_scalar = marks[0][old_number] if marks else True
             changes[path][0][normalize(content, path, in_scalar)] += 1
-            old_context.append(content)
             old_number += 1
         elif line.startswith("+"):
             content = line[1:]
-            in_scalar = (
-                marks[1][new_number]
-                if marks
-                else _in_block_scalar(new_context, _line_indent(content))
-            )
+            in_scalar = marks[1][new_number] if marks else True
             changes[path][1][normalize(content, path, in_scalar)] += 1
-            new_context.append(content)
             new_number += 1
         elif line.startswith(" ") or line == "":
-            # An unchanged context line: not compared itself, but part of
-            # the surrounding structure a block scalar check on a later
-            # line in this file needs to see.
-            content = line[1:] if line else line
-            old_context.append(content)
-            new_context.append(content)
+            # An unchanged context line: not compared itself, but it moves
+            # both sides' line numbers along.
             old_number += 1
             new_number += 1
 
