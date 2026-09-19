@@ -987,3 +987,16 @@ def test_refuses_a_nested_run_line_when_main_has_moved_the_file(tmp_path):
         base=NESTED_IN_RUN.format(sha=SHA) + "# moved on main\n",
     )
     assert result.returncode == 1, result.stdout
+
+
+def test_names_the_unproven_base_when_refusing(tmp_path):
+    # A workflow whose base cannot be proven is refused as a whole, and says
+    # so, rather than only withholding pin normalization from its lines.
+    result = _check_in_repo(
+        tmp_path,
+        STEP_WITH_COMMENT.format(sha=SHA),
+        STEP_WITH_COMMENT.format(sha=OTHER_SHA),
+        base=STEP_WITH_COMMENT.format(sha=SHA) + "# moved on main\n",
+    )
+    assert result.returncode == 1
+    assert "could not be proven" in result.stdout
