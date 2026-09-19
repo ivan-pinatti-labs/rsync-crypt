@@ -28,7 +28,7 @@ a full local copy.
 - [scripts/restore.sh](scripts/restore.sh): Downloads and decrypts backup to a staging directory
 - [Dockerfile](Dockerfile): Alpine-based image with gocryptfs, rsync, sshfs, openssh; also holds every version pin as an ARG default
 - [.env.example](.env.example): All runtime configuration variables with example values
-- [conf/backup-filter-rules.txt](conf/backup-filter-rules.txt): rsync filter rules controlling what gets backed up
+- [conf/backup-filter-rules.example.txt](conf/backup-filter-rules.example.txt): rsync filter rules controlling what gets backed up
 - [CITATION.cff](CITATION.cff): Machine-readable citation metadata
 
 ## Tech stack

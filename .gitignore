@@ -29,6 +29,22 @@ jspm_packages/
 .env.*
 !.env.example
 
+# conf profiles ###
+# The three shipped templates are tracked. Every other .txt in conf/ is
+# somebody's own copy, made by hand or by 'make new-profile NAME=<profile>',
+# and stays local so a pull never conflicts with a customised filter list.
+#
+# The three are named individually rather than un-ignored with a
+# '!conf/*.example.txt' glob. A profile name may contain a dot, so
+# 'make new-profile NAME=foo.example' produces
+# conf/backup-filter-rules.foo.example.txt, which that glob matches: the
+# generated copies would become tracked files, contradicting the whole point
+# of the convention. Adding a fourth template means adding a fourth line.
+conf/*.txt
+!conf/backup-filter-rules.example.txt
+!conf/restore-exclude-list.example.txt
+!conf/restore-paths.example.txt
+
 # known hosts
 files/ssh/known_hosts
 

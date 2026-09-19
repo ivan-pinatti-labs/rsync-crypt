@@ -57,6 +57,75 @@
 - **/.terraform
 
 # =============================================================================
+# Package manager and build caches
+# Every path below is regenerable from a lockfile or a re-download, so it
+# costs transfer time and remote space without adding anything a restore
+# needs. These matter more for file count than for size: gocryptfs encrypts
+# and rsync stats each entry on every run, and a package cache is mostly
+# enormous numbers of tiny files.
+#
+# Measured 2026-09-18 over one developer home directory, with
+#   rsync -a -n --filter='. <this file>' --out-format='%l %n' "$HOME"/ /nope/
+# counting lines and summing the first field. Excluding these took the
+# transfer from 619,140 entries to 184,555, a drop of 70 percent, and from
+# 57.1 GiB to 49.9 GiB. The npm cache alone was 356,067 of those entries,
+# 58 percent of the whole file count, for 5.7 GiB.
+#
+# The absolute numbers are one machine on one day and will not reproduce
+# anywhere else; the command is here so the shape of the result can be
+# checked against your own home directory rather than taken on faith.
+# =============================================================================
+
+# npm: _cacache (content addressed tarballs) and _npx (throwaway package
+# trees). Does not match ~/.npmrc, which sits beside this directory rather
+# than inside it, so npm registry credentials are still backed up.
+- .npm
+
+# installed dependency trees (restore with 'npm ci', 'yarn install', 'pnpm i')
+- node_modules
+
+# other JavaScript package manager caches
+- .local/share/pnpm/store
+- .yarn/cache
+- .bun/install/cache
+- .deno/gen
+
+# python bytecode, virtualenvs and tool caches
+- __pycache__
+- .venv
+- venv
+- .mypy_cache
+- .pytest_cache
+- .ruff_cache
+- .tox
+- .local/lib/python*
+- .local/share/virtualenv
+
+# JVM, Rust and Go module caches
+# Only the regenerable parts of ~/.gradle, never the directory as a whole:
+# gradle.properties lives there too and often carries signing configuration
+# and credentials, which nothing can regenerate. Same reason .m2/repository
+# is named rather than .m2, which holds settings.xml.
+- .gradle/caches
+- .gradle/wrapper/dists
+- .gradle/daemon
+- .gradle/native
+- .m2/repository
+- .cargo/registry
+- .rustup/toolchains
+- go/pkg/mod
+
+# infrastructure tooling caches (re-downloaded on the next init or plan)
+- .tflint.d/plugins
+- .kube/cache
+
+# Deliberately not excluded, and worth knowing before adding them:
+#   .git        it is data, not cache. Dropping it makes every restored
+#               repository unusable.
+#   build/      too many projects keep real sources under those names for a
+#   dist/       blanket rule to be safe. Add the specific path if you have one.
+
+# =============================================================================
 # Chromium-based browsers: Brave, Chrome, Chromium
 # Traversal + state + profile-dir rules are per-browser (paths differ).
 # Profile content rules use ** to cover all three in one line each.

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
+import subprocess
 
 import pytest
 from conftest import REPO_ROOT, _read_var, run
@@ -566,3 +568,486 @@ def test_quoted_blank_gocryptfs_cipher_does_not_flip_encrypt_names_default(tmp_p
     assert args[8] == ""  # GOCRYPTFS_CIPHER: quoted-and-empty, not vanished
     assert args[9] == _read_var(example_text, "GOCRYPTFS_SCRYPT_N")
     assert args[10] == _read_var(example_text, "GOCRYPTFS_ENCRYPT_NAMES")
+
+
+# --------------------------------------------------------------------------
+# Config path resolution (issue #111).
+#
+# BACKUP_FILTER_RULES, RESTORE_EXCLUDE_LIST and RESTORE_PATHS_FILE are the
+# three variables .env.example documents with relative defaults, and the
+# Makefile hands each straight to 'docker run --volume'. A relative value used
+# to be resolved by the container runtime against make's working directory
+# rather than against the env file, so an env file kept elsewhere mounted
+# whatever happened to sit at that relative path here, silently and with no
+# symptom while the two copies agreed.
+# --------------------------------------------------------------------------
+
+_CONFIG_PATH_VARS = (
+    ("BACKUP_FILTER_RULES", "backup", "/backup/brave-filter-rules.txt"),
+    ("RESTORE_EXCLUDE_LIST", "restore", "/restore/restore-exclude-list.txt"),
+    ("RESTORE_PATHS_FILE", "restore", "/restore/restore-paths.txt"),
+)
+
+
+def _volume_source(target, env_file, container_path):
+    """The host side of the --volume flag mounting container_path.
+
+    Reads the flag out of 'make --dry-run' and shlex-parses just that token,
+    so the assertion sees the path the shell would, with the env file's own
+    quote characters already resolved.
+    """
+    result = run(["make", "--dry-run", target, f"ENV_FILE={env_file}"])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    matches = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if "--volume" in line and line.strip().endswith(f":{container_path} \\")
+    ]
+    assert len(matches) == 1, f"expected one mount of {container_path}, got {matches}"
+
+    flag = matches[0].rstrip("\\").strip()
+    spec = shlex.split(flag)[1]  # drop the literal '--volume'
+    return spec[: -len(f":{container_path}")]
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_relative_config_path_resolves_against_the_env_file(
+    tmp_path, var, target, container_path
+):
+    """A relative value follows the env file, not make's working directory.
+
+    The env file lives in tmp_path while make runs in REPO_ROOT, which is the
+    combination docs/USAGE.md recommends and the one that used to break.
+    """
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {var: "./conf/rules.txt"})
+    source = _volume_source(target, env_file, container_path)
+
+    assert source == str(conf_dir / "rules.txt")
+    assert "/./" not in source  # the trailing-slash join is collapsed
+    assert not source.startswith(str(REPO_ROOT))
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_absolute_config_path_passes_through_unchanged(
+    tmp_path, var, target, container_path
+):
+    """An absolute value is never rewritten, wherever the env file lives."""
+    rules = tmp_path / "somewhere-else.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {var: str(rules)})
+    assert _volume_source(target, env_file, container_path) == str(rules)
+
+
+def test_default_env_file_at_the_repo_root_is_unchanged(tmp_path):
+    """The pre-existing default resolves exactly where it always did.
+
+    .env.example ships relative conf paths and the overwhelming majority of
+    users run make from the repository root with an env file beside it, so
+    this is the case the change must not disturb.
+    """
+    source = _volume_source(
+        "backup", REPO_ROOT / ".env.example", "/backup/brave-filter-rules.txt"
+    )
+    assert source == str(REPO_ROOT / "conf" / "backup-filter-rules.example.txt")
+
+
+def test_relative_config_path_containing_a_space_stays_one_argument(tmp_path):
+    """A rewritten path with a space must not split into two arguments.
+
+    The env file's own quotes are the only quoting the shell sees at a
+    --volume site, so env_rel has to re-quote the value it rewrites. Without
+    that, 'docker run' would receive two arguments and mount neither path.
+    """
+    conf_dir = tmp_path / "my conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(
+        tmp_path, {"BACKUP_FILTER_RULES": '"./my conf/rules.txt"'}
+    )
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(conf_dir / "rules.txt")
+
+
+def test_absolute_config_path_containing_a_space_stays_one_argument(tmp_path):
+    """A quoted absolute path with a space survives as one argument."""
+    conf_dir = tmp_path / "abs space"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {"BACKUP_FILTER_RULES": f'"{rules}"'})
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(rules)
+
+
+def test_unquoted_absolute_path_containing_a_space_stays_one_argument(tmp_path):
+    """The absolute branch has to add quotes, not assume the author did.
+
+    An unquoted value is a legal way to write a path in an env file, and
+    _env_file_with_overrides writes overrides exactly as given for that
+    reason. An earlier env_rel returned an absolute value untouched on the
+    theory that the env file's own quotes were the only quoting a --volume
+    site sees, which is true only while a value is passed through unchanged.
+    Without quotes of its own the path split into two arguments and neither
+    half named a real file. Caught by CodeRabbit on #112.
+    """
+    conf_dir = tmp_path / "abs unquoted"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(tmp_path, {"BACKUP_FILTER_RULES": str(rules)})
+    source = _volume_source("backup", env_file, "/backup/brave-filter-rules.txt")
+    assert source == str(rules)
+
+
+def test_unreadable_config_file_fails_before_docker_runs(tmp_path):
+    """The check tests readability, which is what its error message claims.
+
+    A regular file with no read permission passes -f. Under rootless Podman
+    or Docker the container's root maps back to the invoking user, so it
+    cannot read the file either and the run fails later and less clearly.
+    """
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    rules = conf_dir / "rules.txt"
+    rules.write_text("- **/.cache\n")
+    rules.chmod(0o000)
+    try:
+        env_file = _env_file_with_overrides(
+            tmp_path, {"BACKUP_FILTER_RULES": "./conf/rules.txt"}
+        )
+        result = run(["make", "backup", f"ENV_FILE={env_file}"])
+        assert result.returncode != 0
+        assert "BACKUP_FILTER_RULES" in result.stderr
+        assert str(rules) in result.stderr
+    finally:
+        rules.chmod(0o600)
+
+
+@pytest.mark.parametrize(("var", "target", "container_path"), _CONFIG_PATH_VARS)
+def test_missing_config_file_fails_before_docker_runs(
+    tmp_path, var, target, container_path
+):
+    """A path that names no file stops the run with an actionable message.
+
+    Left unchecked, the container runtime creates an empty directory at a
+    missing bind mount source and mounts that, so the container receives a
+    directory where it expects a file and the real cause never surfaces.
+
+    Every config variable the target reads except the one under test is
+    pinned to a real file, because a target checks them in order and would
+    otherwise fail on whichever sibling the env file's own relative default
+    happens to resolve to first.
+    """
+    overrides = {
+        other: str(REPO_ROOT / "conf" / f"{stem}.example.txt")
+        for other, stem in (
+            ("BACKUP_FILTER_RULES", "backup-filter-rules"),
+            ("RESTORE_EXCLUDE_LIST", "restore-exclude-list"),
+            ("RESTORE_PATHS_FILE", "restore-paths"),
+        )
+        if other != var
+    }
+    overrides[var] = "./conf/absent.txt"
+
+    env_file = _env_file_with_overrides(tmp_path, overrides)
+    result = run(["make", target, f"ENV_FILE={env_file}"])
+
+    assert result.returncode != 0
+    assert var in result.stderr
+    assert str(tmp_path / "conf" / "absent.txt") in result.stderr
+    assert str(env_file) in result.stderr
+
+
+def test_env_file_outside_the_working_directory_is_announced(tmp_path):
+    """The resolution is stated rather than left to be inferred."""
+    conf_dir = tmp_path / "conf"
+    conf_dir.mkdir()
+    (conf_dir / "rules.txt").write_text("- **/.cache\n")
+
+    env_file = _env_file_with_overrides(
+        tmp_path, {"BACKUP_FILTER_RULES": "./conf/rules.txt"}
+    )
+    result = run(["make", "--dry-run", "backup", f"ENV_FILE={env_file}"])
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert str(env_file) in result.stdout
+    assert f"{tmp_path}{os.sep}" in result.stdout
+
+
+def test_env_file_in_the_working_directory_is_not_announced():
+    """No note when there is nothing surprising to report."""
+    result = run(
+        ["make", "--dry-run", "backup", f"ENV_FILE={REPO_ROOT / '.env.example'}"]
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "which is outside" not in result.stdout
+
+
+def _recipe_bodies():
+    """Every target's recipe text, keyed by target name.
+
+    A target line is unindented and ends in a colon; its recipe is the run of
+    tab-indented lines that follows. Good enough for this Makefile, and the
+    point is to read the recipes rather than trust that a call was pasted
+    into the right one.
+    """
+    bodies = {}
+    current = None
+    for line in (REPO_ROOT / "Makefile").read_text().splitlines():
+        if line.startswith("\t"):
+            if current:
+                bodies[current] += line + "\n"
+            continue
+        if line and not line[0].isspace() and ":" in line:
+            name = line.split(":", 1)[0].strip()
+            if name and not name.startswith(".") and " " not in name:
+                current = name
+                bodies.setdefault(current, "")
+                continue
+        current = None
+    return bodies
+
+
+@pytest.mark.parametrize(
+    ("var", "resolved"),
+    [
+        ("BACKUP_FILTER_RULES", "_backup_filter_rules"),
+        ("RESTORE_EXCLUDE_LIST", "_restore_exclude_list"),
+        ("RESTORE_PATHS_FILE", "_restore_paths_file"),
+    ],
+)
+def test_every_target_that_mounts_a_config_file_also_validates_it(var, resolved):
+    """Mounting and validating must be the same set of targets, both ways.
+
+    Two failures this catches, one in each direction, and the first shipped:
+
+    - A target mounts the file without validating it, so a missing source
+      reaches Docker and becomes an empty directory bind mount, which is the
+      failure _require_config_file exists to prevent. run_container and
+      run_container_as_root were in this state.
+    - A target validates a file it never mounts, so an unrelated missing file
+      blocks a perfectly valid run. view and view_as_root were in this state,
+      and view.sh takes no filter rules argument at all.
+
+    Both were found by CodeRabbit on #112 after the checks were attached by
+    matching each recipe's passkey path rather than by reading what it mounts.
+    """
+    bodies = _recipe_bodies()
+    mounts = {t for t, b in bodies.items() if f"--volume $({resolved})" in b}
+    checks = {t for t, b in bodies.items() if f"_require_config_file,{var}" in b}
+
+    assert mounts, f"no target mounts $({resolved}); the patterns have drifted"
+    assert mounts == checks, (
+        f"{var}: mounted without validation in {sorted(mounts - checks)}; "
+        f"validated without mounting in {sorted(checks - mounts)}"
+    )
+
+
+# --------------------------------------------------------------------------
+# new-profile.
+# --------------------------------------------------------------------------
+
+
+def _new_profile(name, cwd):
+    return subprocess.run(
+        ["make", "new-profile", f"NAME={name}"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+
+@pytest.fixture
+def profile_workspace(tmp_path):
+    """A throwaway copy of the files new-profile reads and writes.
+
+    Copied rather than used in place so a test run never leaves .env.<name>
+    or conf/*.<name>.txt behind in the working tree.
+    """
+    shutil.copy(REPO_ROOT / "Makefile", tmp_path / "Makefile")
+    shutil.copy(REPO_ROOT / ".env.example", tmp_path / ".env.example")
+    shutil.copytree(REPO_ROOT / "conf", tmp_path / "conf")
+    return tmp_path
+
+
+def test_new_profile_creates_the_env_file_and_its_conf_copies(profile_workspace):
+    result = _new_profile("banana", profile_workspace)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    for created in (
+        ".env.banana",
+        "conf/backup-filter-rules.banana.txt",
+        "conf/restore-exclude-list.banana.txt",
+        "conf/restore-paths.banana.txt",
+    ):
+        assert (profile_workspace / created).is_file(), created
+
+    env_text = (profile_workspace / ".env.banana").read_text()
+    assert _read_var(env_text, "BACKUP_FILTER_RULES") == (
+        "./conf/backup-filter-rules.banana.txt"
+    )
+    assert _read_var(env_text, "RESTORE_EXCLUDE_LIST") == (
+        "./conf/restore-exclude-list.banana.txt"
+    )
+    assert _read_var(env_text, "RESTORE_PATHS_FILE") == (
+        "./conf/restore-paths.banana.txt"
+    )
+
+
+def test_new_profile_copies_rather_than_links_the_examples(profile_workspace):
+    """The copy is independent, so editing it cannot touch the tracked file."""
+    assert _new_profile("banana", profile_workspace).returncode == 0
+
+    copy = profile_workspace / "conf" / "backup-filter-rules.banana.txt"
+    example = profile_workspace / "conf" / "backup-filter-rules.example.txt"
+    assert copy.read_text() == example.read_text()
+
+    copy.write_text("- everything\n")
+    assert example.read_text() != copy.read_text()
+
+
+def test_new_profile_refuses_to_overwrite(profile_workspace):
+    assert _new_profile("banana", profile_workspace).returncode == 0
+
+    again = _new_profile("banana", profile_workspace)
+    assert again.returncode != 0
+    assert "already exists" in again.stderr
+
+
+@pytest.mark.parametrize("name", ["../evil", "a/b", "with space", ".", ".."])
+def test_new_profile_rejects_an_unusable_name(profile_workspace, name):
+    result = _new_profile(name, profile_workspace)
+    assert result.returncode != 0
+    assert "not usable as a file name suffix" in result.stderr
+
+
+def test_new_profile_without_a_name_prints_usage(profile_workspace):
+    result = subprocess.run(
+        ["make", "new-profile"],
+        cwd=profile_workspace,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    assert result.returncode != 0
+    assert "Usage: make new-profile NAME=<profile>" in result.stderr
+
+
+@pytest.mark.parametrize("name", ["banana", "foo.example", "example.txt"])
+def test_new_profile_output_is_always_gitignored(profile_workspace, name):
+    """No profile name can produce a tracked conf file.
+
+    The shipped templates used to be un-ignored with a '!conf/*.example.txt'
+    glob. Because a profile name may contain a dot, NAME=foo.example produced
+    conf/backup-filter-rules.foo.example.txt, which that glob matched, so the
+    generated copies became tracked files and the convention promised
+    something it did not deliver. Caught by CodeRabbit on #112; the three
+    templates are named individually now.
+
+    Asked of the real .gitignore via git check-ignore, rather than by
+    re-implementing its matching rules here.
+    """
+    assert _new_profile(name, profile_workspace).returncode == 0
+
+    generated = [
+        f"conf/backup-filter-rules.{name}.txt",
+        f"conf/restore-exclude-list.{name}.txt",
+        f"conf/restore-paths.{name}.txt",
+    ]
+    not_ignored = [
+        path
+        for path in generated
+        if subprocess.run(
+            ["git", "check-ignore", "-q", path],
+            cwd=REPO_ROOT,
+            check=False,
+        ).returncode
+        != 0
+    ]
+    assert not not_ignored, f"NAME={name} produces tracked files: {not_ignored}"
+
+
+def test_shipped_conf_templates_are_tracked():
+    """The other direction: the templates themselves must not be ignored.
+
+    A .gitignore narrow enough to catch every profile copy could just as
+    easily exclude the templates a fresh clone needs.
+    """
+    for template in (
+        "backup-filter-rules",
+        "restore-exclude-list",
+        "restore-paths",
+    ):
+        path = f"conf/{template}.example.txt"
+        assert (REPO_ROOT / path).is_file(), f"missing template: {path}"
+        assert (
+            subprocess.run(
+                ["git", "check-ignore", "-q", path],
+                cwd=REPO_ROOT,
+                check=False,
+            ).returncode
+            != 0
+        ), f"shipped template is gitignored: {path}"
+
+
+@pytest.mark.parametrize(
+    "target_name",
+    [".env.banana", "conf/backup-filter-rules.banana.txt"],
+)
+def test_new_profile_refuses_a_dangling_symlink(
+    profile_workspace, tmp_path, target_name
+):
+    """A dangling link must be refused, not written through.
+
+    `test -e` is false for a dangling symbolic link, so the overwrite guard
+    used to pass and the write followed the link to wherever it pointed.
+    GNU cp declines ("not writing through dangling symlink"), but the shell
+    redirection that writes the env file does not: on #112 it created its
+    target outside the repository, 179 lines of it, while new-profile printed
+    "Created:" and exited 0. Anything the user can write was reachable from a
+    link planted in the working tree.
+
+    Parametrised over both write mechanisms, because only one of them was
+    protected by coreutils and the guard must not depend on which is which.
+    """
+    victim = tmp_path / "victim"
+    assert not victim.exists()
+    link = profile_workspace / target_name
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(victim)
+
+    result = _new_profile("banana", profile_workspace)
+
+    assert result.returncode != 0, result.stdout
+    assert "already exists" in result.stderr
+    assert not victim.exists(), f"wrote through the dangling link to {victim}"
+
+
+def test_new_profile_refuses_a_symlink_to_an_existing_file(profile_workspace, tmp_path):
+    """The non-dangling case, which -e already covered, stays covered."""
+    victim = tmp_path / "victim"
+    victim.write_text("ORIGINAL\n")
+    (profile_workspace / ".env.banana").symlink_to(victim)
+
+    result = _new_profile("banana", profile_workspace)
+
+    assert result.returncode != 0
+    assert victim.read_text() == "ORIGINAL\n"
+
+
+def test_new_profile_needs_no_env_file(profile_workspace):
+    """It is the target that creates one, so requiring one first is circular."""
+    assert not (profile_workspace / ".env").exists()
+    assert _new_profile("banana", profile_workspace).returncode == 0
