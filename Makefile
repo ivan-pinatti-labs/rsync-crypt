@@ -124,8 +124,14 @@ endef
 
 # 'new-profile' joins 'help' in not requiring an env file: it is the target
 # that creates one, so demanding one first would make it unreachable on a
-# fresh clone, which is exactly when it is most useful.
-ifneq ($(filter-out help new-profile,$(MAKECMDGOALS)),)
+# fresh clone, which is exactly when it is most useful. 'shell' joins them
+# both for the same reason from the other direction: it opens the
+# development container, which is where somebody would go to work on this
+# repository, and an env file is configuration for running a backup rather
+# than for developing. Requiring one would mean a fresh clone could not get
+# a development shell without first inventing a backup profile it is not
+# going to use.
+ifneq ($(filter-out help new-profile shell,$(MAKECMDGOALS)),)
 ifeq ($(wildcard $(ENV_FILE)),)
 $(error $(_missing_env_file_message))
 endif
@@ -238,6 +244,7 @@ endef
 .PHONY: restore restore_to_origin restore_as_root restore_as_root_to_origin
 .PHONY: r ro rr rro view view_as_root v vr
 .PHONY: run_container run_container_as_root check-passkey clean new-profile
+.PHONY: shell
 .PHONY: third-party-licenses third-party-licenses-check
 
 all: build run_container
@@ -265,6 +272,7 @@ help:
 		'  view_as_root (vr)           Browse the decrypted system backup over SFTP.' \
 		'  run_container               Start an interactive user-backup container.' \
 		'  run_container_as_root       Start an interactive system-backup container.' \
+		'  shell                       Open a shell inside the development container.' \
 		'  check-passkey               Create or verify the passkey file.' \
 		'  new-profile NAME=<profile>  Create .env.<profile> and its own conf copies.' \
 		'  clean                       Remove backup state and image (prompts; destructive).' \
@@ -759,3 +767,76 @@ run_container_as_root:
 		--env PARANOID_MODE=$$_paranoid \
 		--rm \
 		--interactive --tty ${DOCKER_IMAGE_TAG_NAME}:${DOCKER_IMAGE_TAG_VERSION}
+
+# A shell inside the development container, without an editor in the loop.
+#
+# The flags mirror .devcontainer/devcontainer.json's runArgs, deliberately
+# and by hand: a devcontainer.json is read by editors and by the devcontainer
+# CLI, neither of which is involved here, so the two lists have to be kept in
+# step. Anything added there that this target needs belongs here too.
+#
+# Why each of the less obvious ones is in docs/IMAGES.md in
+# ivan-pinatti-labs/devcontainer-images, under "Running containers inside
+# it": container_engine_t and /dev/fuse are what let the nested runtime work
+# under SELinux, and /dev/net/tun with unmask=/proc/sys are what let this
+# repository's test suite give nested containers a network of their own.
+#
+# The two agent directories are bind mounted from the host so Claude Code and
+# Codex read and write the same sessions, transcripts and credentials whether
+# they run in here or on the host, and so none of it is lost when the
+# container exits.
+#
+# Lowercase z on those two, uppercase Z on the working tree, and the
+# difference matters. Z labels a mount private to a single container; the
+# working tree is this container's alone, so that is right for it. The agent
+# directories are not: the host's own agents use them, and so does every
+# other repository's development container, so labelling them private would
+# take them away from all of those. z is the shared label.
+#
+# SHELL_EXTRA_MOUNTS exists because a bind mount carries a symlink across as
+# a symlink. Anything under ~/.claude or ~/.codex that points outside those
+# directories dangles in here until its target is mounted too, which is a
+# per machine detail and so a variable rather than a path committed to a
+# public repository:
+#
+#   make shell SHELL_EXTRA_MOUNTS='-v /path/on/host:/path/on/host:rw,z'
+DEV_IMAGE ?= rsync-crypt-dev
+SHELL_EXTRA_MOUNTS ?=
+
+# Passed through only when set, rather than unconditionally: `-e GH_TOKEN`
+# with nothing in the environment exports an empty GH_TOKEN inside the
+# container, which gh treats as a token and fails on rather than falling
+# back to no authentication at all.
+_shell_gh_token := $(if $(GH_TOKEN),-e GH_TOKEN,)
+
+# The ssh-agent socket the devcontainer expects, mounted only if the host has
+# actually set one up. Without it the container simply has no agent, which is
+# a working shell with no git-over-ssh, rather than a bind mount of a path
+# that does not exist and a container that refuses to start.
+_shell_ssh_dir := $(XDG_RUNTIME_DIR)/devcontainer-ssh
+_shell_ssh := $(if $(wildcard $(_shell_ssh_dir)),\
+  -v "$(_shell_ssh_dir):/run/devcontainer-ssh:rw,z" \
+  -e SSH_AUTH_SOCK=/run/devcontainer-ssh/agent.sock \
+  -e GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/run/devcontainer-ssh/known_hosts -o StrictHostKeyChecking=yes",)
+
+shell:
+	@echo "Building the development container..."
+	@podman build --file .devcontainer/Dockerfile --tag $(DEV_IMAGE) .
+	@mkdir -p "$(HOME)/.claude" "$(HOME)/.codex"
+	@echo "Entering $(DEV_IMAGE). Type exit to leave."
+	@podman run --rm --interactive --tty \
+		--userns=keep-id:uid=1000,gid=1000 \
+		--security-opt label=type:container_engine_t \
+		--security-opt label=level:s0:c555,c666 \
+		--security-opt unmask=/proc/sys \
+		--device /dev/fuse \
+		--device /dev/net/tun \
+		-e CONTAINERS_CONF_OVERRIDE=/usr/local/share/devcontainer/containers-bridge-network.conf \
+		-v "$(CURDIR):$(CURDIR):rw,Z" \
+		-v "$(HOME)/.claude:/home/dev/.claude:rw,z" \
+		-v "$(HOME)/.codex:/home/dev/.codex:rw,z" \
+		$(_shell_ssh) \
+		$(_shell_gh_token) \
+		$(SHELL_EXTRA_MOUNTS) \
+		--workdir "$(CURDIR)" \
+		$(DEV_IMAGE) bash

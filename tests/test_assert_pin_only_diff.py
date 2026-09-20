@@ -211,14 +211,20 @@ def test_accepts_a_pre_commit_hook_rev_bump():
     assert result.returncode == 0, result.stdout
 
 
-def test_accepts_a_tool_versions_bump():
+def test_refuses_a_tool_versions_file_entirely():
+    # asdf was removed from this repository on 2026-09-19 and `.tool-versions`
+    # deleted with it, so the file is no longer a pin surface. A bot proposing
+    # one is proposing to reintroduce a version manager, which is a decision
+    # for a person and not a version bump. This used to be
+    # test_accepts_a_tool_versions_bump.
     result = _check(
         _diff(
             ".tool-versions",
             "-pre-commit 4.6.2\n+pre-commit 4.7.0\n",
         )
     )
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == 1, result.stdout
+    assert "not a dependency pin file" in result.stdout
 
 
 def test_accepts_the_renovate_annotated_alpine_arg():
@@ -331,7 +337,7 @@ def test_refuses_a_non_pin_line_in_the_dockerfile():
 
 
 def test_refuses_a_pip_pin_in_tests_requirements():
-    # No manager here reads this file: Renovate's enabledManagers is asdf,
+    # No manager here reads this file: Renovate's enabledManagers is
     # custom.regex, github-actions and pre-commit, none of which are a pip
     # manager, so a change here from a bot would not be a real shape and is
     # not on the allowlist.
@@ -436,10 +442,13 @@ def test_refuses_a_new_file_even_in_an_allowed_path():
 
 
 def test_refuses_a_rename():
+    # Both sides are on the allowlist on purpose. Renaming across it would
+    # make this pass because the path was refused, proving nothing about
+    # rename detection, which is what this test is for.
     result = _check(
-        "diff --git a/.tool-versions b/.tool-versions-old\n"
-        "--- a/.tool-versions\n"
-        "+++ b/.tool-versions-old\n"
+        "diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml-old\n"
+        "--- a/.pre-commit-config.yaml\n"
+        "+++ b/.pre-commit-config.yaml-old\n"
     )
     assert result.returncode == 1
     assert "renamed to" in result.stdout
@@ -478,10 +487,12 @@ def test_counts_an_added_line_that_looks_like_a_file_header():
     # `+++x` inside a hunk is an added line reading `++x`. Skipping it as a
     # ---/+++ header would drop it from the comparison, so the smuggled line
     # would never be seen.
+    # On an allowed, graded surface: on a refused path this would pass
+    # because of the allowlist and never exercise the header logic at all.
     result = _check(
         _diff(
-            ".tool-versions",
-            "-pre-commit 4.6.2\n+pre-commit 4.7.0\n+++PATH=/tmp/evil\n",
+            ".pre-commit-config.yaml",
+            "-    rev: v2.2.2\n+    rev: v2.2.3\n+++PATH=/tmp/evil\n",
         )
     )
     assert result.returncode == 1
@@ -533,16 +544,6 @@ def test_refuses_a_pre_commit_rev_trading_a_release_for_a_floating_branch():
         _diff(
             ".pre-commit-config.yaml",
             "-    rev: v2.2.2\n+    rev: main\n",
-        )
-    )
-    assert result.returncode == 1, result.stdout
-
-
-def test_refuses_a_tool_versions_entry_trading_a_release_for_main():
-    result = _check(
-        _diff(
-            ".tool-versions",
-            "-pre-commit 4.6.2\n+pre-commit main\n",
         )
     )
     assert result.returncode == 1, result.stdout

@@ -41,6 +41,12 @@
 - .var
 
 # development tools (reinstallable)
+#
+# These describe the machine being backed up, not this project's own
+# tooling. rsync-crypt stopped using asdf in September 2026, and `.asdf`
+# stays on this list regardless: plenty of machines still run it, and
+# dropping the line would quietly start pulling a multi gigabyte tool
+# directory into the backups of anyone who copied this file.
 - .asdf
 
 # local kubernetes / containers (ephemeral)

@@ -133,10 +133,10 @@ merge of something harmful is two things, neither of them a review:
    blocked before its window is satisfied, and
    `vulnerabilityAlerts.minimumReleaseAge: null`, so a known vulnerability
    fix is not held back by a wait that does not make it safer. This window
-   covers every ecosystem Renovate manages under one setting: asdf tool
-   versions and one annotated Docker tag, and, since the migration off
-   Dependabot, GitHub Actions and pre-commit hooks too. Those two are the
-   larger surface of the four, not the smaller, since both execute arbitrary
+   covers every ecosystem Renovate manages under one setting: one
+   annotated Docker tag and the development container's base image digest,
+   and, since the migration off Dependabot, GitHub Actions and pre-commit
+   hooks too. Those two are the larger surface of the four, not the smaller, since both execute arbitrary
    code, in CI holding a token and on a developer's machine respectively,
    rather than merely naming a version; Dependabot used to cover them with
    its own matching `cooldown.default-days: 7`, before its `updates:`
