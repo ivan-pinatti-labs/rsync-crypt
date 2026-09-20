@@ -137,14 +137,22 @@ pytest tests
 make build ENV_FILE=.env.example
 ```
 
-Tool versions come only from this repository's `.tool-versions`, and the test
-dependencies from `tests/requirements.txt`, the same file CI installs. A tool
-this repository does not pin is missing in the container rather than borrowed
-from somewhere else, which is how a missing pin shows up.
+Tools come from signed package repositories: `pre-commit` from Ubuntu's own
+archive, `gh` from GitHub's, whose signing key the base image has reviewed
+and installed. The test dependencies come from `tests/requirements.txt`, the
+same file CI installs. A tool this repository does not install is missing in
+the container rather than borrowed from somewhere else, which is how a
+missing dependency shows up.
 
-The asdf plugins that install those tools are pinned too, in
-`.devcontainer/asdf-plugins`: each from its repository URL, at a commit
-someone has read. A plugin is a set of scripts that `asdf install` runs, so a
-new tool needs its plugin added there (the build fails without it), and
-Renovate proposes new plugin commits as pull requests for a person to review,
-never merged automatically.
+There is no version manager and no `.tool-versions`. Package versions are
+deliberately unpinned: Ubuntu and GitHub both ship security fixes by moving a
+version inside a release, so a pin would hold this container on the
+superseded build until somebody edited it by hand. What is pinned is the base
+image digest, which Renovate keeps current. See that image's
+`docs/TOOL_SOURCES.md` for where each tool comes from and what vouches for
+it.
+
+Rebuilding this container can therefore give you different package versions
+than it did last week, by design. The digest pins what it builds on, not
+what apt resolves on top. If you need the exact container you had before,
+keep the built image rather than expecting a rebuild to reproduce it.

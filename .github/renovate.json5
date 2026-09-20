@@ -5,9 +5,13 @@
   // configuration (github-actions, pre-commit) is retired and
   // .github/dependabot.yml deleted; both ecosystems moved to Renovate's own
   // native managers below rather than to a second custom regex, since each
-  // already ships one. Renovate still separately handles the asdf tool
-  // versions and the Alpine pin in the Dockerfile, neither of which a
-  // manifest-reading manager can parse.
+  // already ships one. Renovate still separately handles the Alpine pin in
+  // the Dockerfile, which no manifest-reading manager can parse. asdf was
+  // removed from this repository on 2026-09-19, so the asdf manager and the
+  // custom regex manager that watched .devcontainer/asdf-plugins are both
+  // gone; the development container installs from signed apt repositories
+  // instead and pins no tool versions at all. See the base image's
+  // docs/TOOL_SOURCES.md.
   extends: ["config:recommended"],
 
   // Kept on despite the standing, never-resolving tracking issue it opens.
@@ -58,7 +62,6 @@
   // never see the same line. Scoping by rule alone would not do it, because
   // matchFileNames narrows a rule and not what a manager reads.
   enabledManagers: [
-    "asdf",
     "custom.regex",
     "github-actions",
     "pre-commit",
@@ -93,10 +96,10 @@
   // most compromised releases are spotted and pulled within hours to days
   // regardless of how many images or tools a repository tracks, so the
   // window that makes "we merged it first" into "it was already yanked" is
-  // the same window here as there. This repository's surface is asdf tool
-  // versions (github-cli, pre-commit), one annotated Docker tag
-  // (ALPINE_VERSION), and, since the migration off Dependabot, GitHub
-  // Actions and pre-commit hooks too; none of the five carry a materially
+  // the same window here as there. This repository's surface is one
+  // annotated Docker tag (ALPINE_VERSION), the development container's base
+  // image digest, and, since the migration off Dependabot, GitHub Actions
+  // and pre-commit hooks too; none of the four carry a materially
   // different risk profile that would justify a shorter wait, and the two
   // that moved from Dependabot are the larger attack surface of the whole
   // set, not the smaller, since both execute arbitrary code (in CI holding a
@@ -135,9 +138,8 @@
     // line by line, before the label alone can do anything.
     //
     // patch and minor only, not this repository's whole update-type
-    // vocabulary. Every manager here can offer a major: `asdf` for
-    // github-cli or pre-commit, the custom regex manager's `versioning:
-    // docker` for ALPINE_VERSION (where "3.24" to "3.25" reads as minor but
+    // vocabulary. Every manager here can offer a major: the custom regex
+    // manager's `versioning: docker` for ALPINE_VERSION (where "3.24" to "3.25" reads as minor but
     // "3.x" to "4.x" would read as major), and, since the migration off
     // Dependabot, `github-actions` and `pre-commit` too, the same
     // major/minor/patch semver Dependabot used to classify on its own pull
@@ -171,12 +173,6 @@
       matchUpdateTypes: ["patch", "minor", "digest"],
       automerge: true,
       addLabels: ["automerge"],
-    },
-    {
-      matchManagers: ["asdf"],
-      groupName: "asdf tool versions",
-      groupSlug: "asdf-tools",
-      labels: ["dependencies", "tooling"],
     },
     // Everything the dockerfile manager finds is disabled here, and the one
     // path this repository wants watched is enabled again by the rule below.
@@ -214,13 +210,12 @@
     //
     // Merged unattended, granted here rather than inherited: the first rule
     // above already grants automerge to digests, but stating it here keeps this
-    // policy independent of that grant. asdf plugin commits below still wait
-    // for a person. This is the
+    // policy independent of that grant. This is the
     // organization's own image, built by ivan-pinatti-labs/devcontainer-images,
     // and the quality gate lives there rather than in each consumer: that
     // repository ages its own upstream inputs through a seven day
-    // minimumReleaseAge, sends Ubuntu minor and major moves and asdf bumps to a
-    // person, and only publishes from a reviewed merge to main. A digest
+    // minimumReleaseAge, sends Ubuntu minor and major moves to a person, and
+    // only publishes from a reviewed merge to main. A digest
     // arriving here has therefore already passed that gate, and `Pin Only`
     // grades the `ARG BASE_IMAGE=<image>@sha256:<digest>` line (IMAGE_DIGEST in
     // scripts/assert-pin-only-diff.py), so the ordinary bot lane approves it.
@@ -244,41 +239,13 @@
       automerge: true,
       addLabels: ["automerge"],
     },
-    // Scoped to the datasource rather than to the manager: the second custom
-    // regex manager below watches asdf plugin commits through git-refs, which
-    // are not a Docker tag and get their own rule further down.
+    // Scoped to the datasource rather than to the manager. Only one custom
+    // regex manager is left (ALPINE_VERSION, a Docker tag); the second one,
+    // which watched asdf plugin commits through git-refs, went with asdf.
     {
       matchManagers: ["custom.regex"],
       matchDatasources: ["docker"],
       labels: ["dependencies", "docker"],
-    },
-    // An asdf plugin is code: `asdf install` runs its scripts to download and
-    // install each tool, inside a development container that holds a GitHub
-    // token. A new plugin commit therefore waits for a person to read what
-    // changed in that plugin.
-    //
-    // automerge: false is load-bearing here in a way it is not in the sibling
-    // repositories. This repository grants automerge to `digest` updates
-    // (see the first rule above, for the action SHA refreshes that are its
-    // routine case), and a git-refs commit bump is a digest update, so
-    // without this rule a plugin commit would merge unattended on the
-    // strength of a grant meant for something else. Later rules win on a
-    // shared key, so this one has to sit after that grant, which it does.
-    //
-    // git-refs publishes no release timestamps, and under Renovate's default
-    // minimumReleaseAgeBehaviour (timestamp-required) the 7 day window above
-    // would then hold every plugin commit back forever, silently.
-    // timestamp-optional lets the update be offered; the review stands in for
-    // the age window here.
-    {
-      matchManagers: ["custom.regex"],
-      matchDatasources: ["git-refs"],
-      matchFileNames: [".devcontainer/asdf-plugins"],
-      groupName: "asdf plugins",
-      groupSlug: "asdf-plugins",
-      labels: ["dependencies", "tooling"],
-      minimumReleaseAgeBehaviour: "timestamp-optional",
-      automerge: false,
     },
     // The two ecosystems that moved here from Dependabot, each grouped the
     // way Dependabot grouped it: one pull request per ecosystem
@@ -359,21 +326,6 @@
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+ARG [A-Z0-9_]+=(?<currentValue>[^\\s]+)",
       ],
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
-    },
-    {
-      // The asdf plugin commits the development container pins in
-      // .devcontainer/asdf-plugins, one line per plugin: name, repository
-      // URL, branch, commit. git-refs reads the named branch's current
-      // commit, so a new commit there arrives as a digest update to that
-      // line. See the matching packageRules entry above for why a person
-      // reviews every one of these, which is the opposite of how this
-      // repository treats every other digest update.
-      customType: "regex",
-      managerFilePatterns: ["/^\\.devcontainer/asdf-plugins$/"],
-      matchStrings: [
-        "(?<depName>[a-z0-9-]+) (?<packageName>https://\\S+) (?<currentValue>\\S+) (?<currentDigest>[0-9a-f]{40})",
-      ],
-      datasourceTemplate: "git-refs",
     },
   ],
 }

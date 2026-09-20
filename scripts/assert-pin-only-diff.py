@@ -44,8 +44,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # `.github/workflows/` (Action SHAs) and `.pre-commit-config.yaml` (hook
 # `rev:` pins); Dependabot managed those same two files from a separate set of
 # pin positions until its `updates:` configuration was retired (see
-# .github/renovate.json5). Renovate's `asdf` manager covers `.tool-versions`,
-# and, inside the `Dockerfile`, only the `ARG` lines its custom regex manager
+# .github/renovate.json5). Inside the `Dockerfile`, only the `ARG` lines its
+# custom regex manager
 # is anchored to (see below and .github/renovate.json5) come from Renovate
 # too. The `Dockerfile` also carries seven apk `~=` pins that no bot manages:
 # .github/workflows/resolve-apk-pins.yml bumps those instead, on the lines its
@@ -71,31 +71,19 @@ ALLOWED_PATHS = (
     "Dockerfile",
     ".pre-commit-config.yaml",
     ".github/workflows/",
-    ".tool-versions",
     ".devcontainer/Dockerfile",
 )
 
 # A released version, always starting with a digit (an optional single
-# leading `v` aside): `2.2.2`, `v2.2.2`, `4.6.2`. Anchors both `rev:` in
-# `.pre-commit-config.yaml` and every value in `.tool-versions`, and is
-# deliberately narrower than "any tag-shaped token": a floating ref like
+# leading `v` aside): `2.2.2`, `v2.2.2`, `4.6.2`. Anchors `rev:` in
+# `.pre-commit-config.yaml`, and is deliberately narrower than "any
+# tag-shaped token": a floating ref like
 # `main` or `latest` is made entirely of characters this would otherwise
 # accept, and normalizing it the same as a real release would let a
 # compromised bot trade an immutable pin for something that can move under it
 # after the diff is already merged, with nothing left in the diff to catch
 # it.
 RELEASE = r"v?[0-9][0-9A-Za-z.+_-]*"
-
-# `.tool-versions` writes `<tool> <version>`, one per line, with nothing to
-# anchor on but the space. That cannot go in the prefix set below, because a
-# lookbehind of variable width is not allowed and "the word after a space"
-# would match most of a workflow file. It is matched whole-line instead, and
-# only for that file, which is why normalize() takes the path. The value
-# after the space has to be a real release, not merely non-blank: `pre-commit
-# main` would otherwise normalize identically to `pre-commit 4.6.2`.
-TOOL_VERSION_LINE = re.compile(
-    r"^(?P<prefix>[A-Za-z0-9_.-]+[ \t]+)" + RELEASE + r"[ \t]*$"
-)
 
 # A pre-commit hook `rev:`. The prefix is captured and put back, so that a
 # pin changing shape rather than value still reads as a difference.
@@ -120,8 +108,9 @@ REV_PIN = re.compile(r"(?P<prefix>\brev:[ \t]+)" + RELEASE)
 # structural change, and `Pin Only` refused it. Since every Renovate action
 # bump rewrites that comment, no action SHA bump could ever be approved
 # here: the only four pull requests ever merged unattended in this
-# repository were three `.tool-versions` bumps and one
-# `.pre-commit-config.yaml` rev bump, and #105 is the one that finally
+# repository were three asdf tool version bumps (from the `.tool-versions`
+# file that asdf's removal deleted) and one `.pre-commit-config.yaml` rev
+# bump, and #105 is the one that finally
 # surfaced it. github-template,
 # pre-commit-checklists and pre-commit-checklists-demo have carried the
 # fix below for some time; this copy had simply never received it, and its
@@ -612,8 +601,6 @@ def _whole_file_block_scalars(
 
 def normalize(line: str, path: str = "", in_block_scalar: bool = False) -> str:
     """Reduce a line to everything about it that a version bump may not change."""
-    if path.endswith(".tool-versions"):
-        return TOOL_VERSION_LINE.sub(r"\g<prefix><version>", line)
     # Exact equality, not `endswith`: the eligible ARG names above are read
     # from the repository root's own Dockerfile, so they describe that file
     # and no other. A `sub/Dockerfile` added later would carry its own,
