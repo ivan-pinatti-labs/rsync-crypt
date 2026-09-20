@@ -151,3 +151,8 @@ superseded build until somebody edited it by hand. What is pinned is the base
 image digest, which Renovate keeps current. See that image's
 `docs/TOOL_SOURCES.md` for where each tool comes from and what vouches for
 it.
+
+Rebuilding this container can therefore give you different package versions
+than it did last week, by design. The digest pins what it builds on, not
+what apt resolves on top. If you need the exact container you had before,
+keep the built image rather than expecting a rebuild to reproduce it.

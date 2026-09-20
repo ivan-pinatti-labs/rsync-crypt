@@ -803,11 +803,35 @@ run_container_as_root:
 DEV_IMAGE ?= rsync-crypt-dev
 SHELL_EXTRA_MOUNTS ?=
 
-# Passed through only when set, rather than unconditionally: `-e GH_TOKEN`
-# with nothing in the environment exports an empty GH_TOKEN inside the
-# container, which gh treats as a token and fails on rather than falling
-# back to no authentication at all.
-_shell_gh_token := $(if $(GH_TOKEN),-e GH_TOKEN,)
+# GH_TOKEN, by the same mechanism devcontainer.json uses where that is
+# available, and by the ordinary environment where it is not.
+#
+# devcontainer.json passes `--secret gh-devcontainer,type=env,target=GH_TOKEN`,
+# which reads a podman secret rather than the caller's environment. That is
+# the better of the two: a secret does not appear in the container's
+# configuration, so it stays out of `podman inspect` output the way an
+# ordinary `-e` value does not.
+#
+# It cannot be used unconditionally, though. `--secret` naming a secret that
+# does not exist does not degrade, it aborts:
+#
+#   Error: running container create option: no secret with name or id
+#   "gh-devcontainer": no such secret
+#
+# so hard coding it would break `make shell` on any machine that has not run
+# `podman secret create gh-devcontainer`, which is every fresh clone. Hence
+# the probe: use the secret when it is there, fall back to the environment
+# when it is not, and pass nothing at all when neither is available.
+#
+# The fallback stays conditional on GH_TOKEN being non-empty, because
+# `-e GH_TOKEN` with nothing in the environment exports an empty GH_TOKEN
+# inside the container, which gh treats as a token and fails on rather than
+# falling back to no authentication.
+_comma := ,
+_shell_gh_secret := $(shell podman secret exists gh-devcontainer >/dev/null 2>&1 && echo present)
+_shell_gh_token := $(if $(_shell_gh_secret),\
+  --secret=gh-devcontainer$(_comma)type=env$(_comma)target=GH_TOKEN,\
+  $(if $(GH_TOKEN),-e GH_TOKEN,))
 
 # The ssh-agent socket the devcontainer expects, mounted only if the host has
 # actually set one up. Without it the container simply has no agent, which is

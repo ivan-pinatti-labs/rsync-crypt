@@ -23,7 +23,15 @@ USER 0:0
 # Versions are deliberately unpinned. Ubuntu and GitHub both ship security
 # fixes by moving a package's version within a release, so a pin here would
 # hold this container on the superseded build until somebody edited it by
-# hand. The base image digest above is what makes this reproducible.
+# hand.
+#
+# That makes this layer deliberately rolling, not reproducible, and the two
+# should not be confused. The digest above fixes what this builds on; it
+# says nothing about what apt resolves on top, and two builds of this file a
+# month apart can and should install different package builds. Reproducing
+# an exact container therefore means keeping the image, not re-running this
+# Dockerfile. Rebuilding is what makes it current, which is the property
+# being chosen here.
 # hadolint ignore=DL3008
 RUN printf '%s\n' \
       'deb [arch=amd64 signed-by=/usr/share/keyrings/github-cli.gpg] https://cli.github.com/packages stable main' \
