@@ -227,10 +227,10 @@ CodeRabbit never reviews a bot's pull request on its own, so once `Pin Only`
 fails and a pull request falls into lane 3, nothing but an explicit
 `@coderabbitai review` comment will ever put a status there for
 `Review Verified` to read. An hourly workflow used to post that comment. It
-was retired on 2026-09-20, because CodeRabbit ignores the command from a bot
-account (see `AGENTS.md`, "CodeRabbit silently ignores `@coderabbitai review`
-from a bot account"), so the nudge never landed the one thing it existed to
-do. A person posts it instead:
+was retired on 2026-09-21, on cost rather than on capability: it posted with
+a personal access token so the comment came from a human account, and
+CodeRabbit answered it within seconds every time (see `AGENTS.md`, "Why the
+hourly nudge was retired"). A person posts it instead:
 
 ```shell
 gh pr comment <n> --body '@coderabbitai review'

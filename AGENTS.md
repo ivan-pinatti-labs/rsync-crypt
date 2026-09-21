@@ -254,7 +254,7 @@ ordinary trigger would. No stored credential (no PAT like
 `CODERABBIT_NUDGE_TOKEN` in `coderabbit-review-queue.yml`) is needed for
 this, since the retrigger is an explicit API call rather than a push that
 needs to look human-authored. (`CODERABBIT_NUDGE_TOKEN` and the workflow that
-used it were retired on 2026-09-20; the point about not needing a stored
+used it were retired on 2026-09-21; the point about not needing a stored
 credential stands on its own.)
 
 Safe to re-run, including when Renovate's own `rebaseWhen` rebases or
@@ -465,34 +465,53 @@ not a review strategy: nothing guarantees the stale range covers anything.
 
 ### CodeRabbit silently ignores `@coderabbitai review` from a bot account
 
-This is why there is no automated nudge. A
-`.github/workflows/coderabbit-review-queue.yml` used to post an
-`@coderabbitai review` comment through `github-actions[bot]` once an hour
-when `Review Verified` was stuck failing. On #37 that comment fired five
-times across most of a day and CodeRabbit never once replied to it: not with
-a review, not with a decline, not with a rate limit notice. Every comment
-posted by the human account got a reply within seconds, including the times
-that reply was itself a decline. CodeRabbit drops a review command from a bot
-commenter the same way it drops a pull request authored by one.
+The rule itself is real and still matters. On #37 an `@coderabbitai review`
+comment posted through `github-actions[bot]` fired five times across most of
+a day and CodeRabbit never once replied to it: not with a review, not with a
+decline, not with a rate limit notice. Every comment posted by the human
+account got a reply within seconds, including the times that reply was itself
+a decline. CodeRabbit drops a review command from a bot commenter the same way
+it drops a pull request authored by one.
 
-The workflow was retired on 2026-09-20, because a mechanism whose central
-action provably does not land is not worth the scheduled runs, the
-organization secret it needed, or the review quota a mistimed nudge consumes.
-What replaces it is a person posting the comment:
+So the comment has to come from a human account:
 
 ```shell
 gh pr comment <n> --body '@coderabbitai review'
 ```
 
-That is the only form CodeRabbit has ever been observed to honour here, and
-it needs no stored credential at all.
+### Why the hourly nudge was retired
+
+`.github/workflows/coderabbit-review-queue.yml` posted that comment once an
+hour when `Review Verified` was stuck failing. It is worth being exact about
+why it went, because the obvious reason is the wrong one.
+
+**It was not because the ask did not land.** After #37 the workflow was
+changed to post with `CODERABBIT_NUDGE_TOKEN`, a personal access token, so its
+comment came from a human account and the rule above stopped applying to it.
+Measured on #109, #110, #112 and #113: the nudge posts, and `coderabbitai[bot]`
+replies four to six seconds later, every time.
+
+It was retired on 2026-09-21 on cost:
+
+- **The token is an organization secret whose visibility is per repository,
+  and it fails silently.** In `ivan-pinatti-labs/.github` the secret resolved
+  empty, so the job found the stuck pull request, tried to comment, and died
+  with `gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN
+  environment variable` and exit code 4. Eight of its last ten scheduled runs
+  there failed that way, and nothing surfaced it outside the Actions tab.
+- **The job cannot see the quota it fires into.** Posting into an exhausted
+  window wastes the slot that later frees.
+- **It was seven scheduled jobs and a credential to re-scope by hand** every
+  time a repository joined the organization.
+
+What it bought was one command saved from a person who was already involved:
+a pull request that needs a review is also one that gets no automatic
+approval.
 
 When `Review Verified` is failing, read the reason beside the `CodeRabbit`
 status rather than its colour. "Review rate limited" means the quota is
 exhausted and the comment above will be ignored until it resets; CodeRabbit
-states the wait in its own comment on the pull request. Posting into an
-exhausted window wastes the slot that later frees, which is the other reason
-the hourly job was a poor fit.
+states the wait in its own comment on the pull request.
 
 A routine dependency bot pull request needs none of this: a pin-only diff
 resolves `Review Verified` through `scripts/coderabbit-review-verdict.py`'s
