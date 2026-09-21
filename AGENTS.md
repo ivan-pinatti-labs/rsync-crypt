@@ -510,8 +510,12 @@ approval.
 
 When `Review Verified` is failing, read the reason beside the `CodeRabbit`
 status rather than its colour. "Review rate limited" means the quota is
-exhausted and the comment above will be ignored until it resets; CodeRabbit
-states the wait in its own comment on the pull request.
+exhausted. The comment above is not ignored in that state: CodeRabbit
+declines it, posting the wait as its own comment on the pull request
+("Next included review available in N minutes") and leaving the status at
+"Review rate limited". So a nudge into an exhausted window costs a round trip
+and tells you when to try again; it does not silently disappear. Wait out the
+stated interval and post it again.
 
 A routine dependency bot pull request needs none of this: a pin-only diff
 resolves `Review Verified` through `scripts/coderabbit-review-verdict.py`'s
