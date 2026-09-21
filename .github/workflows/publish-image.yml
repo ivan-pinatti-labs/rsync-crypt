@@ -748,8 +748,7 @@ jobs:
         # merge.yml's own dispatch is the only intended workflow_dispatch
         # caller for a genuine release, and it authenticates with
         # GITHUB_TOKEN via 'gh workflow run' (see merge.yml), which always
-        # runs as 'github-actions[bot]' (see coderabbit-review-queue.yml's
-        # comment on the same fact). Requiring that actor for the
+        # runs as 'github-actions[bot]'. Requiring that actor for the
         # workflow_dispatch case, in addition to a native 'release' event,
         # keeps a manually triggered run from reaching this step even when
         # it sets publish_latest=true itself.

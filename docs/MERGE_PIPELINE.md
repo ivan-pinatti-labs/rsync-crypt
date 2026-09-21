@@ -99,9 +99,10 @@ whose diff is pin only merges with no CodeRabbit review at all.**
 `scripts/coderabbit-review-verdict.py`'s bot lane resolves `Review Verified`
 straight to `success` with the description "pin-only diff, nothing to
 review" the moment `Pin Only` reads `success`, and CodeRabbit is never asked
-for an opinion. `coderabbit-review-queue.yml`'s hourly nudge skips it for the
-same reason: `Review Verified` already reads `success`, so there is nothing
-stuck to unstick.
+for an opinion. This is the case that used to make the retired hourly nudge
+look unnecessary, and it is why retiring it costs the routine path nothing:
+`Review Verified` already reads `success`, so there was never anything stuck
+to unstick.
 
 CodeRabbit only enters the bot lane when `Pin Only` **fails**. From there the
 pull request is graded exactly like a human one, on the literal description
@@ -222,11 +223,22 @@ review having actually happened on 2026-08-19 as a direct result (its #114).
    including a description this script has never seen before, is `failure`.
    No exceptions.
 
-`coderabbit-review-queue.yml`'s hourly nudge exists for the same reason as in
-the sibling repository: CodeRabbit never reviews a bot's pull request on its
-own, so once `Pin Only` fails and a pull request falls into lane 3, nothing
-but an explicit `@coderabbitai review` comment will ever put a status there
-for `Review Verified` to read.
+CodeRabbit never reviews a bot's pull request on its own, so once `Pin Only`
+fails and a pull request falls into lane 3, nothing but an explicit
+`@coderabbitai review` comment will ever put a status there for
+`Review Verified` to read. An hourly workflow used to post that comment. It
+was retired on 2026-09-21, on cost rather than on capability: it posted with
+a personal access token so the comment came from a human account, and
+CodeRabbit answered it within seconds every time (see `AGENTS.md`, "Why the
+hourly nudge was retired"). A person posts it instead:
+
+```shell
+gh pr comment <n> --body '@coderabbitai review'
+```
+
+That is not a regression in automation. A pull request in lane 3 already gets
+no automatic approval and waits for a person regardless, so the comment is
+asked for by the same person who was going to look at it anyway.
 
 ## Recovering a stuck `Review Verified`, honestly
 

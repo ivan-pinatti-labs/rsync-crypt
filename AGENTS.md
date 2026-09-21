@@ -253,7 +253,9 @@ way satisfies the pull request's requirement the same as one from the
 ordinary trigger would. No stored credential (no PAT like
 `CODERABBIT_NUDGE_TOKEN` in `coderabbit-review-queue.yml`) is needed for
 this, since the retrigger is an explicit API call rather than a push that
-needs to look human-authored.
+needs to look human-authored. (`CODERABBIT_NUDGE_TOKEN` and the workflow that
+used it were retired on 2026-09-21; the point about not needing a stored
+credential stands on its own.)
 
 Safe to re-run, including when Renovate's own `rebaseWhen` rebases or
 recreates its branch later and drops this workflow's commit the way any
@@ -463,32 +465,71 @@ not a review strategy: nothing guarantees the stale range covers anything.
 
 ### CodeRabbit silently ignores `@coderabbitai review` from a bot account
 
-`.github/workflows/coderabbit-review-queue.yml` posts an `@coderabbitai
-review` comment through `github-actions[bot]` once an hour when `Review
-Verified` is stuck failing. On #37 that comment fired five times across most
-of a day and CodeRabbit never once replied to it, not with a review, not with
-a decline, not with a rate limit notice: nothing. Every comment posted by the
-human account got a reply within seconds every single time, including the
-times that reply was itself a decline. CodeRabbit appears to drop a review
-command from a bot commenter the same way it drops a pull request authored by
-one, and #37 sat blocked for hours on that mechanism before anyone checked
-whether it was actually being heard.
+The rule itself is real and still matters. On #37 an `@coderabbitai review`
+comment posted through `github-actions[bot]` fired five times across most of
+a day and CodeRabbit never once replied to it: not with a review, not with a
+decline, not with a rate limit notice. Every comment posted by the human
+account got a reply within seconds, including the times that reply was itself
+a decline. CodeRabbit drops a review command from a bot commenter the same way
+it drops a pull request authored by one.
 
-The workflow still earns its keep: it is what proves, mechanically, that a
-pull request is waiting on a review nobody has asked for yet. What it cannot
-do is make that ask land. So when `Review Verified` is still failing after the
-nudge has fired, check the pull request's comments for a `coderabbitai[bot]`
-reply within roughly ten seconds of the nudge's timestamp before assuming the
-request is in flight:
+So the comment has to come from a human account:
 
-- **A `coderabbitai[bot]` reply exists** (even a decline). The request was
-  heard; a rate limit or a plan restriction is the actual blocker, and waiting
-  out the quota or trying again later is reasonable.
-- **No reply at all.** CodeRabbit never saw it as a command worth answering.
-  Waiting longer will not change that; only a human posting the exact same
-  `@coderabbitai review` comment will. Say so and ask for it, rather than
-  re-dispatching the workflow and letting another hourly window pass on a
-  mechanism with no evidence it has ever worked.
+```shell
+gh pr comment <n> --body '@coderabbitai review'
+```
+
+### Why the hourly nudge was retired
+
+`.github/workflows/coderabbit-review-queue.yml` posted that comment once an
+hour when `Review Verified` was stuck failing. It is worth being exact about
+why it went, because the obvious reason is the wrong one.
+
+**It was not because the ask did not land.** After #37 the workflow was
+changed to post with `CODERABBIT_NUDGE_TOKEN`, a personal access token, so its
+comment came from a human account and the rule above stopped applying to it.
+Measured on #109, #110, #112 and #113: the nudge posts, and `coderabbitai[bot]`
+replies four to six seconds later, every time.
+
+It was retired on 2026-09-21 on cost:
+
+- **The token is an organization secret whose visibility is per repository,
+  and it fails silently.** In `ivan-pinatti-labs/.github` the secret resolved
+  empty, so the job found the stuck pull request, tried to comment, and died
+  with `gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN
+  environment variable` and exit code 4. Eight of its last ten scheduled runs
+  there failed that way, and nothing surfaced it outside the Actions tab.
+- **The job cannot see the quota it fires into.** Posting into an exhausted
+  window wastes the slot that later frees.
+- **It was seven scheduled jobs and a credential to re-scope by hand** every
+  time a repository joined the organization.
+
+What it bought was one command saved from a person who was already involved:
+a pull request that needs a review is also one that gets no automatic
+approval.
+
+When `Review Verified` is failing, read the reason beside the `CodeRabbit`
+status rather than its colour. "Review rate limited" means the quota is
+exhausted. The comment above is not ignored in that state: CodeRabbit answers
+it, within seconds, with a decline rather than a review, and leaves the status
+at "Review rate limited". So a nudge into an exhausted window does not
+silently disappear, which is what distinguishes this from the bot-account
+failure above.
+
+The decline comes in two shapes, and the difference is worth knowing:
+
+- **The first decline in a window** names the wait: "Next included review
+  available in N minutes."
+- **Every repeat inside the same window** is barer, an "Action not completed /
+  Review rate limited" notice with no interval.
+
+So read the interval off the first decline and wait it out. Re-asking sooner
+draws the barer reply and tells you nothing new. Measured on #117, which drew
+four of them across 45 minutes.
+
+A routine dependency bot pull request needs none of this: a pin-only diff
+resolves `Review Verified` through `scripts/coderabbit-review-verdict.py`'s
+bot lane without CodeRabbit ever being asked.
 
 ### Selectors match the library's templates
 
