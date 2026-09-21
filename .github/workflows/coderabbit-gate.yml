@@ -75,8 +75,10 @@ on:
   # assuming the SHA it was told about is a pull request head.
   status:
   schedule:
-    # Offset from coderabbit-review-queue.yml's :23 so the two hourly jobs do
-    # not compete for the same GitHub Actions minute for no reason.
+    # :47 rather than on the hour. The offset originally kept this clear of
+    # coderabbit-review-queue.yml's :23; that workflow was retired on
+    # 2026-09-20 and the minute is kept simply because there is no reason to
+    # move a schedule that works.
     - cron: "47 * * * *"
   workflow_dispatch:
     inputs:
