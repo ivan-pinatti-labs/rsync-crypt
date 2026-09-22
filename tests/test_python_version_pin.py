@@ -11,7 +11,7 @@ passing while suggesting fixes the real interpreter is free to break on.
 Nothing watches either value automatically. Renovate's github-actions manager
 does propose `uses-with` bumps of exactly this shape, and .github/renovate.json5
 disables that depType on purpose, because a `with:` input is not a pin position
-`scripts/assert-pin-only-diff.py` can grade, so `Pin Only` refuses the diff and
+the shared pin-only check can grade, so `Pin Only` refuses the diff and
 the pull request can never merge (PR #82 proved it live). That makes every
 future Python bump here a hand edit of two files, which is precisely the kind
 of pairing a person forgets. This test is the reminder.

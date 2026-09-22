@@ -30,9 +30,10 @@ FROM alpine:${ALPINE_VERSION}
 # the proposed `alpine:<version>` whenever a Renovate ALPINE_VERSION pull
 # request lands and pushes a second commit onto it if anything moved. The
 # `# apk-pin: resolved-from=ALPINE_VERSION` marker above each one is what makes
-# it eligible for that: scripts/assert-pin-only-diff.py's APK_PIN_ANNOTATION
-# reads these exact lines to decide that a bump to one of them is a pin bump
-# rather than a dependency bot reaching outside its lane. The marker is
+# it eligible for that: the shared Pin Only check reads these exact lines,
+# through the apk-pin entry under arg_sources in .github/pin-only.yml, to
+# decide that a bump to one of them is a pin bump rather than a dependency
+# bot reaching outside its lane. The marker is
 # distinct from `# renovate:` on purpose, so Renovate's own regex manager never
 # matches it and never puts these seven back under the independent tracking
 # they are kept out of Renovate to avoid.
@@ -116,10 +117,11 @@ RUN apk update \
 
 # Named individually, not 'scripts/*'. The glob also copied in every
 # repository-tooling script that happens to live under scripts/
-# (assert-pin-only-diff.py, audit-security-ignores.py,
-# coderabbit-review-verdict.py, resolve-apk-pins.py), all of which exist to
-# grade pull requests and audit the ignore list in CI and have no business in
-# a published backup image. They were inert there, since this image installs
+# (audit-security-ignores.py, generate-third-party-licenses.py,
+# resolve-apk-pins.py, and the two merge-pipeline scripts that have since
+# moved to ivan-pinatti-labs/gh-actions), all of which exist to grade pull
+# requests, audit the ignore list and inventory licences in CI and have no
+# business in a published backup image. They were inert there, since this image installs
 # no Python interpreter at all, but they were still shipped: confirmed present
 # under /app/ in ghcr.io/ivan-pinatti-labs/rsync-crypt:1.6.1. Listing the
 # three scripts the container actually runs keeps the next tooling script from

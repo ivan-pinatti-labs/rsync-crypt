@@ -9,8 +9,8 @@ constraints, not Docker tags: no Renovate datasource models "the version of
 this apk package available in Alpine release X", so these seven are pinned
 by hand against whichever `alpine:${ALPINE_VERSION}` the Dockerfile builds
 from, each carrying a `# apk-pin: resolved-from=ALPINE_VERSION` marker (see
-scripts/assert-pin-only-diff.py) instead of Renovate's own `# renovate:`
-marker.
+`.github/pin-only.yml`, which is what the shared Pin Only check reads)
+instead of Renovate's own `# renovate:` marker.
 
 All eight are `ARG NAME=value` defaults in the `Dockerfile` itself. They used
 to be quoted `NAME="value"` lines in `.env.example`, which this script

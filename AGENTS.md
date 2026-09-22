@@ -218,12 +218,13 @@ resolves to a different value, pushes a second commit onto the same pull
 request with the update. Each of the seven carries a
 `# apk-pin: resolved-from=ALPINE_VERSION` comment directly above it, a
 marker distinct from Renovate's own `# renovate:` on purpose: it is what
-`scripts/assert-pin-only-diff.py`'s `Pin Only` check reads to accept a bump
-to one of these seven as a pin bump rather than refusing the pull request for
-"a dependency bot reaching outside its lane" (see `APK_PIN_ANNOTATION` in
-that script). It is deliberately not `# renovate:` with a different
-datasource attached: that shape is exactly what Renovate's own regex manager
-matches, which would put these seven right back under Renovate's independent
+the shared `Pin Only` check reads to accept a bump to one of these seven as
+a pin bump rather than refusing the pull request for "a dependency bot
+reaching outside its lane" (the second entry under `arg_sources` in
+`.github/pin-only.yml` is what names it). It is deliberately not
+`# renovate:` with a different datasource attached: that shape is exactly
+what Renovate's own regex manager matches, which would put these seven right
+back under Renovate's independent
 tracking, the failure mode they are excluded from Renovate to avoid in the
 first place.
 
@@ -528,7 +529,7 @@ draws the barer reply and tells you nothing new. Measured on #117, which drew
 four of them across 45 minutes.
 
 A routine dependency bot pull request needs none of this: a pin-only diff
-resolves `Review Verified` through `scripts/coderabbit-review-verdict.py`'s
+resolves `Review Verified` through the shared review verdict's
 bot lane without CodeRabbit ever being asked.
 
 ### Selectors match the library's templates
