@@ -25,10 +25,12 @@ name: Resolve apk Pins
 # Each of the seven ARGs carries a `# apk-pin: resolved-from=ALPINE_VERSION`
 # comment immediately above it, not `# renovate:`, on purpose: that is what
 # the shared Pin Only check reads to decide a bump to one of them is a pin
-# bump and not "a dependency bot reaching outside its lane" (the apk-pin
-# entry under arg_sources in .github/pin-only.yml is what names it). Renovate's own custom regex
-# manager is anchored to `# renovate:` specifically, so it never matches this
-# marker and never tries to track these seven independently, which is the
+# bump and not "a dependency bot reaching outside its lane".
+# .github/pin-only.yml names it as the second annotations pattern on its
+# single arg_sources entry, the one that reads the Dockerfile.
+# Renovate's own custom regex manager is anchored to `# renovate:`
+# specifically, so it never matches this marker and never tries to track
+# these seven independently, which is the
 # exact failure they were kept out of Renovate's hands to avoid in the first
 # place.
 #

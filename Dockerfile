@@ -30,10 +30,11 @@ FROM alpine:${ALPINE_VERSION}
 # the proposed `alpine:<version>` whenever a Renovate ALPINE_VERSION pull
 # request lands and pushes a second commit onto it if anything moved. The
 # `# apk-pin: resolved-from=ALPINE_VERSION` marker above each one is what makes
-# it eligible for that: the shared Pin Only check reads these exact lines,
-# through the apk-pin entry under arg_sources in .github/pin-only.yml, to
+# it eligible for that: the shared Pin Only check reads these exact lines to
 # decide that a bump to one of them is a pin bump rather than a dependency
-# bot reaching outside its lane. The marker is
+# bot reaching outside its lane. .github/pin-only.yml names the marker as the
+# second annotations pattern on its single arg_sources entry, the one that
+# reads this file. The marker is
 # distinct from `# renovate:` on purpose, so Renovate's own regex manager never
 # matches it and never puts these seven back under the independent tracking
 # they are kept out of Renovate to avoid.

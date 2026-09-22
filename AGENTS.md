@@ -220,8 +220,9 @@ request with the update. Each of the seven carries a
 marker distinct from Renovate's own `# renovate:` on purpose: it is what
 the shared `Pin Only` check reads to accept a bump to one of these seven as
 a pin bump rather than refusing the pull request for "a dependency bot
-reaching outside its lane" (the second entry under `arg_sources` in
-`.github/pin-only.yml` is what names it). It is deliberately not
+reaching outside its lane". `.github/pin-only.yml` names it as the second
+`annotations` pattern on its single `arg_sources` entry, the one that reads
+the `Dockerfile`. It is deliberately not
 `# renovate:` with a different datasource attached: that shape is exactly
 what Renovate's own regex manager matches, which would put these seven right
 back under Renovate's independent
