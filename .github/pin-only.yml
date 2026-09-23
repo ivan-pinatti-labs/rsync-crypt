@@ -1,0 +1,37 @@
+---
+# What a dependency bot may change here without a person reading the diff.
+# Read by the shared `Pin Only` check in ivan-pinatti-labs/gh-actions, which
+# reads it from the default branch rather than from the pull request being
+# graded. This file is deliberately absent from its own allowed_paths, so a
+# bot cannot widen its own lane.
+#
+# Reproduces the scripts/assert-pin-only-diff.py this replaced, exactly, down
+# to the apk-pin annotation that lets resolve-apk-pins.yml's second commit
+# stay in the bot lane.
+allowed_paths:
+  - Dockerfile
+  - .pre-commit-config.yaml
+  - .github/workflows/
+  - .devcontainer/Dockerfile
+
+arg_sources:
+  - file: Dockerfile
+    annotations:
+      - '^#\s*renovate:'
+      - '^#\s*apk-pin:\s*resolved-from=ALPINE_VERSION\s*$'
+
+rules:
+  - path: Dockerfile
+    grammars: [annotated_arg]
+  - path: .devcontainer/Dockerfile
+    grammars: [image_digest]
+  - path: .github/workflows/
+    grammars:
+      - name: action_sha
+        when: outside_block_scalar
+      - name: bare_action_version
+        when: outside_block_scalar
+      - name: rev_pin
+        when: outside_block_scalar
+
+default_grammars: [action_sha, bare_action_version, rev_pin]

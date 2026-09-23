@@ -2,8 +2,8 @@
 
 Exercises only the pure parsing, rendering and splicing functions, never
 `collect`, which shells out to Docker: these run anywhere, with no Docker
-daemon and no network, the same shape the sibling `resolve-apk-pins.py` and
-`assert-pin-only-diff.py` tests take.
+daemon and no network, the same shape the sibling `resolve-apk-pins.py`
+tests take.
 
     pytest -m scripts tests/test_generate_third_party_licenses.py
 

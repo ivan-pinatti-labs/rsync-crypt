@@ -40,13 +40,15 @@ name: CodeQL
 # whole arrangement out.
 #
 # What CodeQL does cover is the Python under scripts/ and tests/, which is
-# repository tooling rather than shipped code: it grades pull requests
-# (assert-pin-only-diff.py, coderabbit-review-verdict.py), re-resolves apk
-# pins on an Alpine bump (resolve-apk-pins.py) and audits the accepted-risk
-# list (audit-security-ignores.py). None of it reaches the image, which
-# installs no Python interpreter at all, so a finding here is never a
-# vulnerability in a published artifact. It can still gate a merge wrongly,
-# which is reason enough to analyze it, and `ruff.toml` enables flake8-bandit
+# repository tooling rather than shipped code: it re-resolves apk pins on an
+# Alpine bump (resolve-apk-pins.py), audits the accepted-risk list
+# (audit-security-ignores.py) and generates the licence inventory
+# (generate-third-party-licenses.py). The two scripts that graded pull
+# requests moved to ivan-pinatti-labs/gh-actions, which analyzes them there.
+# None of it reaches the image, which installs no Python interpreter at all,
+# so a finding here is never a vulnerability in a published artifact. It can
+# still gate a merge wrongly, which is reason enough to analyze it, and
+# `ruff.toml` enables flake8-bandit
 # (`S`) over the same files for the faster, per-commit half of the same job.
 #
 # No `push:` on branches other than the default one and no `pull_request:`

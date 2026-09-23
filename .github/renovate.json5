@@ -162,9 +162,9 @@
     // manager at all: it would have meant every one of those SHA refreshes,
     // the routine case rather than the exception, arrives unlabelled and
     // waits for a person, the automerge path pin-only diffs are supposed to
-    // have. `scripts/assert-pin-only-diff.py`'s version grammar already
+    // have. The shared pin-only check's version grammar already
     // accepts a changed action SHA as a pin-position change, confirmed
-    // against `ACTION_SHA` in that script, so `Pin Only` is still the actual
+    // against its `action_sha` grammar, so `Pin Only` is still the actual
     // gate behind this label; digest reaching automerge does not bypass it.
     // `pin` stays off the list: `pinDigests` is not enabled anywhere in this
     // config, so nothing here can ever produce a `pin` update, unlike
@@ -217,8 +217,9 @@
     // minimumReleaseAge, sends Ubuntu minor and major moves to a person, and
     // only publishes from a reviewed merge to main. A digest
     // arriving here has therefore already passed that gate, and `Pin Only`
-    // grades the `ARG BASE_IMAGE=<image>@sha256:<digest>` line (IMAGE_DIGEST in
-    // scripts/assert-pin-only-diff.py), so the ordinary bot lane approves it.
+    // grades the `ARG BASE_IMAGE=<image>@sha256:<digest>` line (the shared
+    // pin-only check's image_digest grammar), so the ordinary bot lane
+    // approves it.
     // GHCR returns no release timestamp for a digest, so under Renovate's
     // default minimumReleaseAgeBehaviour (timestamp-required) the seven day
     // window above would hold every base image bump forever and, with
@@ -273,8 +274,8 @@
     // actions/setup-python's with: (depType uses-with) is exactly what PR
     // #82 proved live, proposing 3.13 to 3.14 with no way to ever merge it.
     // Dependabot's github-actions ecosystem never watched this shape, it
-    // bumped uses: pins only, and scripts/assert-pin-only-diff.py's
-    // REV_PIN and ACTION_SHA patterns do not match a with: input either, so
+    // bumped uses: pins only, and the shared pin-only check's
+    // rev_pin and action_sha grammars do not match a with: input either, so
     // Pin Only was always going to refuse a diff like this and route it to
     // a person, the same person it will keep routing every future Python
     // release to, forever, unless this manager stops proposing the shape.

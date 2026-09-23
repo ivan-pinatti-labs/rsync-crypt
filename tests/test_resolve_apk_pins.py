@@ -3,8 +3,8 @@
 Exercises only the pure parsing and precision-matching functions
 (`parse_apk_policy`, `match_precision`, `apply`), never `resolve_versions`
 itself, which shells out to Docker: these run anywhere, with no Docker
-daemon and no network, the same way the sibling `assert-pin-only-diff.py`
-tests do.
+daemon and no network, the same way the sibling
+`generate-third-party-licenses.py` tests do.
 
     pytest -m scripts tests/test_resolve_apk_pins.py
 

@@ -54,11 +54,12 @@ def test_every_version_arg_has_a_default_and_its_annotation(arg, annotation):
     Three separate mechanisms are anchored to these exact two lines: Renovate's
     custom regex manager (`# renovate:` above `ARG ALPINE_VERSION=`),
     scripts/resolve-apk-pins.py (which rewrites the seven `# apk-pin:` ones)
-    and scripts/assert-pin-only-diff.py (which will only grade a bump to an
-    annotated ARG as a pin bump). All three fail silently and open if an
-    annotation is dropped or an ARG loses its default: Renovate simply stops
-    proposing Alpine bumps, and the `Pin Only` gate simply stops recognizing a
-    legitimate one. Nothing else in the suite would notice.
+    and the shared pin-only check in ivan-pinatti-labs/gh-actions (which will
+    only grade a bump to an annotated ARG as a pin bump). All three fail
+    silently and open if an annotation is dropped or an ARG loses its
+    default: Renovate simply stops proposing Alpine bumps, and the `Pin Only`
+    gate simply stops recognizing a legitimate one. Nothing else in the suite
+    would notice.
     """
     lines = (REPO_ROOT / "Dockerfile").read_text().splitlines()
     declarations = [i for i, line in enumerate(lines) if line.startswith(f"ARG {arg}=")]

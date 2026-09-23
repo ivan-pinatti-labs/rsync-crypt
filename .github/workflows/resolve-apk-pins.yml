@@ -24,11 +24,13 @@ name: Resolve apk Pins
 #
 # Each of the seven ARGs carries a `# apk-pin: resolved-from=ALPINE_VERSION`
 # comment immediately above it, not `# renovate:`, on purpose: that is what
-# scripts/assert-pin-only-diff.py's Pin Only check reads to decide a bump to
-# one of them is a pin bump and not "a dependency bot reaching outside its
-# lane" (see that script's APK_PIN_ANNOTATION). Renovate's own custom regex
-# manager is anchored to `# renovate:` specifically, so it never matches this
-# marker and never tries to track these seven independently, which is the
+# the shared Pin Only check reads to decide a bump to one of them is a pin
+# bump and not "a dependency bot reaching outside its lane".
+# .github/pin-only.yml names it as the second annotations pattern on its
+# single arg_sources entry, the one that reads the Dockerfile.
+# Renovate's own custom regex manager is anchored to `# renovate:`
+# specifically, so it never matches this marker and never tries to track
+# these seven independently, which is the
 # exact failure they were kept out of Renovate's hands to avoid in the first
 # place.
 #
@@ -167,11 +169,11 @@ jobs:
     steps:
       - name: Check out the default branch
         # Explicit, and load-bearing: this is what makes scripts/resolve-apk-pins.py
-        # and scripts/assert-pin-only-diff.py's own APK_PIN_ANNOTATION the
-        # trusted, reviewed copies rather than whatever a compromised or
-        # misconfigured bot might have rewritten them to say on its own
-        # branch. Only the Dockerfile, fetched separately below, is ever read
-        # from the pull request's branch.
+        # the trusted, reviewed copy rather than whatever a compromised or
+        # misconfigured bot might have rewritten it to say on its own branch.
+        # The shared Pin Only check reads .github/pin-only.yml from the
+        # default branch for the same reason. Only the Dockerfile, fetched
+        # separately below, is ever read from the pull request's branch.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}

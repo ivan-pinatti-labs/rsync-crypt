@@ -78,9 +78,10 @@ pre-commit) was retired and `.github/dependabot.yml` deleted: both ecosystems
 moved to Renovate's own native managers instead of a second bot managing them
 independently. For the ones that are pin only:
 
-1. **`Pin Only` is graded.** `scripts/assert-pin-only-diff.py` checks that
-   every changed line differs from its counterpart in nothing but a version,
-   in a pin position, across four allowed pin surfaces, and
+1. **`Pin Only` is graded.** The shared pin-only check in
+   ivan-pinatti-labs/gh-actions checks that every changed line differs from
+   its counterpart in nothing but a version, in a pin position, across the
+   four allowed pin surfaces `.github/pin-only.yml` names, and
    `.github/workflows/coderabbit-gate.yml` publishes its verdict as the
    `Pin Only` status. A number that is not a pin does not count as one.
 2. **The approval is supplied, conditionally.** `bot-auto-merge.yml` waits
@@ -96,7 +97,7 @@ independently. For the ones that are pin only:
 Stated plainly, because it is easy to read the rest of this document and
 still assume CodeRabbit looks at everything: **a dependency bot pull request
 whose diff is pin only merges with no CodeRabbit review at all.**
-`scripts/coderabbit-review-verdict.py`'s bot lane resolves `Review Verified`
+The shared review verdict's bot lane resolves `Review Verified`
 straight to `success` with the description "pin-only diff, nothing to
 review" the moment `Pin Only` reads `success`, and CodeRabbit is never asked
 for an opinion. This is the case that used to make the retired hourly nudge
@@ -115,7 +116,7 @@ design, not by omission. What actually stands between that and an unattended
 merge of something harmful is two things, neither of them a review:
 
 1. **The `Pin Only` assertion itself**, for a diff that tries to be something
-   other than a version bump. `scripts/assert-pin-only-diff.py` is honest
+   other than a version bump. The shared pin-only check is honest
    about its own limit: it can tell a line that changed structurally from
    one that changed only its version, but it cannot tell a version that
    exists from a version that is safe. `alpine:3.24` becoming `alpine:3.25`
@@ -201,8 +202,8 @@ An exhausted review quota, a skipped draft, and an actual completed review
 all read `success`. Three pull requests in that repository merged with no
 review having actually happened on 2026-08-19 as a direct result (its #114).
 
-`scripts/coderabbit-review-verdict.py`, published as `Review Verified` by
-`coderabbit-gate.yml`, is the fix: it reads the actual description behind the
+The shared review verdict in ivan-pinatti-labs/gh-actions, published as
+`Review Verified` by `coderabbit-gate.yml`, is the fix: it reads the actual description behind the
 `CodeRabbit` status rather than its color, and grades in three lanes.
 
 1. **A draft is `pending`**, not `failure`, since a required context reading
