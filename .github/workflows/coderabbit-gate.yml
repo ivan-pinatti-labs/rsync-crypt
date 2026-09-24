@@ -107,12 +107,20 @@ jobs:
     # A pinned reusable workflow reference is one scalar: the path and the
     # 40 character SHA cannot be wrapped, and shortening either would mean
     # giving up the pin. The disable has to sit immediately above the line it
-    # covers, not above this explanation. editorconfig-checker enforces the
+    # covers, not above this explanation.
+    #
+    # The trailing `# v0.2.2` is not decoration. Renovate's github-actions
+    # manager reads the current version out of that comment, and a bare SHA
+    # without one is a dependency it cannot resolve a version for, so it
+    # proposes nothing and the pin never moves. This repository adopted the
+    # shared pipeline before that was understood and was the only consumer
+    # left without the comment, which meant it was also the only one that
+    # would not have received the depin fix automatically. editorconfig-checker enforces the
     # same 100 character limit from .editorconfig and takes a block form
     # rather than a line one, so it gets the pair below.
     # editorconfig-checker-disable
     # yamllint disable-line rule:line-length
-    uses: ivan-pinatti-labs/gh-actions/.github/workflows/reusable-coderabbit-gate.yml@0828ec87b62933769de0c3d0053530f98524f2e1
+    uses: ivan-pinatti-labs/gh-actions/.github/workflows/reusable-coderabbit-gate.yml@6923ff20471396769bef254003efcd24e0ea8347 # v0.2.2
     # editorconfig-checker-enable
     permissions:
       contents: read
