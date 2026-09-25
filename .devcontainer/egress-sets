@@ -1,7 +1,6 @@
-# Egress sets this repository needs beyond workbench and github (always on).
+# Egress sets this repository needs beyond workbench, github and ghcr (always on).
 python
 node
-golang
 docker-hub
 alpine
 trivy
