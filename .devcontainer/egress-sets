@@ -1,0 +1,7 @@
+# Egress sets this repository needs beyond workbench and github (always on).
+python
+node
+golang
+docker-hub
+alpine
+trivy
