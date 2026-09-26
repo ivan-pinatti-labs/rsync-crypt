@@ -12,7 +12,7 @@ allowed_paths:
   - Dockerfile
   - .pre-commit-config.yaml
   - .github/workflows/
-  - .devcontainer/Dockerfile
+  - .devcontainer/l2/Dockerfile
 
 arg_sources:
   - file: Dockerfile
@@ -23,7 +23,7 @@ arg_sources:
 rules:
   - path: Dockerfile
     grammars: [annotated_arg]
-  - path: .devcontainer/Dockerfile
+  - path: .devcontainer/l2/Dockerfile
     grammars: [image_digest]
   - path: .github/workflows/
     grammars:
