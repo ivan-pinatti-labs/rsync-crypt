@@ -57,8 +57,8 @@
   // custom.regex manager below already owns, which is the duplicate this
   // allowlist has always existed to prevent. A pair of packageRules entries
   // further down is what scopes it: the first disables everything the
-  // dockerfile manager finds, the second enables .devcontainer/Dockerfile
-  // alone, whose base image digest no other manager here watches, so the two
+  // dockerfile manager finds, the second enables .devcontainer/l2/Dockerfile
+  // alone, whose L2 image digest no other manager here watches, so the two
   // never see the same line. Scoping by rule alone would not do it, because
   // matchFileNames narrows a rule and not what a manager reads.
   enabledManagers: [
@@ -205,19 +205,19 @@
       matchManagers: ["dockerfile"],
       enabled: false,
     },
-    // The development container's base image, pinned by digest in
-    // .devcontainer/Dockerfile.
+    // The shared L2 image this repository's own L2 image builds on, pinned by
+    // digest in .devcontainer/l2/Dockerfile.
     //
     // Merged unattended, granted here rather than inherited: the first rule
     // above already grants automerge to digests, but stating it here keeps this
     // policy independent of that grant. This is the
-    // organization's own image, built by ivan-pinatti-labs/devcontainer-images,
+    // organization's own image, built by ivan-pinatti-labs/devcontainer-airlock,
     // and the quality gate lives there rather than in each consumer: that
     // repository ages its own upstream inputs through a seven day
     // minimumReleaseAge, sends Ubuntu minor and major moves to a person, and
     // only publishes from a reviewed merge to main. A digest
     // arriving here has therefore already passed that gate, and `Pin Only`
-    // grades the `ARG BASE_IMAGE=<image>@sha256:<digest>` line (the shared
+    // grades the `ARG L2_IMAGE=<image>@sha256:<digest>` line (the shared
     // pin-only check's image_digest grammar), so the ordinary bot lane
     // approves it.
     // GHCR returns no release timestamp for a digest, so under Renovate's
@@ -227,14 +227,14 @@
     // Measured with a dry-run=full: "digest update of
     // ghcr.io/ivan-pinatti-labs/devcontainer-base has no releaseTimestamp to
     // age against". timestamp-optional lets the update be offered; the seven
-    // day window is applied upstream instead, in devcontainer-images, where the
+    // day window is applied upstream instead, in devcontainer-airlock, where the
     // image's own inputs are aged before anything is published.
     {
       matchManagers: ["dockerfile"],
-      matchFileNames: [".devcontainer/Dockerfile"],
+      matchFileNames: [".devcontainer/l2/Dockerfile"],
       enabled: true,
-      groupName: "development container base image",
-      groupSlug: "devcontainer-base",
+      groupName: "L2 image",
+      groupSlug: "airlock-l2",
       labels: ["dependencies", "tooling"],
       minimumReleaseAgeBehaviour: "timestamp-optional",
       automerge: true,

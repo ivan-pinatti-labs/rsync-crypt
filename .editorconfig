@@ -106,12 +106,3 @@ max_line_length = unset
 indent_style = unset
 indent_size = unset
 trim_trailing_whitespace = false
-
-# Two values in the development container's configuration are longer than the
-# 100 characters [*.json] asks for: the workspace mount specification, which
-# names the same path twice through a variable, and the ssh command line the
-# container runs git with. JSON has no line continuation, so neither can be
-# wrapped, and shortening either would change what it does. Only the line
-# length is unset here; indentation still applies.
-[.devcontainer/devcontainer.json]
-max_line_length = unset
