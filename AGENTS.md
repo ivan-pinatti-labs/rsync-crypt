@@ -393,6 +393,19 @@ with a job-scoped `contents: write`, plus an explicit `workflow_dispatch`
 re-trigger of `pull-request-validation.yml`, for the reasons in that section
 above.
 
+### SonarQube Cloud replaced CodeQL, shellcheck stays
+
+`sonarqube.yml` publishes the required `SonarQube` check and fails when the
+quality gate does. The gate is the Free plan's fixed "Sonar way": no custom
+rules or profiles, and any new issue in new code fails it, including an old
+finding on a line a pull request edits, as does new Python under 80%
+covered by the suite (`sonarqube.yml` runs it under `coverage`). Fix what a rule asks for, or mark the
+single finding false positive or accepted in SonarQube Cloud with a reason;
+never `# NOSONAR`. Automatic Analysis must stay off in the project settings,
+or every CI scan aborts. Why each piece is the way it is (merge queue, forks,
+dispatch after `resolve-apk-pins.yml`'s push) is in docs/MERGE_PIPELINE.md and
+docs/SECURITY.md's "What Scans What".
+
 ### Branch, PR, gates, then merge
 
 No direct commits to `main`; `checklist-git-protected-branches` enforces it.
