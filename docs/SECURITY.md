@@ -188,8 +188,11 @@ too. Its old `codeql-python` alerts in the Security tab stop updating; they
 are history, not current findings.
 
 The quality gate is the Free plan's built-in "Sonar way", which cannot be
-edited, and neither can its rule set. It fails on any new issue in new code.
-Two consequences worth knowing:
+edited, and neither can its rule set. It fails on any new issue in new code,
+and when less than 80% of new Python is covered by the test suite, which is
+why `sonarqube.yml` runs the suite under `coverage` before scanning. Shell
+has no coverage in SonarQube Cloud, so that condition only ever reads the
+Python. Two consequences worth knowing:
 
 - **Editing a line makes it new code.** An old finding on that line then
   counts against the pull request, which is why the initial findings were
