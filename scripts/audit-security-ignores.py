@@ -69,7 +69,7 @@ DEFAULT_WARN_DAYS = 14
 # also writes the only entries in.
 _ID_LINE = re.compile(r"^\s*-\s*id:\s*(\S+)\s*$")
 _EXPIRED_AT_LINE = re.compile(r"^\s*expired_at:\s*(\d{4}-\d{2}-\d{2})\s*$")
-_STATEMENT_LINE = re.compile(r"^\s*statement:\s*(.*\S)\s*$")
+_STATEMENT_LINE = re.compile(r"^\s*statement:[ \t]*(\S.*)$")
 _TOP_LEVEL_KEY = re.compile(r"^\S")
 
 
