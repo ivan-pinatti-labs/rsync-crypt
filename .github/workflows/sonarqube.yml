@@ -1,0 +1,138 @@
+name: SonarQube
+
+# SonarQube Cloud static analysis: shell, Python, the Dockerfile, YAML and
+# these workflows, plus secrets detection over every text file. Settings live
+# in sonar-project.properties. Replaces codeql.yml, which only ever covered the
+# Python tooling (see issue #107). It does not replace shellcheck, which keeps
+# running on every commit through `checklist-dev-shell`: Sonar's shell rules
+# are few and different, not a superset.
+#
+# The job fails when the SonarQube Cloud quality gate fails
+# (`sonar.qualitygate.wait=true`), so the `SonarQube` check is the gate
+# verdict itself, reported by GitHub Actions like `Pre-commit` and `Tests`.
+# SonarQube Cloud's own GitHub App also posts a check on the pull request;
+# that one is informational only. It is not what branch protection should
+# require, because it is never posted on a merge queue commit.
+#
+# Triggers:
+#   pull_request       the analysis a reviewer reads, decorated onto the pull
+#                      request by SonarQube Cloud.
+#   push to main       the baseline every pull request's "new code" is measured
+#                      against. Without it the gate has nothing to compare to.
+#   merge_group        see the "Merge queue" step below.
+#   workflow_dispatch  resolve-apk-pins.yml pushes onto a Renovate pull request
+#                      with GITHUB_TOKEN, which starts no workflow run, and
+#                      dispatches this one with `pr_number` right after so the
+#                      new head gets analyzed. Also the manual re-run.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: >-
+          Pull request to analyze as a pull request, for the branch this run is
+          dispatched on (`--ref`). Leave blank for a plain branch analysis.
+        required: false
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: sonarqube-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Only to read a dispatched pull request's head and base branch names.
+      pull-requests: read
+    steps:
+      - name: Merge queue
+        # Not analyzed. The queue's commit is main plus a pull request whose
+        # own head was already analyzed and gated here, and static analysis of
+        # that pull request's change does not depend on what else landed on
+        # main meanwhile. SonarQube Cloud also has no pull request to attach a
+        # queue commit to, so an analysis there would be a branch analysis of
+        # a throwaway `gh-readonly-queue/...` branch. The push to main right
+        # after the merge analyzes the real result. The step still has to run
+        # and pass, or the required check never appears on the queue's commit
+        # and the queue stalls.
+        if: github.event_name == 'merge_group'
+        run: echo "Merge queue commit; the pull request head was already analyzed."
+
+      - name: Refuse a fork's pull request
+        # GitHub withholds SONAR_TOKEN from a fork's pull_request run, so the
+        # scan cannot authenticate. Failing says so; passing would read as an
+        # analysis that never happened. A maintainer pushes the contributor's
+        # commits to a branch here and opens a pull request from that.
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::SonarQube cannot analyze a fork's pull request (no SONAR_TOKEN)." \
+            "Push the branch to this repository instead."
+          exit 1
+
+      - name: Checkout
+        if: github.event_name != 'merge_group'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # Full history: SonarQube Cloud reads blame to decide which lines
+          # are new code, and a shallow clone makes every line look new.
+          fetch-depth: 0
+
+      - name: Resolve the dispatched pull request
+        # A dispatched run is a push-like event to the scanner, so it would be
+        # analyzed as a branch. Passing the pull request's key, branch and
+        # base makes it the same pull request analysis a `pull_request` run
+        # produces, with the same gate. Each value is checked before it goes
+        # anywhere near the scanner's arguments.
+        id: pr
+        if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::pr_number must be a number, got '$PR_NUMBER'."
+            exit 1
+          fi
+          read -r head base < <(gh api "repos/$REPO/pulls/$PR_NUMBER" \
+            --jq '"\(.head.ref) \(.base.ref)"')
+          if [[ "$head" != "$REF_NAME" ]]; then
+            echo "::error::#$PR_NUMBER is from '$head', but this run is on '$REF_NAME'."
+            exit 1
+          fi
+          for ref in "$head" "$base"; do
+            if ! [[ "$ref" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::Unexpected characters in branch name '$ref'."
+              exit 1
+            fi
+          done
+          args="-Dsonar.pullrequest.key=$PR_NUMBER"
+          args+=" -Dsonar.pullrequest.branch=$head"
+          args+=" -Dsonar.pullrequest.base=$base"
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
+      - name: Scan
+        if: github.event_name != 'merge_group'
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >-
+            -Dsonar.qualitygate.wait=true
+            ${{ steps.pr.outputs.args }}
