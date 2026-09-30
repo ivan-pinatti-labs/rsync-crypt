@@ -83,6 +83,17 @@ def test_parse_ignorefile_allows_a_missing_statement():
     assert third.expired_at == date(2026, 1, 1)
 
 
+def test_parse_ignorefile_treats_an_empty_statement_as_missing():
+    entries = audit.parse_ignorefile(
+        "vulnerabilities:\n"
+        "  - id: CVE-2026-11111\n"
+        "    statement:\n"
+        "    expired_at: 2026-01-01\n"
+    )
+    assert entries[0].statement is None
+    assert entries[0].expired_at == date(2026, 1, 1)
+
+
 def test_parse_ignorefile_matches_the_real_repository_file():
     # The actual file this script audits in CI. Twelve entries today (see
     # .trivyignore.yaml's own header for why); this assertion is meant to
