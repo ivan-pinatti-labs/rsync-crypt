@@ -40,10 +40,10 @@ name: Resolve apk Pins
 # default GITHUB_TOKEN, specifically to stop workflows triggering each other
 # in a loop (the same restriction bot-auto-merge.yml's own comments rely on
 # for `workflow_run` over `status`). Left there, that would leave the
-# resolver's commit sitting on the pull request with none of `Tests`, `Pin
-# Only` or `Review Verified` ever re-run against it, which fails the one
+# resolver's commit sitting on the pull request with none of `Tests`,
+# `SonarQube`, `Pin Only` or `Review Verified` ever re-run against it, which fails the one
 # requirement this workflow cannot compromise on: "don't build a parallel
-# test or review path", the real jobs that publish those three have to grade
+# test or review path", the real jobs that publish those checks have to grade
 # this commit the normal way.
 #
 # The anti-recursion rule has one documented exception: an explicit
@@ -51,9 +51,9 @@ name: Resolve apk Pins
 # GITHUB_TOKEN, because that call is the workflow deliberately asking for
 # another run rather than a push incidentally causing one. So instead of a
 # stored credential whose only job is to look like a human push, the "Re-
-# trigger pull request validation" and "Re-trigger the CodeRabbit gate"
-# steps, right after the push below lands, dispatch the two workflows that
-# publish those three checks directly:
+# trigger pull request validation", "Re-trigger the SonarQube analysis" and
+# "Re-trigger the CodeRabbit gate" steps, right after the push below lands,
+# dispatch the workflows that publish those checks directly:
 #
 #   - `pull-request-validation.yml` carries a `workflow_dispatch` trigger
 #     (added alongside this change) for `Pre-commit` and `Tests`.
@@ -63,9 +63,12 @@ name: Resolve apk Pins
 #     `Pin Only` and `Review Verified`. Finishing that run also fires
 #     bot-auto-merge.yml's `workflow_run` trigger, which is what actually
 #     supplies the approval once every required check reads green.
+#   - `sonarqube.yml` takes a `pr_number` too, for `SonarQube`, dispatched on
+#     the pull request's branch so it analyzes the pushed code as that pull
+#     request rather than as a bare branch.
 #
-# Both calls need `actions: write`, granted below, the same way the push
-# needs `contents: write`; all three are GITHUB_TOKEN, scoped down to this
+# The dispatch calls need `actions: write`, granted below, the same way the
+# push needs `contents: write`; all of it is GITHUB_TOKEN, scoped down to this
 # job, with no separate secret to create, rotate or lose.
 #
 # Branch protection matches a required check by name and by the commit SHA
@@ -327,6 +330,26 @@ jobs:
           gh workflow run pull-request-validation.yml \
             --repo "$REPO" \
             --ref "$HEAD_REF"
+
+      - name: Re-trigger the SonarQube analysis
+        # Same gap as `Tests` above: sonarqube.yml's `SonarQube` check would
+        # otherwise never appear on the commit just pushed. Dispatched on the
+        # pull request's branch, like pull-request-validation.yml, because it
+        # analyzes the checked out code. `pr_number` makes it a pull request
+        # analysis rather than a branch analysis; see that workflow.
+        if: steps.resolve.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run sonarqube.yml \
+            --repo "$REPO" \
+            --ref "$HEAD_REF" \
+            --field "pr_number=$PR_NUMBER"
 
       - name: Re-trigger the CodeRabbit gate
         # `Tests` is not the only required check the suppressed push leaves

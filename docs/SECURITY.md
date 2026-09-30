@@ -166,6 +166,7 @@ about the code this repository writes, which is scanned separately:
 | --- | --- | --- |
 | `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
 | `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
+| Everything Sonar has an analyzer for: shell, Python, `Dockerfile`, YAML, `.github/workflows/*`, secrets | SonarQube Cloud, Sonar way quality gate | `sonarqube.yml`, on every pull request and merge |
 | `scripts/*.py`, `tests/*.py` | CodeQL, `security-extended` suite | `codeql.yml`, on merge and weekly |
 | `scripts/*.py`, `tests/*.py` | CodeQL quality queries | GitHub-managed Code Quality, on push, PR and weekly |
 | `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |

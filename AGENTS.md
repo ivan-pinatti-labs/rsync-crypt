@@ -284,13 +284,15 @@ backup/restore roundtrip), and not `coderabbit-gate.yml`'s `Pin Only` and
 fire from a GITHUB_TOKEN push any more than `pull-request-validation.yml`'s
 do. The anti-recursion rule has one documented exception: an explicit
 `workflow_dispatch` call made through the API, even with `GITHUB_TOKEN`.
-Right after the push, `resolve-apk-pins.yml` dispatches both workflows
+Right after the push, `resolve-apk-pins.yml` dispatches those workflows
 directly: `pull-request-validation.yml` carries a `workflow_dispatch` trigger
 added for this, invoked with `gh workflow run pull-request-validation.yml
 --ref <branch>`; `coderabbit-gate.yml` already had one, `pr_number`, its own
 manual recovery path for a pull request stuck with a stale verdict, invoked
 with `gh workflow run coderabbit-gate.yml --field pr_number=<number>`
-instead (both need `actions: write`). Finishing that second run also fires
+instead; `sonarqube.yml` takes both, `gh workflow run sonarqube.yml --ref
+<branch> --field pr_number=<number>`, so the pushed code is analyzed as that
+pull request (all need `actions: write`). Finishing the CodeRabbit gate run also fires
 `bot-auto-merge.yml`'s own `workflow_run` trigger, which is what actually
 supplies the approval once every required check reads green. Branch
 protection matches a required check by name and by the SHA it reports
