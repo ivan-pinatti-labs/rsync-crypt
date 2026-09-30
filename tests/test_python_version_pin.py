@@ -87,3 +87,26 @@ def test_sonar_python_version_matches_the_interpreter_ci_runs():
         f"but {WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
         "together; nothing derives one from the other."
     )
+
+
+# sonarqube.yml runs the suite again, under coverage, with its own
+# actions/setup-python. A fourth copy, moved by hand for the same reason.
+SONAR_WORKFLOW = REPO_ROOT / ".github/workflows/sonarqube.yml"
+
+
+def test_sonar_workflow_runs_the_same_interpreter_as_ci():
+    workflow = WORKFLOW_PYTHON.search(WORKFLOW.read_text())
+    assert workflow, f"no quoted python-version found in {WORKFLOW.name}"
+
+    sonar = WORKFLOW_PYTHON.findall(SONAR_WORKFLOW.read_text())
+    assert len(sonar) == 1, (
+        f"expected exactly one quoted python-version in {SONAR_WORKFLOW.name}, "
+        f"found {len(sonar)}: {sonar}"
+    )
+
+    ci = (workflow.group("major"), workflow.group("minor"))
+    assert sonar[0] == ci, (
+        f"{SONAR_WORKFLOW.name} runs Python {sonar[0][0]}.{sonar[0][1]} but "
+        f"{WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
+        "together; nothing derives one from the other."
+    )

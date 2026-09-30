@@ -52,6 +52,8 @@ files/ssh/known_hosts
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+coverage.xml
 tests/.venv/
 
 # Personal AI agent files, never committed (see AGENTS.md)
