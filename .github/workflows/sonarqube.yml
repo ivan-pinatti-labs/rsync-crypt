@@ -127,6 +127,32 @@ jobs:
           args+=" -Dsonar.pullrequest.base=$base"
           echo "args=$args" >> "$GITHUB_OUTPUT"
 
+      # Coverage for the Python tooling. The quality gate requires 80% on new
+      # code, and with no report every new Python line counts as uncovered,
+      # so any pull request touching scripts/*.py would fail it. The whole
+      # suite, not only the tests that import those scripts, so a new test
+      # file counts without being listed here. Shell has no coverage in
+      # SonarQube Cloud, so this is Python only.
+      - name: Set up Python
+        if: github.event_name != 'merge_group'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+
+      - name: Install test dependencies
+        if: github.event_name != 'merge_group'
+        run: >-
+          pip install --only-binary=:all:
+          --requirement tests/requirements.txt
+
+      - name: Measure coverage
+        if: github.event_name != 'merge_group'
+        run: |
+          coverage run --source=scripts -m pytest tests
+          coverage xml -o coverage.xml
+
       - name: Scan
         if: github.event_name != 'merge_group'
         uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2

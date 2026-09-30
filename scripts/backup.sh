@@ -9,7 +9,7 @@
     '
 
 # check if debug flag is set
-if [ "${DEBUG}" = true ]; then
+if [[ "${DEBUG}" = true ]]; then
 
   set -x # enable print commands and their arguments as they are executed.
   export # show all declared variables (includes system variables)
@@ -135,7 +135,7 @@ __unescape_mountinfo_path() {
   local rest=${1}
 
   __unescaped_path=""
-  while [ -n "${rest}" ]; do
+  while [[ -n "${rest}" ]]; do
     case "${rest}" in
     '\040'*)
       __unescaped_path+=" "
@@ -182,7 +182,7 @@ __find_network_mounts() {
   __network_mount_types=()
   __network_mount_paths=()
 
-  if [ ! -r "${mountinfo_file}" ]; then
+  if [[ ! -r "${mountinfo_file}" ]]; then
     echo "ERROR! Cannot read the mount table ${mountinfo_file}, aborting..."
     echo "  Network-backed mounts under ${source_dir} cannot be ruled out, and"
     echo "  backing them up silently is worse than stopping here. Set"
@@ -191,13 +191,13 @@ __find_network_mounts() {
   fi
 
   # A trailing slash would leave every relative path below starting with one.
-  while [ "${source_dir}" != "/" ] && [ "${source_dir}" != "${source_dir%/}" ]; do
+  while [[ "${source_dir}" != "/" ]] && [[ "${source_dir}" != "${source_dir%/}" ]]; do
     source_dir=${source_dir%/}
   done
 
   while IFS= read -r line; do
     line_number=$((line_number + 1))
-    [ -n "${line}" ] || continue
+    [[ -n "${line}" ]] || continue
 
     # Fields are space separated and the kernel escapes any space inside a
     # path, so plain word splitting cannot split a path in half.
@@ -210,7 +210,7 @@ __find_network_mounts() {
     # none of which is ever a bare "-".
     separator=-1
     for index in "${!fields[@]}"; do
-      if [ "${index}" -ge 6 ] && [ "${fields[index]}" = "-" ]; then
+      if [[ "${index}" -ge 6 ]] && [[ "${fields[index]}" = "-" ]]; then
         separator=${index}
         break
       fi
@@ -218,7 +218,7 @@ __find_network_mounts() {
 
     # Six mandatory fields, the separator, then filesystem type, mount source
     # and super options: ten is the shortest a valid line can be.
-    if [ "${separator}" -lt 0 ] || [ "${#fields[@]}" -lt 10 ]; then
+    if [[ "${separator}" -lt 0 ]] || [[ "${#fields[@]}" -lt 10 ]]; then
       echo "ERROR! ${mountinfo_file} line ${line_number} is not valid mountinfo, aborting..."
       echo "  ${line}"
       echo "  Network-backed mounts under ${source_dir} cannot be ruled out from"
@@ -245,7 +245,7 @@ __find_network_mounts() {
 
     # The same directory can appear more than once: a mount can be mounted
     # over, and a mount namespace can carry several entries for one path.
-    if [ -n "${seen["${relative}"]:-}" ]; then
+    if [[ -n "${seen["${relative}"]:-}" ]]; then
       continue
     fi
     seen["${relative}"]=1
@@ -283,7 +283,7 @@ __build_network_mount_excludes() {
 
   __find_network_mounts "${mountinfo_file}" "${source_dir}" || return 1
 
-  if [ "${#__network_mount_paths[@]}" -eq 0 ]; then
+  if [[ "${#__network_mount_paths[@]}" -eq 0 ]]; then
     echo "No network-backed mounts found under ${source_dir}, nothing to exclude."
     return 0
   fi
@@ -317,15 +317,15 @@ trap 'echo "Backup interrupted, cleaning up..."; fusermount -u ${__backup_encryp
 # Mount and rsync virtual encrypted directory
 #===============================================================
 
-if [ -n "$(find "${__backup_encrypted_folder}" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+if [[ -n "$(find "${__backup_encrypted_folder}" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "The encrypted virtual directory ${__backup_encrypted_folder} must be empty!"
   exit 1
 fi
 
-if [ "${__paranoid_mode}" = "true" ]; then
+if [[ "${__paranoid_mode}" = "true" ]]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
   __gocryptfs_passfile_args=()
-elif test -f "${__backup_passkey_file}"; then
+elif [[ -f "${__backup_passkey_file}" ]]; then
   echo "Gocryptfs passfile found, proceeding..."
   __gocryptfs_passfile_args=(-passfile "${__backup_passkey_file}")
 else
@@ -333,15 +333,15 @@ else
   exit 1
 fi
 
-if [ -n "$(find "${__backup_source}" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+if [[ -n "$(find "${__backup_source}" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
   echo "The unencrypted directory ${__backup_source} contains local data to be backed up..."
 else
   echo "The unencrypted directory ${__backup_source} cannot be empty, it must contain local data to be backed up..."
   exit 1
 fi
 
-if [ ! -s "${__backup_source}/.gocryptfs.reverse.conf.original" ]; then
-  if [ -f "${__backup_source}/.gocryptfs.reverse.conf" ]; then
+if [[ ! -s "${__backup_source}/.gocryptfs.reverse.conf.original" ]]; then
+  if [[ -f "${__backup_source}/.gocryptfs.reverse.conf" ]]; then
     echo "Recovering existing gocryptfs config: saving as .gocryptfs.reverse.conf.original"
     cp "${__backup_source}/.gocryptfs.reverse.conf" \
       "${__backup_source}/.gocryptfs.reverse.conf.original"
@@ -354,7 +354,7 @@ if [ ! -s "${__backup_source}/.gocryptfs.reverse.conf.original" ]; then
     echo "  The master key is never stored to disk; it is shown ONLY ONCE."
     echo "  Without it, a lost passphrase makes the backup unrecoverable."
     echo "================================================================"
-    if [ "${__gocryptfs_encrypt_names}" = "true" ]; then
+    if [[ "${__gocryptfs_encrypt_names}" = "true" ]]; then
       echo "Initializing encrypted view of ${__backup_source} (filenames will be scrambled on remote)."
       __plaintextnames_flag=()
     else
@@ -448,10 +448,10 @@ while true; do
   # rsync local encrypted virtual copy of data to destination dir:
   __rsync_exit=0
   rsync --bwlimit="${__rsync_rate_limit}" -a -z -h --delete --delete-excluded --filter=". ${__backup_filter_rules_file}" --info=progress2,stats2,name0 "${__backup_encrypted_folder}"/ "${__backup_destination}" || __rsync_exit=$?
-  if [ "${__rsync_exit}" -eq 0 ]; then
+  if [[ "${__rsync_exit}" -eq 0 ]]; then
     echo "rsync succeeded -> a full encrypted copy of ${__backup_source} is ready in ${__backup_destination}"
     break
-  elif [ "${__rsync_exit}" -eq 23 ] || [ "${__rsync_exit}" -eq 24 ]; then
+  elif [[ "${__rsync_exit}" -eq 23 ]] || [[ "${__rsync_exit}" -eq 24 ]]; then
     echo "rsync completed with warnings (exit ${__rsync_exit}): some files were skipped (locked, unreadable, or vanished during transfer)."
     echo "The backup is otherwise complete. Skipped files will be retried on the next backup run."
     break
