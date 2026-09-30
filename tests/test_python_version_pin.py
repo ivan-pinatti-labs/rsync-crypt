@@ -63,3 +63,27 @@ def test_ruff_target_matches_the_interpreter_ci_runs():
         f"{WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
         "together; nothing derives one from the other."
     )
+
+
+# `sonar.python.version=3.14`, which SonarQube Cloud's Python rules judge the
+# code against. A third copy of the same fact, so it drifts the same way.
+SONAR_PROPERTIES = REPO_ROOT / "sonar-project.properties"
+SONAR_PYTHON = re.compile(
+    r"^sonar\.python\.version=(?P<major>\d+)\.(?P<minor>\d+)\s*$", re.MULTILINE
+)
+
+
+def test_sonar_python_version_matches_the_interpreter_ci_runs():
+    workflow = WORKFLOW_PYTHON.search(WORKFLOW.read_text())
+    assert workflow, f"no quoted python-version found in {WORKFLOW.name}"
+
+    sonar = SONAR_PYTHON.search(SONAR_PROPERTIES.read_text())
+    assert sonar, f"no sonar.python.version found in {SONAR_PROPERTIES.name}"
+
+    ci = (workflow.group("major"), workflow.group("minor"))
+    analyzed = (sonar.group("major"), sonar.group("minor"))
+    assert ci == analyzed, (
+        f"{SONAR_PROPERTIES.name} analyzes as Python {analyzed[0]}.{analyzed[1]} "
+        f"but {WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
+        "together; nothing derives one from the other."
+    )
