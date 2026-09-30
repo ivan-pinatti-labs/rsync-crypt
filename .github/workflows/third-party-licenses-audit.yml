@@ -34,9 +34,9 @@ name: Third-Party Licenses Audit
 # which is exactly when nobody is watching the inventory.
 on:
   schedule:
-    # Monday, an hour after codeql.yml's own weekly run and two after
-    # security-ignore-audit.yml, so the three weekly jobs never contend for a
-    # runner and their tracking issues do not land at the same minute.
+    # Monday, two hours after security-ignore-audit.yml, so the weekly jobs
+    # never contend for a runner and their tracking issues do not land at the
+    # same minute.
     #
     # Weekly rather than nightly: a revision bump is acted on by regenerating
     # and committing, which happens on a human's cadence, so a nightly run

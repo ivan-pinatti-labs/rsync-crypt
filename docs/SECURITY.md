@@ -166,57 +166,53 @@ about the code this repository writes, which is scanned separately:
 | --- | --- | --- |
 | `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
 | `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
-| Everything Sonar has an analyzer for: shell, Python, `Dockerfile`, YAML, `.github/workflows/*`, secrets | SonarQube Cloud, Sonar way quality gate | `sonarqube.yml`, on every pull request and merge |
-| `scripts/*.py`, `tests/*.py` | CodeQL, `security-extended` suite | `codeql.yml`, on merge and weekly |
-| `scripts/*.py`, `tests/*.py` | CodeQL quality queries | GitHub-managed Code Quality, on push, PR and weekly |
+| Everything Sonar has an analyzer for: shell, Python, `Dockerfile`, YAML, `.github/workflows/*`, secrets | SonarQube Cloud, Sonar way quality gate | `sonarqube.yml`, every pull request and every push to `main` |
 | `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |
 | `.github/workflows/*` | actionlint, zizmor | `checklist-github-actions`, every commit |
 | Everything | detect-secrets, detect-private-key | `checklist-security-credentials`, every commit |
 
-The asymmetry there is deliberate and worth knowing before someone tries to
-"fix" it. **The shell scripts are the product**: `backup.sh`, `restore.sh` and
-`view.sh` are what the container runs, and they are covered by shellcheck
-rather than CodeQL because
-[CodeQL does not support shell at all](https://docs.github.com/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql).
-Its languages are JavaScript/TypeScript, Ruby, Python, Go, Java/Kotlin, C/C++
-and C#.
+Two layers, deliberately. The pre-commit hooks run on every commit and fail
+before anything is pushed; SonarQube Cloud runs on every pull request and on
+`main`, reads the whole repository at once, and fails the `SonarQube` check
+when its quality gate does. Neither replaces the other: Sonar's shell rules are
+few and different from shellcheck's, not a superset of them, so shellcheck
+stays.
 
-The Security tab's "Code quality findings" entry is a separate product, not a
-relabelling of `codeql.yml`, and it has to be enabled on its own; it was, on
-2026-09-09. It runs a GitHub-managed CodeQL analysis for quality queries, and
-it supports fewer languages still (`csharp`, `go`, `java-kotlin`,
-`javascript-typescript`, `python`, `ruby`), so it cannot see `scripts/*.sh`
-either. Enabling it is why `codeql.yml` narrowed from `security-and-quality`
-to `security-extended`: quality moved there rather than being given up, and
-running both suites over the same small directory would have analyzed it
-twice.
+SonarQube Cloud replaced CodeQL here (issue #107), both `codeql.yml` and the
+GitHub-managed Code Quality setup, for one reason: **the shell scripts are the
+product**. `backup.sh`, `restore.sh` and `view.sh` are what the container runs,
+and
+[CodeQL does not support shell at all](https://docs.github.com/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql),
+nor a `Dockerfile`. It only ever analyzed the Python tooling, which Sonar covers
+too. Its old `codeql-python` alerts in the Security tab stop updating; they
+are history, not current findings.
 
-It reports through its own REST endpoints rather than code scanning's, which
-is worth knowing before concluding it is not running. Measured 2026-09-11:
+The quality gate is the Free plan's built-in "Sonar way", which cannot be
+edited, and neither can its rule set. It fails on any new issue in new code.
+Two consequences worth knowing:
 
-```console
-$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/setup
-{"state":"configured","languages":["python"],"schedule":"weekly", ...}
-$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/findings
-[]
-$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/alerts
-404
-$ gh api repos/ivan-pinatti-labs/rsync-crypt/code-quality/analyses
-404
-```
+- **Editing a line makes it new code.** An old finding on that line then
+  counts against the pull request, which is why the initial findings were
+  fixed, or marked false positive or accepted with a reason, rather than left
+  open. A rule cannot be switched off, so the answer to a noisy rule is to
+  write the code the way it asks everywhere, or to mark the individual finding
+  in SonarQube Cloud with the reason.
+- **Mark findings in SonarQube Cloud, not in the code.** No `# NOSONAR`
+  comments: a finding accepted or marked false positive there carries its
+  reason where the next reviewer of it will look.
 
-It also produces no `code-scanning/analyses` entry, so it never shows up in a
-sweep of those and its absence there says nothing about whether it ran. Read
-`code-quality/findings`, the UI at `/security/quality`, or the run itself
-under Actions. AI detections (`ai_findings_option`) are deliberately left
-disabled, as a separate decision from enabling the baseline.
+Its Python taint rules treat `argparse` input as untrusted ("a user can craft
+an HTTP request", "LLM-supplied CLI arguments"). For the tooling below that is
+a false positive by construction, since only maintainers and this repository's
+own workflows run it, but read the flow before marking one: the rule is right
+whenever the argument can come from a pull request.
 
 **The Python, conversely, does not ship.** It is repository tooling: grading
 pull requests, re-resolving apk pins on an Alpine bump, auditing this file's
 accepted-risk list. The image installs no Python interpreter, so a finding
 there can never be a vulnerability in a published artifact; it can still gate
 a merge wrongly, which is why it is analyzed twice over (ruff's `S` rules per
-commit, CodeQL weekly and on merge).
+commit, SonarQube Cloud per pull request).
 
 That split is also why `COPY` in the `Dockerfile` names the three shell
 scripts individually instead of globbing `scripts/*`. The glob shipped every

@@ -83,8 +83,8 @@ on:
   # window closed would need a push it did not otherwise need, just to get
   # approved.
   #
-  # Both `CodeRabbit Gate` and `PR Validation` are named here, not just the
-  # first. `Review Verified` was assumed to be the slowest of the four
+  # `CodeRabbit Gate`, `PR Validation` and `SonarQube` are all named here, not
+  # just the first. `Review Verified` was assumed to be the slowest of the
   # required contexts, since it depends on CodeRabbit's own review
   # completing, and that assumption held here, `Tests` runs as an ordinary
   # job in the same push as `Pre-commit`, not gated behind a separate
@@ -94,11 +94,11 @@ on:
   # listening for that suite finishing, only for CodeRabbit Gate. Nothing
   # here has hit that failure mode, `Tests` finishing well ahead of a
   # CodeRabbit review is still the normal case, but the fix costs nothing
-  # to carry over defensively: naming both workflows means whichever
+  # to carry over defensively: naming every workflow means whichever
   # required context actually finishes last is what re-triggers the poll,
   # instead of depending on an assumption about which one that will be.
   #
-  # `workflow_run`, not `status`: both workflows publish their status using
+  # `workflow_run`, not `status`: these workflows publish their status using
   # `secrets.GITHUB_TOKEN`, and GitHub does not start new workflow runs from
   # events a `GITHUB_TOKEN` creates, specifically to stop workflows
   # triggering each other in a loop. A `status` trigger here would never
@@ -109,7 +109,7 @@ on:
   # API call a token made during it, which is why it exists as the
   # sanctioned way to chain workflows without a personal access token.
   workflow_run:
-    workflows: ["CodeRabbit Gate", "PR Validation"]
+    workflows: ["CodeRabbit Gate", "PR Validation", "SonarQube"]
     types: [completed]
 
 # The floor. Each job widens it for itself.
@@ -375,19 +375,19 @@ jobs:
 
       - name: Wait for every required context to be green
         # Every required context, not just `Pin Only` the way the bot job
-        # waits: `Pre-commit`, `Tests`, `Pin Only` and `Review Verified` all
-        # have to read green before this job approves anything, because an
-        # approval issued before `Review Verified` settles would hand the
-        # owner a merge path around the CodeRabbit gate, which is the exact
-        # hole #114 was about, and the owner is the one author who can never
-        # be asked to supply that review themselves.
+        # waits: `Pre-commit`, `Tests`, `SonarQube`, `Pin Only` and `Review
+        # Verified` all have to read green before this job approves anything,
+        # because an approval issued before `Review Verified` settles would
+        # hand the owner a merge path around the CodeRabbit gate, which is
+        # the exact hole #114 was about, and the owner is the one author who
+        # can never be asked to supply that review themselves.
         #
         # `statusCheckRollup`, not the `/commits/{sha}/status` endpoint the
-        # bot job's wait step reads, because two of the four required
-        # contexts here, `Pre-commit` and `Tests`, are ordinary GitHub Checks
-        # (workflow jobs), not commit statuses, and that endpoint only ever
-        # returns the latter. `statusCheckRollup` is the one place both
-        # shapes show up together.
+        # bot job's wait step reads, because three of the five required
+        # contexts here, `Pre-commit`, `Tests` and `SonarQube`, are ordinary
+        # GitHub Checks (workflow jobs), not commit statuses, and that
+        # endpoint only ever returns the latter. `statusCheckRollup` is the
+        # one place both shapes show up together.
         #
         # A two minute window is still not a guarantee `Review Verified`
         # settles inside it, since it depends on CodeRabbit's own review
@@ -404,7 +404,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          required='["Pre-commit","Tests","Pin Only","Review Verified"]'
+          required='["Pre-commit","Tests","SonarQube","Pin Only","Review Verified"]'
           for _ in $(seq 1 24); do
             # $owner, $name and $number below are GraphQL query variables,
             # not shell expansions; they are meant to stay literal inside

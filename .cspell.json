@@ -181,6 +181,7 @@
     "nodev",
     "nodocker",
     "noexec",
+    "NOSONAR",
     "nosuid",
     "nosyslog",
     "nounset",

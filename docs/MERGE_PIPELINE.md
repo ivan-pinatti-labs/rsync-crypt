@@ -9,7 +9,7 @@ ahead of a planned migration of that repository to an organization (GitHub
 refuses a merge queue on a personal account). This repository was the
 rehearsal for that migration: it transferred first, proved the queue works
 under an organization, and the fixes found along the way are meant to sweep
-back into the sibling repository afterward. It has four required contexts,
+back into the sibling repository afterward. It has five required contexts,
 not six, and no integration suite, so the shape here is simpler; where the
 reasoning is identical it is only summarized, not restated.
 
@@ -20,9 +20,9 @@ file, and CodeRabbit does not review a draft at all: `.coderabbit.yaml` sets
 `drafts: false` on purpose, so a review is not spent on a diff the mechanical
 linters have not finished cleaning up yet.
 
-**Mark it ready for review** once `Pre-commit` and `Tests` are green. That is
-what starts CodeRabbit. Address what it raises, pushing fixes as needed; each
-push re-runs both jobs and gets a fresh review.
+**Mark it ready for review** once `Pre-commit`, `Tests` and `SonarQube` are
+green. That is what starts CodeRabbit. Address what it raises, pushing fixes
+as needed; each push re-runs all three jobs and gets a fresh review.
 
 Once every required check reads green and a maintainer has approved it, the
 pull request is eligible for the merge queue, but entering it still needs
@@ -45,19 +45,19 @@ failure modes were confirmed empirically, not assumed, on real pull requests
 against this repository.
 
 `bot-auto-merge.yml`'s `approve-owner` job is the fix: once `Pre-commit`,
-`Tests`, `Pin Only` and `Review Verified` are all green, it supplies the
+`Tests`, `SonarQube`, `Pin Only` and `Review Verified` are all green, it supplies the
 approval that makes the pull request queue eligible. It does not arm
 auto-merge, deliberately: the owner still decides when to enqueue, which is
 the "check everything is fine, then merge" step the rest of this pipeline
 takes away from nobody else. This approval is not evidence a human read the
-diff; it is issued the moment the four contexts settle, with no review of
+diff; it is issued the moment the five contexts settle, with no review of
 their content, which is exactly why it waits for `Review Verified` rather
 than for `Pin Only` alone. `Review Verified` is what actually carries "a
 review happened," and nothing else in this pipeline does. A contributor or a
 fork gets no approval from this job and still needs a genuine human review,
 same as always.
 
-`Review Verified` is realistically the slowest of the four contexts to
+`Review Verified` is realistically the slowest of the five contexts to
 settle, since it waits on CodeRabbit's own review, which is why this job
 also reacts to `coderabbit-gate.yml` finishing a run (a `workflow_run`
 trigger, not `pull_request_target` alone), re-checking every open owner
@@ -167,15 +167,28 @@ never consumed, and no bot is assigned a weekday here any more.
 | --- | --- | --- |
 | `Pre-commit` | The full pre-commit hook set passed over every file | `pull-request-validation.yml`, as a job |
 | `Tests` | `pytest tests` passed, which includes building the image through `make build` | `pull-request-validation.yml`, as a job |
+| `SonarQube` | SonarQube Cloud analyzed the pull request and its quality gate passed; on a merge queue commit it passes without analyzing, see below | `sonarqube.yml`, as a job |
 | `Pin Only` | A dependency bot's diff changes nothing but a version in a pin position; `success` with a "not a dependency bot pull request" description on everything else | `coderabbit-gate.yml`, published directly onto the head SHA |
 | `Review Verified` | CodeRabbit's actual review outcome, not merely that it reported something | `coderabbit-gate.yml`, published directly onto the head SHA |
 
-`Pre-commit` and `Tests` are ordinary workflow jobs: GitHub reports a job's
-own pass or fail as the check. The other two are commit statuses, written
+`Pre-commit`, `Tests` and `SonarQube` are ordinary workflow jobs: GitHub
+reports a job's own pass or fail as the check. The other two are commit statuses, written
 directly by a workflow step rather than read off a job's outcome, for the
 same reason as in the sibling repository: a status a workflow chooses whether
 to write, and what to write, does not read as passed merely because it was
 skipped.
+
+`SonarQube` is the `sonarqube.yml` job, which fails when SonarQube Cloud's
+quality gate fails (`sonar.qualitygate.wait=true`). SonarQube Cloud's own
+GitHub App posts a second check, `SonarCloud Code Analysis`, which is
+deliberately not required: that app never posts on a merge queue commit, so
+requiring it would stall the queue. On `merge_group` the job passes without
+analyzing, because the pull request's head was already analyzed and gated and
+SonarQube Cloud has no pull request to attach a queue commit to; the push to
+`main` right after the merge analyzes the result. A fork's pull request fails
+the job with an explanation, since it cannot receive `SONAR_TOKEN`; a
+maintainer pushes the branch here instead. `resolve-apk-pins.yml` dispatches
+it after its own push, the same way it dispatches `Tests`.
 
 `Docker Hub Probe`, also a job in `pull-request-validation.yml`, is
 deliberately not in this table. It is not a second build-verification job:
@@ -281,8 +294,8 @@ required context runs a second time against the queue's own temporary
 commit before anything actually merges, exactly as `docker-torrent-box-with-vpn`'s
 own queue does.
 
-Branch protection on `main` requires `Pre-commit`, `Tests`, `Pin Only` and
-`Review Verified`, one approval, dismissal of stale reviews, approval of the
+Branch protection on `main` requires `Pre-commit`, `Tests`, `SonarQube`,
+`Pin Only` and `Review Verified`, one approval, dismissal of stale reviews, approval of the
 last push, conversation resolution and a linear history. `enforce_admins` is
 `false`, which matters for exactly one account: it lets the owner merge
 without being blocked by rules an admin can bypass, but it does not exempt
