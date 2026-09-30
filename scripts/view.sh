@@ -11,7 +11,7 @@
     '
 
 # check if debug flag is set
-if [ "${DEBUG}" = true ]; then
+if [[ "${DEBUG}" = true ]]; then
 
   set -x # enable print commands and their arguments as they are executed.
   export # show all declared variables (includes system variables)
@@ -86,7 +86,7 @@ __view_cleaned=false
 # abort partway and leak the mounts and the scratch directory that the
 # function exists to remove.
 __view_cleanup() {
-  if [ "${__view_cleaned}" = true ]; then
+  if [[ "${__view_cleaned}" = true ]]; then
     return 0
   fi
   __view_cleaned=true
@@ -134,7 +134,7 @@ if ! sshfs "${__remote_server}:${__remote_backup_folder}" "${__view_enc_folder}"
   exit 1
 fi
 
-if ! test -f "${__view_enc_folder}/gocryptfs.conf"; then
+if ! [[ -f "${__view_enc_folder}/gocryptfs.conf" ]]; then
   echo "Error: ${__view_enc_folder}/gocryptfs.conf not found, cannot decrypt."
   fusermount -u "${__view_enc_folder}" 2>/dev/null || true
   exit 1
@@ -144,7 +144,7 @@ fi
 # Decrypt (mount read-only virtual view)
 #===============================================================
 
-if [ "${__paranoid_mode}" = "true" ]; then
+if [[ "${__paranoid_mode}" = "true" ]]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
   __gocryptfs_passfile_args=()
 else

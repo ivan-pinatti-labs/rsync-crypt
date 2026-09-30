@@ -9,7 +9,7 @@
     '
 
 # check if debug flag is set
-if [ "${DEBUG}" = true ]; then
+if [[ "${DEBUG}" = true ]]; then
 
   set -x # enable print commands and their arguments as they are executed.
   export # show all declared variables (includes system variables)
@@ -65,7 +65,7 @@ readonly __restore_origin="${__remote_server}:${__backup_remote_folder}" # rsync
 # list, and the file was left behind afterwards. mktemp -d gives this run its
 # own directory, created 0700 under a name nothing can predict, and the trap
 # removes it however the script ends.
-if [ -n "${RESTORE_PATHS:-}" ]; then
+if [[ -n "${RESTORE_PATHS:-}" ]]; then
   __restore_tmp_dir="$(mktemp -d)"
   # Best-effort teardown after the outcome is already decided, which is why
   # this is not the general error suppression this repository avoids.
@@ -94,10 +94,10 @@ while true; do
   # rsync remote encrypted copy of data to local copy:
   __rsync_exit=0
   rsync --bwlimit="${__rsync_rate_limit}" -P -a -z --stats -h --delete --exclude-from="${__restore_exclude_pattern_file}" "${__restore_origin}"/ "${__restore_encrypted_folder}" || __rsync_exit=$?
-  if [ "${__rsync_exit}" -eq 0 ]; then
+  if [[ "${__rsync_exit}" -eq 0 ]]; then
     echo "rsync succeeded -> encrypted data from ${__restore_origin} is ready in ${__restore_encrypted_folder}"
     break
-  elif [ "${__rsync_exit}" -eq 23 ] || [ "${__rsync_exit}" -eq 24 ]; then
+  elif [[ "${__rsync_exit}" -eq 23 ]] || [[ "${__rsync_exit}" -eq 24 ]]; then
     # 23 is a partial transfer, 24 is files that vanished mid transfer. Neither
     # is retriable: the next attempt hits the same unreadable or already gone
     # files and returns the same status, so looping on them never terminates.
@@ -124,7 +124,7 @@ done
 # Decrypt (mount read-only virtual view)
 #===============================================================
 
-if ! test -f "${__restore_encrypted_folder}"/gocryptfs.conf; then
+if ! [[ -f "${__restore_encrypted_folder}"/gocryptfs.conf ]]; then
   echo "Error: ${__restore_encrypted_folder}/gocryptfs.conf not found, cannot decrypt."
   exit 1
 fi
@@ -135,7 +135,7 @@ if find "${__restore_decrypted_folder}" -mindepth 1 -maxdepth 1 -print -quit 2>/
   exit 1
 fi
 
-if [ "${__paranoid_mode}" = "true" ]; then
+if [[ "${__paranoid_mode}" = "true" ]]; then
   echo "PARANOID MODE: passphrase will be entered interactively."
   __gocryptfs_passfile_args=()
 else
@@ -157,7 +157,7 @@ echo "Decrypted read-only view mounted at ${__restore_decrypted_folder}"
 # read active (non-comment, non-blank) lines from paths file
 _active_paths=$(grep -v '^\s*#' "${__restore_paths_file}" 2>/dev/null | grep -v '^\s*$' || true)
 
-if [ -n "${_active_paths}" ]; then
+if [[ -n "${_active_paths}" ]]; then
   echo "Selective restore: restoring listed paths to ${__restore_destination}"
   rsync -a --bwlimit="${__rsync_rate_limit}" \
     --files-from=<(echo "${_active_paths}") \

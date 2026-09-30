@@ -69,7 +69,7 @@ DEFAULT_WARN_DAYS = 14
 # also writes the only entries in.
 _ID_LINE = re.compile(r"^\s*-\s*id:\s*(\S+)\s*$")
 _EXPIRED_AT_LINE = re.compile(r"^\s*expired_at:\s*(\d{4}-\d{2}-\d{2})\s*$")
-_STATEMENT_LINE = re.compile(r"^\s*statement:\s*(.*\S)\s*$")
+_STATEMENT_LINE = re.compile(r"^\s*statement:(.*)$")
 _TOP_LEVEL_KEY = re.compile(r"^\S")
 
 
@@ -133,6 +133,11 @@ def parse_ignorefile(text: str) -> list[IgnoreEntry]:
         statement_match = _STATEMENT_LINE.match(line)
         if statement_match:
             value = statement_match.group(1).strip()
+            # An empty `statement:` is a missing statement, not the first
+            # line of one; without this it would fall through to the
+            # continuation branch below and be kept as literal text.
+            if not value:
+                continue
             # A YAML folded block scalar ('>-') or quoted string: strip the
             # scalar indicator and surrounding quotes from the first line;
             # continuation lines (plain indented text, matched by neither

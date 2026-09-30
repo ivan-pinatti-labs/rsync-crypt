@@ -110,7 +110,6 @@ RUN apk update \
     && chmod 644 /root/.ssh/known_hosts /home/crypt/.ssh/known_hosts \
     && chown -R root:root /root \
     && chown -R crypt:crypt \
-        /app \
         /backup \
         /home/crypt \
         /restore \
@@ -127,7 +126,12 @@ RUN apk update \
 # under /app/ in ghcr.io/ivan-pinatti-labs/rsync-crypt:1.6.1. Listing the
 # three scripts the container actually runs keeps the next tooling script from
 # silently joining them.
-COPY --chown=crypt:crypt scripts/backup.sh scripts/restore.sh scripts/view.sh /app/
+#
+# Owned by root, like /app itself, and not by the unprivileged user: nothing
+# writes there at run time, and a script the running user can rewrite is one
+# a compromised process can turn into whatever runs next. Git keeps them
+# 0755, so every user can still read and run them.
+COPY --chown=root:root scripts/backup.sh scripts/restore.sh scripts/view.sh /app/
 COPY --chown=root:root files/bash/* /root/
 COPY --chown=crypt:crypt files/bash/* /home/crypt/
 

@@ -59,7 +59,12 @@ jobs:
           cache-dependency-path: tests/requirements.txt
 
       - name: Install test dependencies
-        run: pip install --requirement tests/requirements.txt
+        # Wheels only, so installing a test dependency never runs its setup
+        # code on the runner. Everything tests/requirements.txt names ships
+        # wheels.
+        run: >-
+          pip install --only-binary=:all:
+          --requirement tests/requirements.txt
 
       # gocryptfs needs FUSE. The runner exposes /dev/fuse, which the Makefile
       # already passes through, but fail loudly here rather than part way
