@@ -30,6 +30,8 @@
 [![GitHub Repo stars](https://img.shields.io/github/stars/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti-labs/rsync-crypt)
 [![GitHub forks](https://img.shields.io/github/forks/ivan-pinatti-labs/rsync-crypt?logo=Github&style=for-the-badge)](https://github.com/ivan-pinatti-labs/rsync-crypt/forks)
 [![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ivan-pinatti-labs/rsync-crypt?utm_source=oss&utm_medium=github&utm_campaign=ivan-pinatti-labs%2Frsync-crypt&labelColor=171717&color=FF570A&label=CodeRabbit+Reviews&style=for-the-badge)](https://coderabbit.ai)
+[![SonarQube Quality Gate](https://img.shields.io/sonar/quality_gate/ivan-pinatti-labs_rsync-crypt?server=https%3A%2F%2Fsonarcloud.io&logo=sonarqubecloud&style=for-the-badge)](https://sonarcloud.io/project/overview?id=ivan-pinatti-labs_rsync-crypt)
+[![SonarQube Coverage](https://img.shields.io/sonar/coverage/ivan-pinatti-labs_rsync-crypt?server=https%3A%2F%2Fsonarcloud.io&logo=sonarqubecloud&style=for-the-badge)](https://sonarcloud.io/component_measures?id=ivan-pinatti-labs_rsync-crypt&metric=coverage)
 
 Backup your files encrypted to any SSH-accessible server, without trusting the server with your data. Powered by [gocryptfs](https://github.com/rfjakob/gocryptfs) and [rsync](https://rsync.samba.org/), packaged in a minimal Alpine-based Docker image.
 
