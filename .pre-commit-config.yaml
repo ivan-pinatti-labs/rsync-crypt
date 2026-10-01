@@ -6,9 +6,10 @@
 # checklist-git-commit-msg runs at the commit-msg git stage rather than
 # pre-commit, so default_install_hook_types wires both stages up. Every other
 # hook is pinned to stages: [pre-commit] so it does not also re-run,
-# redundantly, during that commit-msg invocation. trivy-image-scan (below)
-# runs at pre-push instead, for the same reason: it builds the image before
-# scanning it, and that is too slow to run on every commit.
+# redundantly, during that commit-msg invocation. trivy-image-scan and
+# coverage (below) run at pre-push instead: the first builds the image before
+# scanning it, the second starts two containers, and both are too slow to run
+# on every commit.
 #
 # There is deliberately no `ci:` block. That block configures pre-commit.ci,
 # whose autofix_prs would commit and push fixes back to a pull request branch.
@@ -195,25 +196,19 @@ repos:
 
       # The local half of the 100% coverage gate sonarqube.yml enforces in
       # CI, so a drop is caught before a push rather than on the pull
-      # request. Only the tests marked `scripts`: they exercise scripts/*.py
-      # directly with no container, reach 100% on their own, and finish in
-      # seconds; the rest of the suite builds an image. Settings come from
-      # .coveragerc. pre-push, like trivy-image-scan below, and scoped by
-      # `files:` so a push that touches no Python skips it.
-      #
-      # Exact versions, pinned by hand like cffconvert above: Renovate's
-      # pre-commit manager does not read additional_dependencies, and a range
-      # would be resolved once when pre-commit builds the environment and
-      # never again. The same two versions as tests/requirements.in, which
-      # tests/test_python_version_pin.py checks; pre-commit cannot install
-      # from the hash-locked tests/requirements.txt itself.
-      - id: python-coverage
-        name: Python coverage, 100% lines and branches (scripts/)
-        language: python
-        additional_dependencies: ["coverage==7.16.1", "pytest==9.1.1"]
-        entry: bash -c 'coverage run -m pytest -q -m scripts tests && coverage report'
+      # request: `make coverage`, the same target CI runs, which measures the
+      # Python under scripts/ (lines and branches, .coveragerc) and the shell
+      # (lines, kcov) in podman containers that see the source only through
+      # a tar stream; see the Makefile. pre-push, like trivy-image-scan
+      # below, and scoped by `files:` so a push that touches neither the code
+      # nor its tests skips it. Needs podman, and network for the pip install
+      # inside the Python container.
+      - id: coverage
+        name: Coverage, 100% of the Python and the shell
+        language: system
+        entry: make coverage
         pass_filenames: false
-        files: '(^scripts/.*\.py$|^tests/.*\.py$|^\.coveragerc$)'
+        files: '(^scripts/|^tests/|^files/bash/|^\.coveragerc$|^Makefile$)'
         stages: [pre-push]
 
       # Builds the image locally and scans it with Trivy before it can be

@@ -124,7 +124,8 @@ endef
 
 # 'new-profile' joins 'help' in not requiring an env file: it is the target
 # that creates one, so demanding one first would make it unreachable on a
-# fresh clone, which is exactly when it is most useful. The workbench
+# fresh clone, which is exactly when it is most useful. 'coverage' runs the
+# tests and reads no backup configuration at all. The workbench
 # targets (host/workbench.mk, included at the end) join them both for the
 # same reason from the other direction: they open the workbenches, which is
 # where somebody would go to work on this repository, and an env file is
@@ -132,7 +133,7 @@ endef
 # one would mean a fresh clone could not get to work without first inventing
 # a backup profile it is not going to use.
 WORKBENCH_GOALS := claude codex claude-shell codex-shell unlock workbench-help workbench-up workbench-down workbench-status workbench-build workbench-pull
-ifneq ($(filter-out help new-profile $(WORKBENCH_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(filter-out help new-profile coverage $(WORKBENCH_GOALS),$(MAKECMDGOALS)),)
 ifeq ($(wildcard $(ENV_FILE)),)
 $(error $(_missing_env_file_message))
 endif
@@ -245,7 +246,7 @@ endef
 .PHONY: restore restore_to_origin restore_as_root restore_as_root_to_origin
 .PHONY: r ro rr rro view view_as_root v vr
 .PHONY: run_container run_container_as_root check-passkey clean new-profile
-.PHONY: third-party-licenses third-party-licenses-check
+.PHONY: third-party-licenses third-party-licenses-check coverage
 
 all: build run_container
 
@@ -277,6 +278,7 @@ help:
 		'  clean                       Remove backup state and image (prompts; destructive).' \
 		'  third-party-licenses        Regenerate THIRD_PARTY_LICENSES.md from the built image.' \
 		'  third-party-licenses-check  Fail if THIRD_PARTY_LICENSES.md has drifted from it.' \
+		'  coverage                    Python and shell test coverage in containers, 100% or fail.' \
 		'  help                        Show this help.' \
 		'  workbench-help              The workbench targets: make claude, make codex, make unlock...' \
 		'' \
@@ -421,6 +423,87 @@ third-party-licenses:
 
 third-party-licenses-check:
 	@python3 scripts/generate-third-party-licenses.py --image ${DOCKER_IMAGE_TAG_NAME} --check
+
+# Coverage of the code this repository writes, held at 100%: the Python under
+# scripts/ (lines and branches, .coveragerc) under coverage.py, and the shell
+# (lines; kcov reports no branches for bash) under kcov. The shell is the
+# three scripts the image runs plus the two dotfiles it copies into each home
+# directory, driven by tests/shell/run.sh with every external command
+# replaced by a stand-in. Writes the two reports SonarQube Cloud reads,
+# $(COVERAGE_DIR)/coverage.xml and $(COVERAGE_DIR)/shell.xml, and fails if
+# either language is under 100%. .github/workflows/sonarqube.yml runs this,
+# and so does the `coverage` pre-push hook.
+#
+# Both tools run in containers that cannot see this checkout. The files git
+# would commit (tracked, plus new ones not ignored) go in on standard input
+# as a tar stream, and the only host path either container gets is an empty
+# scratch directory for its report. Nothing else is mounted: no home
+# directory, no SSH agent, no token, and no environment variable is passed.
+# Both drop every capability; kcov also gets no network and a read only root
+# filesystem. The Python container needs the network for its pip install,
+# which checks every hash in tests/requirements.txt. The images are pinned by
+# digest, and Renovate moves the digests.
+#
+# Podman rather than the `docker` every other target runs (see
+# docs/PODMAN.md): rootless, the container's root is the invoking user, which
+# is what lets a container with no capabilities write its report into a
+# scratch directory that user owns. The GitHub runner ships podman too.
+#
+# The scratch directory comes from mktemp, so it lands in TMPDIR. In a
+# devcontainer-airlock workbench run this as `l2 --engine --net -- make
+# coverage`: the engine can only mount paths under the TMPDIR it sets.
+#
+# Both reports are written before either verdict is given, so CI can still
+# hand SonarQube the report of a run that falls short.
+#
+# kcov counts two shapes of line as code that never produce a trace, so they
+# would read as missed however the tests run: an empty case arm (`a) ;;`) and
+# the redirection after a loop (`done <file`). --exclude-line drops both.
+# --exclude-region drops a block between kcov-exclude-start and
+# kcov-exclude-end comments, which marks code the scripts cannot reach on
+# their own; each one says which test reaches it instead.
+COVERAGE_DIR ?= coverage
+PODMAN ?= $(if $(CONTAINER_HOST),podman-remote,podman)
+# renovate: datasource=docker depName=docker.io/library/python
+PYTHON_IMAGE ?= docker.io/library/python:3.14-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d
+# renovate: datasource=docker depName=docker.io/kcov/kcov
+KCOV_IMAGE ?= docker.io/kcov/kcov:latest@sha256:481289ae32e55e5b733019515acd10948a4f76dfed381765577db909664fc603
+SHELL_SOURCES := scripts/backup.sh scripts/restore.sh scripts/view.sh \
+	files/bash/.bashrc files/bash/.bash_aliases
+
+_empty :=
+_comma := ,
+_kcov_include := $(subst $(_empty) $(_empty),$(_comma),$(addprefix /tmp/w/,$(SHELL_SOURCES)))
+_sources := git ls-files -z --cached --others --exclude-standard --deduplicate \
+	| tar --create --owner=0 --group=0 --numeric-owner --null --files-from=- \
+		--ignore-failed-read --file=-
+_unpack := set -e; mkdir /tmp/w; tar -x --no-same-owner -C /tmp/w; cd /tmp/w; st=0
+_locked := --cap-drop=ALL --security-opt no-new-privileges
+
+coverage:
+	@set -u; out="$$(mktemp -d)"; trap 'rm -rf "$$out"' EXIT; \
+	mkdir "$$out/python" "$$out/shell"; py=0; sh=0; \
+	$(_sources) | $(PODMAN) run --rm --interactive $(_locked) \
+		-v "$$out/python:/out:rw,Z" "$(PYTHON_IMAGE)" sh -c '$(_unpack); \
+			pip install --quiet --disable-pip-version-check --root-user-action=ignore \
+				--require-hashes --only-binary=:all: -r tests/requirements.txt; \
+			coverage run -m pytest -q -m scripts tests || st=1; \
+			coverage xml -q --fail-under=0 -o /out/coverage.xml; \
+			coverage report || st=1; exit $$st' || py=$$?; \
+	$(_sources) | $(PODMAN) run --rm --interactive $(_locked) \
+		--network=none --read-only --tmpfs /tmp \
+		-v "$$out/shell:/out:rw,Z" "$(KCOV_IMAGE)" sh -c '$(_unpack); \
+			kcov --include-path=$(_kcov_include) \
+				--exclude-line=") ;;,done <" \
+				--exclude-region=kcov-exclude-start:kcov-exclude-end \
+				/tmp/kcov tests/shell/run.sh || st=1; \
+			python3 scripts/kcov-to-sonar.py /tmp/w /tmp/kcov/run.sh.*/cobertura.xml \
+				/out/shell.xml $(SHELL_SOURCES) || st=1; exit $$st' || sh=$$?; \
+	rm -rf "$(COVERAGE_DIR)"; mkdir -p "$(COVERAGE_DIR)"; \
+	for report in "$$out/python/coverage.xml" "$$out/shell/shell.xml"; do \
+		if [ -f "$$report" ]; then cp "$$report" "$(COVERAGE_DIR)"/; fi; \
+	done; \
+	test "$$py" -eq 0 && test "$$sh" -eq 0
 
 # WARNING: permanently deletes the passkey, gocryptfs config files, and Docker image.
 # Make sure the master key is backed up before running this.

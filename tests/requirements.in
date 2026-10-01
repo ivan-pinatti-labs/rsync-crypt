@@ -1,8 +1,6 @@
 # The test suite's direct dependencies, pinned exactly. tests/requirements.txt
 # is generated from this file with every transitive dependency and its hashes;
 # edit this file, then regenerate that one (docs/USAGE.md, "Updating the test
-# dependencies"). The python-coverage pre-push hook in .pre-commit-config.yaml
-# pins the same two versions, and tests/test_python_version_pin.py keeps them
-# in step.
+# dependencies"). The Tests job and `make coverage` both install the lock.
 coverage==7.16.1
 pytest==9.1.1

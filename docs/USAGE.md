@@ -545,6 +545,7 @@ environment file; every target that performs work does.
 | `make run_container_as_root`     | n/a        | Start an interactive system-backup container                                                         |
 | `make check-passkey`             | n/a        | Create or verify the passkey file                                                                    |
 | `make clean`                     | n/a        | Remove container, image, passkey, and gocryptfs config files (destructive, prompts for confirmation) |
+| `make coverage`                  | n/a        | Run the Python and shell tests under coverage in containers; fails below 100% (needs podman)         |
 
 ---
 
@@ -582,9 +583,12 @@ state, can be run on their own, and need no Docker at all:
 pytest tests -m scripts
 ```
 
-They hold the Python under `scripts/` at 100% line and branch coverage; see
-[SONARQUBE.md](SONARQUBE.md#python-coverage-is-held-at-100) for the command
-and where that is enforced.
+They hold the Python under `scripts/` at 100% line and branch coverage.
+`tests/shell/` holds the shell scripts and the two dotfiles under
+`files/bash/` at 100% of their lines, with every external command replaced
+by a stand-in. `make coverage` runs both in containers; see
+[SONARQUBE.md](SONARQUBE.md#coverage-is-held-at-100) for what it measures and
+where that is enforced.
 
 The tests run on every pull request via the `Tests` job.
 
@@ -597,6 +601,8 @@ The tests run on every pull request via the `Tests` job.
 | `test_resolve_apk_pins.py`              | Re-resolving the seven apk pins against a new Alpine release                             |
 | `test_audit_security_ignores.py`        | Auditing `.trivyignore.yaml` entries for expiry and reproduction                         |
 | `test_generate_third_party_licenses.py` | Generating and checking the licence inventory                                            |
+| `test_kcov_to_sonar.py`                 | Turning kcov's shell coverage report into SonarQube's generic format                     |
+| `shell/*.test.sh`                       | Every line of `backup.sh`, `restore.sh`, `view.sh` and the dotfiles, with stand-ins      |
 
 ### Updating the test dependencies
 
@@ -607,10 +613,7 @@ manage either file: its pip managers are not enabled here, and a lock bump
 would fail the `Pin Only` check that lets a dependency bot merge unattended. A
 person bumps them:
 
-1. Edit the versions in `tests/requirements.in`, and the same two in the
-   `python-coverage` hook's `additional_dependencies` in
-   `.pre-commit-config.yaml` (`tests/test_python_version_pin.py` fails until
-   they match).
+1. Edit the versions in `tests/requirements.in`.
 2. Regenerate the lock. This runs `uv` in a container with network access to
    PyPI, and `--exclude-newer` keeps the same seven day cooling window
    Renovate applies everywhere else:

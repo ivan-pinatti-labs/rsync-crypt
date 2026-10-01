@@ -398,11 +398,15 @@ above.
 `sonarqube.yml` publishes the required `SonarQube` check and fails when the
 quality gate does. The gate is the Free plan's fixed "Sonar way": no custom
 rules or profiles, and any new issue in new code fails it, including an old
-finding on a line a pull request edits, as does new Python under 80%
-covered by the suite. On top of that gate, `.coveragerc` holds `scripts/` at
-100% line and branch coverage, enforced after the scan in CI and by the
-`python-coverage` pre-push hook; a new script ships with tests that reach every
-line and branch, Docker calls replaced by a stand-in, `main()` taking `argv`.
+finding on a line a pull request edits, as does new code under 80%
+covered by the tests. On top of that gate, `make coverage` holds the Python
+under `scripts/` at 100% line and branch coverage (`.coveragerc`) and the
+shell scripts and `files/bash/` dotfiles at 100% of their lines (kcov,
+`tests/shell/`), enforced after the scan in CI and by the `coverage` pre-push
+hook. A new Python script ships with tests marked `scripts` that reach every
+line and branch, Docker calls replaced by a stand-in, `main()` taking `argv`;
+a shell change ships with a `tests/shell/` case for every new line, external
+commands replaced by stand-ins on `PATH`.
 Fix what a rule asks for, or mark the single finding false positive or
 accepted in SonarQube Cloud with a reason; never `# NOSONAR`. Automatic
 Analysis must stay off in the project settings, or every CI scan aborts.

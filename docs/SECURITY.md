@@ -166,7 +166,8 @@ about the code this repository writes, which is scanned separately:
 | --- | --- | --- |
 | `scripts/*.sh`, `files/bash/*` | shellcheck, shfmt, shebang checks | `checklist-dev-shell`, every commit |
 | `scripts/*.py`, `tests/*.py` | ruff, flake8-bandit (`S`) rules on | `checklist-dev-python`, every commit |
-| Everything Sonar has an analyzer for: shell, Python, `Dockerfile`, YAML, `.github/workflows/*`, secrets | SonarQube Cloud, Sonar way quality gate | `sonarqube.yml`, every pull request and every push to `main` |
+| Everything Sonar has an analyzer for: shell (the two dotfiles under `files/bash/` included), Python, `Dockerfile`, YAML, `.github/workflows/*`, secrets | SonarQube Cloud, Sonar way quality gate | `sonarqube.yml`, every pull request and every push to `main` |
+| `scripts/*.py`, `scripts/*.sh`, `files/bash/*` | Test coverage held at 100%: coverage.py for the Python, kcov for the shell | `make coverage`, from `sonarqube.yml` and the `coverage` pre-push hook |
 | `Dockerfile` | hadolint | `checklist-dev-docker`, every commit |
 | `.github/workflows/*` | actionlint, zizmor | `checklist-github-actions`, every commit |
 | Everything | detect-secrets, detect-private-key | `checklist-security-credentials`, every commit |
@@ -189,12 +190,13 @@ are history, not current findings.
 
 The quality gate is the Free plan's built-in "Sonar way", which cannot be
 edited, and neither can its rule set. It fails on any new issue in new code,
-and when less than 80% of new Python is covered by the test suite, which is
-why `sonarqube.yml` runs the suite under `coverage` before scanning. Shell
-has no coverage in SonarQube Cloud, so that condition only ever reads the
-Python. The repository holds its Python to 100% anyway, lines and branches,
-through `.coveragerc`; [SONARQUBE.md](SONARQUBE.md) has where that is
-enforced and how to see findings in VS Code. Two consequences worth knowing:
+and when less than 80% of new code is covered by the tests, which is why
+`sonarqube.yml` runs `make coverage` before scanning. That covers the shell as
+well as the Python: SonarQube Cloud has no shell coverage importer of its own,
+so kcov's report reaches it through the generic coverage format. The
+repository holds both to 100% anyway, the Python by lines and branches and the
+shell by lines; [SONARQUBE.md](SONARQUBE.md) has where that is enforced and
+how to see findings in VS Code. Two consequences worth knowing:
 
 - **Editing a line makes it new code.** An old finding on that line then
   counts against the pull request, which is why the initial findings were
