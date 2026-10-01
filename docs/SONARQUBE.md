@@ -78,7 +78,7 @@ exported version.
 
 ### What it shows, and what it does not
 
-Measured on 2026-10-01 in connected mode:
+Measured on 2026-10-01 in connected mode, VS Code on the host:
 
 - **Python issues show up on save**, in the Problems panel and in the
   extension's own output channel (View, Output, SonarQube for IDE). A
@@ -94,17 +94,19 @@ Measured on 2026-10-01 in connected mode:
   (the "LLM-supplied CLI arguments" family) appear in CI, never in the editor.
 
 When nothing appears for a Python file, check the output channel first: no
-"Analyzing" line on save means the extension is not running in that window
-(in a devcontainer, it has to be installed in the container, not only on the
-host).
+"Analyzing" line on save means the extension is not running in that window.
+In a VS Code window attached to a container, the Extensions view shows
+whether it is installed there or only on the host.
 
-### Inside the devcontainer
+### Inside a devcontainer-airlock workbench
 
-The extension works from VS Code attached to this repository's devcontainer,
-with the same setup steps; this was confirmed in use on 2026-10-01, connected
-mode and the shared binding included. The CI check and the pre-push hook do
-not depend on it either way: the hook only installs `coverage` and `pytest`
-from PyPI.
+Not tested yet. The measurements above were taken in VS Code on the host. The
+extension needs `sonarcloud.io` (and SonarSource's download servers for its
+analyzers), and `.devcontainer/egress-sets` has no set for either, so expect
+it to need an egress set for SonarQube Cloud added to devcontainer-airlock
+first. Use it from VS Code on the host until then. The CI check and the
+pre-push hook do not depend on it: the hook only installs `coverage` and
+`pytest` from PyPI, which the `python` set allows.
 
 ---
 
