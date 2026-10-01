@@ -426,6 +426,7 @@ tool than the `docker run` above.
 | [Security and Key Management](docs/SECURITY.md) | Passphrase file, master key, config files, recovery, image verification |
 | [Running with Podman](docs/PODMAN.md) | Why Podman, install commands, and rootless caveats specific to this project |
 | [Merge Pipeline](docs/MERGE_PIPELINE.md) | How pull requests are gated, reviewed and merged in this repository |
+| [SonarQube Cloud](docs/SONARQUBE.md) | What SonarQube Cloud and the 100% coverage gate check, and seeing findings in VS Code |
 
 ---
 

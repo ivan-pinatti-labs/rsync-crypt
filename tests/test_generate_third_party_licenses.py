@@ -1,9 +1,9 @@
 """Tests for scripts/generate-third-party-licenses.py.
 
-Exercises only the pure parsing, rendering and splicing functions, never
-`collect`, which shells out to Docker: these run anywhere, with no Docker
-daemon and no network, the same shape the sibling `resolve-apk-pins.py`
-tests take.
+Exercises the parsing, rendering and splicing functions, plus `collect` and
+`main` with the one `docker run` replaced by a stand-in and the licence file
+redirected to a temporary copy: these run anywhere, with no Docker daemon and
+no network, the same shape the sibling `resolve-apk-pins.py` tests take.
 
     pytest -m scripts tests/test_generate_third_party_licenses.py
 
@@ -17,6 +17,7 @@ found by running the generator rather than by imagining it.
 """
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -279,3 +280,143 @@ def test_provenance_note_has_no_stray_template_fields():
     )
     assert "{" not in rendered and "}" not in rendered
     assert all(line.startswith(">") for line in rendered.splitlines())
+
+
+def test_lines_that_are_not_single_letter_fields_are_ignored():
+    db = "P:extra\nV:1.0-r0\nL:MIT\no:extra\nc:abc123\nmaintainer:x\nno colon\n"
+    packages = generator.parse_installed_db(db)
+    assert [p.name for p in packages] == ["extra"]
+
+
+def test_policy_lines_outside_a_known_shape_are_ignored():
+    policy = (
+        "    https://dl-cdn.alpinelinux.org/alpine/v3.24/main\n"
+        "\n"
+        "musl policy:\n"
+        "  1.2.6-r2:\n"
+        "    lib/apk/db/installed\n"
+        "    /var/cache/local-repository\n"
+        "    https://dl-cdn.alpinelinux.org/alpine/v3.24/main\n"
+    )
+    assert generator.parse_apk_policy(policy) == {"musl": "main"}
+
+
+def _fake_docker(monkeypatch, returncode, stdout="", stderr=""):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+    monkeypatch.setattr(generator.subprocess, "run", fake_run)
+    return calls
+
+
+def test_collect_reads_three_sections_from_one_container_run(monkeypatch):
+    section = generator.SECTION
+    calls = _fake_docker(
+        monkeypatch,
+        0,
+        stdout=f"3.24.1\n{section}\n{INSTALLED_DB}{section}\n{POLICY}",
+    )
+    installed_db, policy, alpine_release = generator.collect("local/test:1")
+    assert installed_db == INSTALLED_DB
+    assert policy == POLICY
+    assert alpine_release == "3.24.1"
+    assert calls[0][:7] == [
+        "docker",
+        "run",
+        "--rm",
+        "--user",
+        "root",
+        "--entrypoint",
+        "sh",
+    ]
+    assert "local/test:1" in calls[0]
+
+
+def test_collect_refuses_a_truncated_run(monkeypatch):
+    _fake_docker(monkeypatch, 0, stdout="3.24.1\n")
+    with pytest.raises(generator.GenerationError, match="expected three sections"):
+        generator.collect("local/test:1")
+
+
+def test_collect_reports_a_failed_container_run(monkeypatch):
+    _fake_docker(monkeypatch, 125, stderr="Unable to find image\n")
+    with pytest.raises(generator.GenerationError, match="exit 125"):
+        generator.collect("local/test:1")
+
+
+def _licenses_file(tmp_path, monkeypatch, region):
+    path = tmp_path / "THIRD_PARTY_LICENSES.md"
+    path.write_text(
+        f"Prose above.\n\n{generator.BEGIN_MARKER}\n{region}{generator.END_MARKER}\n"
+        "\nProse below.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(generator, "LICENSES_FILE", path)
+    monkeypatch.setattr(
+        generator, "collect", lambda image: (INSTALLED_DB, POLICY, "3.24.1")
+    )
+    return path
+
+
+def _committed(region_date):
+    packages = generator.parse_installed_db(INSTALLED_DB)
+    repositories = generator.parse_apk_policy(POLICY)
+    return generator.render(packages, repositories, "3.24.1", region_date)
+
+
+def test_main_regenerates_the_inventory(tmp_path, monkeypatch, capsys):
+    path = _licenses_file(tmp_path, monkeypatch, "stale\n")
+    assert generator.main(["--image", "local/test:1"]) == 0
+    assert "regenerated (3 packages)" in capsys.readouterr().out
+    written = path.read_text(encoding="utf-8")
+    assert "stale" not in written
+    assert written.startswith("Prose above.")
+    assert written.endswith("Prose below.\n")
+
+    # A second run on the same day changes nothing and says so.
+    assert generator.main(["--image", "local/test:1"]) == 0
+    assert "already up to date" in capsys.readouterr().out
+
+
+def test_main_check_passes_when_nothing_moved(tmp_path, monkeypatch, capsys):
+    path = _licenses_file(tmp_path, monkeypatch, "")
+    document = path.read_text(encoding="utf-8")
+    path.write_text(
+        generator.splice(document, _committed("2026-09-10")), encoding="utf-8"
+    )
+    before = path.read_text(encoding="utf-8")
+
+    assert generator.main(["--image", "local/test:1", "--check"]) == 0
+    assert "is up to date (3 packages)" in capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_main_check_prints_the_drift_and_exits_with_the_drift_status(
+    tmp_path, monkeypatch, capsys
+):
+    region = (
+        "**Generated on 2026-09-10 from an image built on Alpine 3.24.0.**\nold row\n"
+    )
+    path = _licenses_file(tmp_path, monkeypatch, region)
+    before = path.read_text(encoding="utf-8")
+
+    assert (
+        generator.main(["--image", "local/test:1", "--check"]) == generator.DRIFT_EXIT
+    )
+    captured = capsys.readouterr()
+    assert "-old row" in captured.out
+    assert "make third-party-licenses" in captured.err
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_main_check_refuses_a_file_with_no_generation_date(
+    tmp_path, monkeypatch, capsys
+):
+    _licenses_file(tmp_path, monkeypatch, "no date here\n")
+    assert (
+        generator.main(["--image", "local/test:1", "--check"]) == generator.ERROR_EXIT
+    )
+    assert "no generation date" in capsys.readouterr().err

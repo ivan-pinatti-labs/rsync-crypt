@@ -46,8 +46,9 @@ SCRYPT_N = 10
 # Resolved once at import time and reused at every call site, so every Docker
 # invocation in the suite runs the same binary instead of each one resolving
 # the bare name "docker" against PATH separately. None (rather than falling
-# back to the string "docker") is deliberate: it is what lets require_docker
-# below actually detect a missing binary instead of masking it.
+# back to the string "docker") is deliberate: it is what lets
+# _docker_unavailable_reason below actually detect a missing binary instead of
+# masking it.
 DOCKER = shutil.which("docker")
 
 
@@ -94,13 +95,35 @@ def docker_rm(name):
         run([DOCKER, "rm", "--force", name])
 
 
-@pytest.fixture(scope="session", autouse=True)
-def require_docker():
+def _docker_unavailable_reason():
+    """Why Docker cannot be used here, or None when it can."""
     if DOCKER is None:
-        pytest.skip("docker is not installed")
-    info = run([DOCKER, "info"])
-    if info.returncode != 0:
-        pytest.skip("docker daemon is not reachable")
+        return "docker is not installed"
+    if run([DOCKER, "info"]).returncode != 0:
+        return "docker daemon is not reachable"
+    return None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip every test that needs Docker when it is unavailable.
+
+    Tests marked `scripts` exercise a script under scripts/ directly and never
+    touch a container, so they always run. That is what lets the pre-push
+    coverage hook measure them on a machine with no Docker daemon. This used
+    to be a session scoped autouse fixture, which skipped those tests too.
+    A collection hook rather than a function scoped fixture, because session
+    scoped fixtures such as the image build are set up before any function
+    scoped one, and would fail on a missing daemon instead of skipping.
+    """
+    needs_docker = [item for item in items if not item.get_closest_marker("scripts")]
+    if not needs_docker:
+        return
+    reason = _docker_unavailable_reason()
+    if reason is None:
+        return
+    skip = pytest.mark.skip(reason=reason)
+    for item in needs_docker:
+        item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")

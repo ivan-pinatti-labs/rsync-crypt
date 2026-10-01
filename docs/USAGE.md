@@ -576,22 +576,27 @@ docker rmi local/gocryptfs-test
 ```
 
 The tests that exercise a script directly, with no container and no stack
-state, can be run on their own:
+state, can be run on their own, and need no Docker at all:
 
 ```bash
 pytest tests -m scripts
 ```
 
+They hold the Python under `scripts/` at 100% line and branch coverage; see
+[SONARQUBE.md](SONARQUBE.md#python-coverage-is-held-at-100) for the command
+and where that is enforced.
+
 The tests run on every pull request via the `Tests` job.
 
-| File                           | Covers                                                                                   |
-| ------------------------------ | ---------------------------------------------------------------------------------------- |
-| `test_makefile.py`             | Help output, `ENV_FILE` handling, build-arg overrides, `.env.example` completeness       |
-| `test_build.py`                | Image builds, required binaries, the Dockerfile's version pins                           |
-| `test_roundtrip.py`            | Backup, filter rule exclusions, encryption at rest, restore                              |
-| `test_network_mounts.py`       | Network-mount detection: the flag, mountinfo parsing, the gocryptfs `-exclude` arguments |
-| `test_assert_pin_only_diff.py` | The `Pin Only` gate: what a dependency bot's diff may and may not change                 |
-| `test_resolve_apk_pins.py`     | Re-resolving the seven apk pins against a new Alpine release                             |
+| File                                    | Covers                                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `test_makefile.py`                      | Help output, `ENV_FILE` handling, build-arg overrides, `.env.example` completeness       |
+| `test_build.py`                         | Image builds, required binaries, the Dockerfile's version pins                           |
+| `test_roundtrip.py`                     | Backup, filter rule exclusions, encryption at rest, restore                              |
+| `test_network_mounts.py`                | Network-mount detection: the flag, mountinfo parsing, the gocryptfs `-exclude` arguments |
+| `test_resolve_apk_pins.py`              | Re-resolving the seven apk pins against a new Alpine release                             |
+| `test_audit_security_ignores.py`        | Auditing `.trivyignore.yaml` entries for expiry and reproduction                         |
+| `test_generate_third_party_licenses.py` | Generating and checking the licence inventory                                            |
 
 The suite runs serially: the Makefile names its container `gocryptfs`, so two
 targets cannot run at the same time.

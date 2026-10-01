@@ -192,7 +192,9 @@ edited, and neither can its rule set. It fails on any new issue in new code,
 and when less than 80% of new Python is covered by the test suite, which is
 why `sonarqube.yml` runs the suite under `coverage` before scanning. Shell
 has no coverage in SonarQube Cloud, so that condition only ever reads the
-Python. Two consequences worth knowing:
+Python. The repository holds its Python to 100% anyway, lines and branches,
+through `.coveragerc`; [SONARQUBE.md](SONARQUBE.md) has where that is
+enforced and how to see findings in VS Code. Two consequences worth knowing:
 
 - **Editing a line makes it new code.** An old finding on that line then
   counts against the pull request, which is why the initial findings were

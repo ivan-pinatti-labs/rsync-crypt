@@ -22,6 +22,7 @@ a full local copy.
 - [docs/USAGE.md](docs/USAGE.md): Building from source, full configuration reference, every make target, tests
 - [docs/SECURITY.md](docs/SECURITY.md): Passphrase file, master key, recovery scenarios, image verification
 - [docs/PODMAN.md](docs/PODMAN.md): Running under Podman, and what rootless does and does not change here
+- [docs/SONARQUBE.md](docs/SONARQUBE.md): SonarQube Cloud, the 100% Python coverage gate, and SonarQube for IDE in VS Code
 - [Makefile](Makefile): All user-facing targets (backup, view, restore, build)
 - [scripts/backup.sh](scripts/backup.sh): Encrypts and syncs local data to remote server
 - [scripts/view.sh](scripts/view.sh): Mounts and serves the remote encrypted backup read-only

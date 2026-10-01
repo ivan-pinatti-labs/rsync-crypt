@@ -193,6 +193,27 @@ repos:
           --ignore-checks QuoteCharacter "$@"
           ' --
 
+      # The local half of the 100% coverage gate sonarqube.yml enforces in
+      # CI, so a drop is caught before a push rather than on the pull
+      # request. Only the tests marked `scripts`: they exercise scripts/*.py
+      # directly with no container, reach 100% on their own, and finish in
+      # seconds; the rest of the suite builds an image. Settings come from
+      # .coveragerc. pre-push, like trivy-image-scan below, and scoped by
+      # `files:` so a push that touches no Python skips it.
+      #
+      # Exact versions, pinned by hand like cffconvert above: Renovate's
+      # pre-commit manager does not read additional_dependencies, and a range
+      # would be resolved once when pre-commit builds the environment and
+      # never again. tests/requirements.txt carries the floors CI installs.
+      - id: python-coverage
+        name: Python coverage, 100% lines and branches (scripts/)
+        language: python
+        additional_dependencies: ["coverage==7.16.1", "pytest==9.1.1"]
+        entry: bash -c 'coverage run -m pytest -q -m scripts tests && coverage report'
+        pass_filenames: false
+        files: '(^scripts/.*\.py$|^tests/.*\.py$|^\.coveragerc$)'
+        stages: [pre-push]
+
       # Builds the image locally and scans it with Trivy before it can be
       # pushed. pre-push, not pre-commit: a full multi-stage image build is
       # too slow to run on every commit, and Dockerfile/Makefile (the only

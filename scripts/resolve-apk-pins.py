@@ -223,7 +223,7 @@ def apply(dockerfile: Path, resolved: dict[str, str]) -> list[str]:
     return changes
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--alpine-version",
@@ -236,7 +236,7 @@ def main() -> int:
         default=DOCKERFILE,
         help="Path to the Dockerfile to rewrite (default: repo root's copy)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     resolved = resolve_versions(args.alpine_version)
     changes = apply(args.dockerfile, resolved)
