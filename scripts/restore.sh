@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
-: ' Script to decrypt and restore files/folders
-    # exit(s) status code(s)
-    0 - success
-    1 - fail
-    2 - binary is missing
-    3 - user cancelled
-    '
+# Script to decrypt and restore files/folders
+# exit(s) status code(s):
+#   0 - success
+#   1 - fail
+#   2 - binary is missing
+#   3 - user cancelled
 
 # check if debug flag is set
 if [[ "${DEBUG}" = true ]]; then

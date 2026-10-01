@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 
-: ' Script to encrypt and backup files/folders
-    # exit(s) status code(s)
-    0 - success
-    1 - fail
-    2 - binary is missing
-    3 - user cancelled
-    '
+# Script to encrypt and backup files/folders
+# exit(s) status code(s):
+#   0 - success
+#   1 - fail
+#   2 - binary is missing
+#   3 - user cancelled
 
 # check if debug flag is set
 if [[ "${DEBUG}" = true ]]; then
@@ -275,9 +274,13 @@ __build_network_mount_excludes() {
     ;;
   "true") ;;
   *)
+    # kcov-exclude-start: the script validates the flag at startup, so only
+    # tests/test_network_mounts.py, which runs this block on its own, reaches
+    # this arm. `make coverage` leaves it out of the shell line count.
     echo "ERROR! Unknown BACKUP_EXCLUDE_NETWORK_MOUNTS '${flag}', aborting..."
     echo "  Valid values are true and false."
     return 1
+    # kcov-exclude-end
     ;;
   esac
 
@@ -424,8 +427,11 @@ fi
 # Look for network-backed mounts under the source now rather than at startup:
 # the sleep above is what lets Docker finish setting up its own volume mounts,
 # and a mount that appears after this point is not covered either way.
+# RSYNC_CRYPT_TEST_MOUNTINFO is for tests/shell only, which hand the script a
+# synthetic mount table; the Makefile never sets it.
+__mountinfo_file=${RSYNC_CRYPT_TEST_MOUNTINFO:-/proc/self/mountinfo}
 if ! __build_network_mount_excludes "${__exclude_network_mounts}" \
-  /proc/self/mountinfo "${__backup_source}"; then
+  "${__mountinfo_file}" "${__backup_source}"; then
   exit 1
 fi
 
