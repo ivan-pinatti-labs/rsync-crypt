@@ -76,6 +76,28 @@ contributor binds to the same project with their own token. If the extension
 ever exports a binding file that differs from the committed one, commit the
 exported version.
 
+### What it shows, and what it does not
+
+Measured on 2026-10-01 in connected mode:
+
+- **Python issues show up on save**, in the Problems panel and in the
+  extension's own output channel (View, Output, SonarQube for IDE). A
+  deliberate `if value == value:` was reported as `python:S1764`.
+- **Shell findings do not.** A single bracket test that the CI scan reports as
+  `shelldre:S7688` raised nothing in the editor, so the extension does not run
+  Sonar's shell analyzer locally. shellcheck still runs on every commit, and
+  the `SonarQube` check reports Sonar's shell rules on the pull request.
+- **Security hotspots are not issues.** A hard-coded `password = "..."` is a
+  hotspot in Sonar way, not an issue, and does not appear in the Problems
+  panel. Hotspots are reviewed in SonarQube Cloud.
+- **Taint analysis runs on the server only**, so the `pythonsecurity` rules
+  (the "LLM-supplied CLI arguments" family) appear in CI, never in the editor.
+
+When nothing appears for a Python file, check the output channel first: no
+"Analyzing" line on save means the extension is not running in that window
+(in a devcontainer, it has to be installed in the container, not only on the
+host).
+
 ### Inside the devcontainer
 
 The extension works from VS Code attached to this repository's devcontainer,
