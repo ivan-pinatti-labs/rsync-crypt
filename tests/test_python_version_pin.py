@@ -110,3 +110,36 @@ def test_sonar_workflow_runs_the_same_interpreter_as_ci():
         f"{WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
         "together; nothing derives one from the other."
     )
+
+
+# The python-coverage pre-push hook cannot install from the hash-locked
+# tests/requirements.txt, so it pins coverage and pytest itself. Those pins
+# and tests/requirements.in name the same two direct dependencies and have to
+# move together, or the hook measures with different tools than CI.
+REQUIREMENTS_IN = REPO_ROOT / "tests/requirements.in"
+PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
+EXACT_PIN = re.compile(r"(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^\s\"',\]]+)")
+
+
+def test_coverage_hook_pins_match_the_test_requirements():
+    declared = {
+        m["name"].lower(): m["version"]
+        for line in REQUIREMENTS_IN.read_text().splitlines()
+        if not line.lstrip().startswith("#")
+        for m in [EXACT_PIN.match(line.strip())]
+        if m
+    }
+    assert set(declared) == {"coverage", "pytest"}, declared
+
+    config = PRE_COMMIT_CONFIG.read_text()
+    hook = config[config.index("id: python-coverage") :]
+    hook = hook[: hook.index("stages:")]
+    deps_line = next(
+        line for line in hook.splitlines() if "additional_dependencies" in line
+    )
+    pinned = {m["name"].lower(): m["version"] for m in EXACT_PIN.finditer(deps_line)}
+
+    assert pinned == declared, (
+        f"the python-coverage hook pins {pinned} but {REQUIREMENTS_IN.name} "
+        f"declares {declared}. Both have to move together."
+    )

@@ -204,7 +204,9 @@ repos:
       # Exact versions, pinned by hand like cffconvert above: Renovate's
       # pre-commit manager does not read additional_dependencies, and a range
       # would be resolved once when pre-commit builds the environment and
-      # never again. tests/requirements.txt carries the floors CI installs.
+      # never again. The same two versions as tests/requirements.in, which
+      # tests/test_python_version_pin.py checks; pre-commit cannot install
+      # from the hash-locked tests/requirements.txt itself.
       - id: python-coverage
         name: Python coverage, 100% lines and branches (scripts/)
         language: python

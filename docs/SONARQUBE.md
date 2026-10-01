@@ -31,7 +31,7 @@ Run it locally the same way the hook does:
 
 ```bash
 python3 -m venv tests/.venv
-tests/.venv/bin/pip install -r tests/requirements.txt
+tests/.venv/bin/pip install --require-hashes --only-binary=:all: -r tests/requirements.txt
 tests/.venv/bin/coverage run -m pytest -q -m scripts tests
 tests/.venv/bin/coverage report
 ```

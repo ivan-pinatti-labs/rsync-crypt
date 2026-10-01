@@ -556,7 +556,7 @@ full backup into it, then restore and compare the result against the source.
 
 ```bash
 python3 -m venv tests/.venv
-tests/.venv/bin/pip install -r tests/requirements.txt
+tests/.venv/bin/pip install --require-hashes --only-binary=:all: -r tests/requirements.txt
 tests/.venv/bin/pytest tests
 ```
 
@@ -597,6 +597,33 @@ The tests run on every pull request via the `Tests` job.
 | `test_resolve_apk_pins.py`              | Re-resolving the seven apk pins against a new Alpine release                             |
 | `test_audit_security_ignores.py`        | Auditing `.trivyignore.yaml` entries for expiry and reproduction                         |
 | `test_generate_third_party_licenses.py` | Generating and checking the licence inventory                                            |
+
+### Updating the test dependencies
+
+`tests/requirements.in` names the direct dependencies, pinned exactly;
+`tests/requirements.txt` is generated from it with every transitive dependency
+and its hashes, and CI installs it with `--require-hashes`. Renovate does not
+manage either file: its pip managers are not enabled here, and a lock bump
+would fail the `Pin Only` check that lets a dependency bot merge unattended. A
+person bumps them:
+
+1. Edit the versions in `tests/requirements.in`, and the same two in the
+   `python-coverage` hook's `additional_dependencies` in
+   `.pre-commit-config.yaml` (`tests/test_python_version_pin.py` fails until
+   they match).
+2. Regenerate the lock. This runs `uv` in a container with network access to
+   PyPI, and `--exclude-newer` keeps the same seven day cooling window
+   Renovate applies everywhere else:
+
+   ```bash
+   podman run --rm -v "$PWD/tests:/work:rw,Z" -w /work \
+     docker.io/library/python:3.14-slim sh -c '
+       pip install -q --root-user-action=ignore uv &&
+       uv pip compile requirements.in --generate-hashes --python-version 3.14 \
+         --exclude-newer "$(date -u -d "7 days ago" +%Y-%m-%dT00:00:00Z)" \
+         --custom-compile-command "docs/USAGE.md, Updating the test dependencies" \
+         --output-file requirements.txt'
+   ```
 
 The suite runs serially: the Makefile names its container `gocryptfs`, so two
 targets cannot run at the same time.
