@@ -100,13 +100,29 @@ whether it is installed there or only on the host.
 
 ### Inside a devcontainer-airlock workbench
 
-Not tested yet. The measurements above were taken in VS Code on the host. The
-extension needs `sonarcloud.io` (and SonarSource's download servers for its
-analyzers), and `.devcontainer/egress-sets` has no set for either, so expect
-it to need an egress set for SonarQube Cloud added to devcontainer-airlock
-first. Use it from VS Code on the host until then. The CI check and the
-pre-push hook do not depend on it: the hook only installs `coverage` and
-`pytest` from PyPI, which the `python` set allows.
+Measured 2026-10-01, VS Code attached to a workbench: the workbench image
+carries SonarQube for IDE, and this repository lists the `sonarqube-cloud`
+egress set in `.devcontainer/egress-sets`, which connected mode needs
+(`sonarcloud.io`, its API, scanner and events hosts, and SonarSource's
+analyzer downloads). The extension's analysis runs in a JVM that ignores the
+workbench's proxy variables; the workbench passes it the egress proxy as JVM
+options at start, so nothing is configured here.
+
+Bind the folder to `ivan-pinatti-labs_rsync-crypt` once in the workbench
+(connected mode keeps its token in the editor's secret storage). Bound, it
+analyzes with SonarQube Cloud's profile and reports the probe below as
+`python:S1764`. Opened as a `git worktree` it logs a harmless JGit
+"repository not found" error, since JGit cannot read linked worktrees.
+
+```python
+def _sonar_probe(value):
+    if value == value:
+        return 1
+    return 0
+```
+
+Use that probe rather than a hardcoded password: a password is a security
+hotspot, and hotspots never appear in the Problems panel.
 
 ---
 
