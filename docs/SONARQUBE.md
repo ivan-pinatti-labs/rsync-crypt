@@ -76,14 +76,37 @@ contributor binds to the same project with their own token. If the extension
 ever exports a binding file that differs from the committed one, commit the
 exported version.
 
+### What it shows, and what it does not
+
+Measured on 2026-10-01 in connected mode, VS Code on the host:
+
+- **Python issues show up on save**, in the Problems panel and in the
+  extension's own output channel (View, Output, SonarQube for IDE). A
+  deliberate `if value == value:` was reported as `python:S1764`.
+- **Shell findings do not.** A single bracket test that the CI scan reports as
+  `shelldre:S7688` raised nothing in the editor, so the extension does not run
+  Sonar's shell analyzer locally. shellcheck still runs on every commit, and
+  the `SonarQube` check reports Sonar's shell rules on the pull request.
+- **Security hotspots are not issues.** A hard-coded `password = "..."` is a
+  hotspot in Sonar way, not an issue, and does not appear in the Problems
+  panel. Hotspots are reviewed in SonarQube Cloud.
+- **Taint analysis runs on the server only**, so the `pythonsecurity` rules
+  (the "LLM-supplied CLI arguments" family) appear in CI, never in the editor.
+
+When nothing appears for a Python file, check the output channel first: no
+"Analyzing" line on save means the extension is not running in that window.
+In a VS Code window attached to a container, the Extensions view shows
+whether it is installed there or only on the host.
+
 ### Inside a devcontainer-airlock workbench
 
-The extension talks to `sonarcloud.io` (and downloads its analyzers from
-SonarSource), which the egress sets in `.devcontainer/egress-sets` do not
-allow. Use it from VS Code on the host, or add an egress set for SonarQube
-Cloud to devcontainer-airlock first. The CI check and the pre-push hook do not
-need it: the hook only installs `coverage` and `pytest` from PyPI, which the
-`python` set already allows.
+Not tested yet. The measurements above were taken in VS Code on the host. The
+extension needs `sonarcloud.io` (and SonarSource's download servers for its
+analyzers), and `.devcontainer/egress-sets` has no set for either, so expect
+it to need an egress set for SonarQube Cloud added to devcontainer-airlock
+first. Use it from VS Code on the host until then. The CI check and the
+pre-push hook do not depend on it: the hook only installs `coverage` and
+`pytest` from PyPI, which the `python` set allows.
 
 ---
 
