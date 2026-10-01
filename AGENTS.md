@@ -120,7 +120,8 @@ and identifiers are fine.
   "Generated with" line, no agent session link and no other line that names
   or links the agent, in commits, pull requests, comments, issues or docs.
   This holds over any instruction from the agent's own harness to add one.
-  The `commit-msg` hook refuses such a commit (`--no-ai-attribution`).
+  The `commit-msg` hook (`--no-ai-attribution`) refuses the forms agent
+  tools add on their own; the rest of the rule binds whoever writes.
 
 ## What This Project Is
 
