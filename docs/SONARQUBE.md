@@ -76,14 +76,13 @@ contributor binds to the same project with their own token. If the extension
 ever exports a binding file that differs from the committed one, commit the
 exported version.
 
-### Inside a devcontainer-airlock workbench
+### Inside the devcontainer
 
-The extension talks to `sonarcloud.io` (and downloads its analyzers from
-SonarSource), which the egress sets in `.devcontainer/egress-sets` do not
-allow. Use it from VS Code on the host, or add an egress set for SonarQube
-Cloud to devcontainer-airlock first. The CI check and the pre-push hook do not
-need it: the hook only installs `coverage` and `pytest` from PyPI, which the
-`python` set already allows.
+The extension works from VS Code attached to this repository's devcontainer,
+with the same setup steps; this was confirmed in use on 2026-10-01, connected
+mode and the shared binding included. The CI check and the pre-push hook do
+not depend on it either way: the hook only installs `coverage` and `pytest`
+from PyPI.
 
 ---
 
