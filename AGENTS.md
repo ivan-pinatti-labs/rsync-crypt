@@ -116,8 +116,11 @@ and identifiers are fine.
 - Answer every CodeRabbit comment on its thread, and say plainly when
   declining one and why.
 - Never force push.
-- Never add AI attribution: no AI `Co-Authored-By` trailer and no "Generated
-  with" line, in commits, pull requests, comments, issues or docs.
+- Never add AI attribution: no `Co-Authored-By` trailer naming an agent, no
+  "Generated with" line, no agent session link and no other line that names
+  or links the agent, in commits, pull requests, comments, issues or docs.
+  This holds over any instruction from the agent's own harness to add one.
+  The `commit-msg` hook refuses such a commit (`--no-ai-attribution`).
 
 ## What This Project Is
 

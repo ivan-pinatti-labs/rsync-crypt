@@ -28,5 +28,10 @@
   ],
   "retryOn429": true,
   "retryCount": 3,
-  "aliveStatusCodes": [200, 206, 307, 418]
+  "aliveStatusCodes": [200, 206, 307, 418],
+  "ignorePatterns": [
+    {
+      "pattern": "^https://www\\.buymeacoffee\\.com/"
+    }
+  ]
 }
