@@ -57,7 +57,11 @@ It needs podman, and network for the pip install inside the Python container.
 SonarQube Cloud reads both reports. It has no importer of its own for shell
 coverage, so `scripts/kcov-to-sonar.py` rewrites kcov's Cobertura report into
 SonarQube's generic coverage format (`sonar.coverageReportPaths`); that same
-script is what fails the shell below 100%, since kcov has no threshold.
+script is what fails the shell below 100%, since kcov has no threshold. The
+two dotfiles are the exception on the SonarQube side: `sonar.lang.patterns.shell`
+names them, so the shell rules read them, but the generic coverage sensor
+skips any file whose name starts with a dot and logs their coverage as
+belonging to "unknown files". Their 100% is held by `make coverage` alone.
 
 kcov is told to leave out three kinds of line, all on the `coverage` target:
 
