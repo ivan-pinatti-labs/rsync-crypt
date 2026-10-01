@@ -4,3 +4,4 @@ node
 docker-hub
 alpine
 trivy
+sonarqube-cloud
