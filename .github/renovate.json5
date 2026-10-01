@@ -61,6 +61,11 @@
   // alone, whose L2 image digest no other manager here watches, so the two
   // never see the same line. Scoping by rule alone would not do it, because
   // matchFileNames narrows a rule and not what a manager reads.
+  // No pip manager on purpose. tests/requirements.txt is a hash lock
+  // generated from tests/requirements.in, and .github/pin-only.yml has no
+  // grammar for it, so a Renovate bump would fail `Pin Only` and could never
+  // merge. A person bumps both (docs/USAGE.md, "Updating the test
+  // dependencies").
   enabledManagers: [
     "custom.regex",
     "github-actions",

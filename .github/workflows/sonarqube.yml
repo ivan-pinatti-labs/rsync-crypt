@@ -144,7 +144,7 @@ jobs:
       - name: Install test dependencies
         if: github.event_name != 'merge_group'
         run: >-
-          pip install --only-binary=:all:
+          pip install --require-hashes --only-binary=:all:
           --requirement tests/requirements.txt
 
       # Settings (source, branches, the 100% floor) come from .coveragerc.
