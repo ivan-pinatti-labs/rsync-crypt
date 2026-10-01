@@ -26,18 +26,12 @@
     "itself is treated as passing, so a genuinely broken link keeps getting",
     "caught."
   ],
-  "comment_ignorePatterns": [
-    "The Buy Me a Coffee site answers GitHub's runners with 403 (every run",
-    "on #149, 2026-10-01) while the same URL returns 200 from an ordinary",
-    "connection: an anti-bot block on the runners' address range, not a dead",
-    "link."
-  ],
-  "ignorePatterns": [
-    {
-      "pattern": "^https://(www\\.)?buymeacoffee\\.com/"
-    }
-  ],
   "retryOn429": true,
   "retryCount": 3,
-  "aliveStatusCodes": [200, 206, 307, 418]
+  "aliveStatusCodes": [200, 206, 307, 418],
+  "ignorePatterns": [
+    {
+      "pattern": "^https://www\\.buymeacoffee\\.com/"
+    }
+  ]
 }
