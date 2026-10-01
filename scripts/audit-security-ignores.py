@@ -362,7 +362,7 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).date()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ignorefile", type=Path, default=DEFAULT_IGNOREFILE)
     parser.add_argument("--open-alerts", type=Path, default=None)
@@ -389,7 +389,7 @@ def main() -> int:
         default=None,
         help="Override 'today' (testing only); defaults to the real UTC date.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # UTC, not local time: this runs on a GitHub-hosted runner in
     # security-ignore-audit.yml, and `expired_at` dates are calendar dates

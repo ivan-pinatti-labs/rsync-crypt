@@ -147,10 +147,11 @@ jobs:
           pip install --only-binary=:all:
           --requirement tests/requirements.txt
 
+      # Settings (source, branches, the 100% floor) come from .coveragerc.
       - name: Measure coverage
         if: github.event_name != 'merge_group'
         run: |
-          coverage run --source=scripts -m pytest tests
+          coverage run -m pytest tests
           coverage xml -o coverage.xml
 
       - name: Scan
@@ -162,3 +163,11 @@ jobs:
           args: >-
             -Dsonar.qualitygate.wait=true
             ${{ steps.pr.outputs.args }}
+
+      - name: Require 100% coverage
+        # After the scan, so a pull request below 100% still gets SonarQube's
+        # report of which lines are missing. `fail_under = 100` in .coveragerc
+        # is what fails this; Sonar's own gate stops at 80% on new code and
+        # the Free plan cannot raise it.
+        if: github.event_name != 'merge_group'
+        run: coverage report

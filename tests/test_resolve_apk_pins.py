@@ -1,9 +1,9 @@
 """Tests for scripts/resolve-apk-pins.py.
 
-Exercises only the pure parsing and precision-matching functions
-(`parse_apk_policy`, `match_precision`, `apply`), never `resolve_versions`
-itself, which shells out to Docker: these run anywhere, with no Docker
-daemon and no network, the same way the sibling
+Exercises the parsing and precision-matching functions
+(`parse_apk_policy`, `match_precision`, `apply`), plus `resolve_versions` and
+`main` with the one `docker run` replaced by a stand-in: these run anywhere,
+with no Docker daemon and no network, the same way the sibling
 `generate-third-party-licenses.py` tests do.
 
     pytest -m scripts tests/test_resolve_apk_pins.py
@@ -18,6 +18,7 @@ every one of the seven live values with no fixture rigged to match.
 """
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -307,3 +308,61 @@ def test_read_current_pins_ignores_an_arg_with_no_default(tmp_path):
 def test_refuses_an_unsafe_alpine_version_before_touching_docker(value):
     with pytest.raises(SystemExit):
         resolve_apk_pins.resolve_versions(value)
+
+
+def test_skips_lines_between_a_header_and_its_version():
+    # A package apk knows only from the installed database prints that path
+    # before any repository version; it is not a version and must not stop
+    # the version after it from being read.
+    policy = "rsync policy:\n    lib/apk/db/installed\n  3.5.0-r0:\n"
+    assert resolve_apk_pins.parse_apk_policy(policy) == {"rsync": "3.5.0-r0"}
+
+
+def _fake_docker(monkeypatch, returncode, stdout="", stderr=""):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+    monkeypatch.setattr(resolve_apk_pins.subprocess, "run", fake_run)
+    return calls
+
+
+def test_resolve_versions_runs_apk_policy_in_the_requested_alpine(monkeypatch):
+    calls = _fake_docker(monkeypatch, 0, stdout=ALPINE_3_24_POLICY)
+    resolved = resolve_apk_pins.resolve_versions("3.24")
+    assert resolved["gocryptfs"] == "2.6.1-r5"
+    cmd = calls[0]
+    assert cmd[:4] == ["docker", "run", "--rm", "alpine:3.24"]
+    assert cmd[-1].startswith("apk update >&2 && apk policy ")
+
+
+def test_resolve_versions_fails_loudly_when_apk_fails(monkeypatch, capsys):
+    _fake_docker(monkeypatch, 1, stderr="ERROR: unable to fetch index\n")
+    with pytest.raises(SystemExit, match="exit 1"):
+        resolve_apk_pins.resolve_versions("3.24")
+    assert "unable to fetch index" in capsys.readouterr().err
+
+
+def test_main_reports_the_pins_it_rewrote(tmp_path, monkeypatch, capsys):
+    path = _write_dockerfile(tmp_path, {"GOCRYPTFS_VERSION": "2.5"})
+    _fake_docker(monkeypatch, 0, stdout=ALPINE_3_24_POLICY)
+    status = resolve_apk_pins.main(
+        ["--alpine-version", "3.24", "--dockerfile", str(path)]
+    )
+    assert status == 0
+    out = capsys.readouterr().out
+    assert out.startswith("changed=true\n")
+    assert "GOCRYPTFS_VERSION: 2.5 -> 2.6" in out
+    assert "ARG GOCRYPTFS_VERSION=2.6" in path.read_text()
+
+
+def test_main_reports_nothing_to_do(tmp_path, monkeypatch, capsys):
+    path = _write_dockerfile(tmp_path, {})
+    _fake_docker(monkeypatch, 0, stdout=ALPINE_3_24_POLICY)
+    assert (
+        resolve_apk_pins.main(["--alpine-version", "3.24", "--dockerfile", str(path)])
+        == 0
+    )
+    assert capsys.readouterr().out.startswith("changed=false\n")

@@ -1,10 +1,10 @@
 """Tests for scripts/audit-security-ignores.py.
 
-Exercises only the pure parsing and decision functions
-(`parse_ignorefile`, `load_alert_rule_ids`, `evaluate_entries`,
-`find_unmatched_dismissals`, `render_report`), never `main`'s file/CLI
-plumbing: these run anywhere, with no network access and no `gh` binary, the
-same way the sibling `resolve-apk-pins.py` tests do.
+Exercises the parsing and decision functions (`parse_ignorefile`,
+`load_alert_rule_ids`, `evaluate_entries`, `find_unmatched_dismissals`,
+`render_report`) and `main` end to end over files in a temporary directory:
+these run anywhere, with no network access and no `gh` binary, the same way
+the sibling `resolve-apk-pins.py` tests do.
 
     pytest -m scripts tests/test_audit_security_ignores.py
 """
@@ -283,3 +283,102 @@ def test_render_report_flags_an_unmatched_dismissal():
     )
     assert needs_issue is True
     assert "CVE-ORPHAN" in report
+
+
+def test_parse_ignorefile_ignores_keys_before_the_vulnerabilities_section():
+    entries = audit.parse_ignorefile(
+        "misconfigurations:\n"
+        "  - id: AVD-DS-0002\n"
+        "vulnerabilities:\n"
+        "  - id: CVE-2026-22222\n"
+    )
+    assert [e.id for e in entries] == ["CVE-2026-22222"]
+
+
+def test_parse_ignorefile_stops_at_the_next_top_level_key():
+    entries = audit.parse_ignorefile(
+        "vulnerabilities:\n"
+        "  - id: CVE-2026-33333\n"
+        "    statement: Kept.\n"
+        "secrets:\n"
+        "  - id: aws-access-key-id\n"
+        "    statement: Not a vulnerability entry.\n"
+    )
+    assert [(e.id, e.statement) for e in entries] == [("CVE-2026-33333", "Kept.")]
+
+
+def test_parse_ignorefile_drops_indented_text_before_the_first_entry():
+    entries = audit.parse_ignorefile(
+        "vulnerabilities:\n    stray indented text\n  - id: CVE-2026-44444\n"
+    )
+    assert entries[0].statement is None
+
+
+def test_load_unfiltered_finding_ids_skips_a_finding_with_no_id(tmp_path):
+    report = tmp_path / "trivy.json"
+    report.write_text(
+        '{"Results": [{"Vulnerabilities": ['
+        '{"VulnerabilityID": "CVE-2026-55555"}, {"PkgName": "no-id"}]}]}'
+    )
+    assert audit.load_unfiltered_finding_ids(report) == {"CVE-2026-55555"}
+
+
+def test_load_alert_rule_ids_skips_an_alert_with_no_rule(tmp_path):
+    path = tmp_path / "alerts.json"
+    path.write_text('[{"rule": {"id": "CVE-2026-66666"}}, {"rule": null}, {}]')
+    assert audit.load_alert_rule_ids(path) == {"CVE-2026-66666"}
+
+
+def test_main_reports_a_clean_state(tmp_path, capsys):
+    ignorefile = tmp_path / "ignore.yaml"
+    ignorefile.write_text(
+        "vulnerabilities:\n"
+        "  - id: CVE-2026-77777\n"
+        "    statement: Accepted.\n"
+        "    expired_at: 2026-12-31\n"
+    )
+    alerts = tmp_path / "dismissed.json"
+    alerts.write_text('[{"rule": {"id": "CVE-2026-77777"}}]')
+    findings = tmp_path / "trivy.json"
+    findings.write_text(
+        '{"Results": [{"Vulnerabilities": [{"VulnerabilityID": "CVE-2026-77777"}]}]}'
+    )
+
+    status = audit.main(
+        [
+            "--ignorefile",
+            str(ignorefile),
+            "--dismissed-alerts",
+            str(alerts),
+            "--unfiltered-findings",
+            str(findings),
+            "--today",
+            "2026-09-30",
+        ]
+    )
+
+    assert status == 0
+    out = capsys.readouterr().out
+    assert out.startswith("needs_issue=false\n")
+    assert "Ignore-list entries checked: 1" in out
+
+
+def test_main_flags_an_expired_entry(tmp_path, capsys):
+    ignorefile = tmp_path / "ignore.yaml"
+    ignorefile.write_text(
+        "vulnerabilities:\n"
+        "  - id: CVE-2026-88888\n"
+        "    statement: Accepted.\n"
+        "    expired_at: 2026-01-01\n"
+    )
+
+    assert audit.main(["--ignorefile", str(ignorefile), "--today", "2026-09-30"]) == 0
+    assert capsys.readouterr().out.startswith("needs_issue=true\n")
+
+
+def test_main_defaults_today_to_the_current_utc_date(tmp_path, capsys):
+    ignorefile = tmp_path / "ignore.yaml"
+    ignorefile.write_text("vulnerabilities:\n")
+
+    assert audit.main(["--ignorefile", str(ignorefile)]) == 0
+    assert capsys.readouterr().out.startswith("needs_issue=")

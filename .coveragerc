@@ -1,0 +1,20 @@
+# Coverage settings for the Python tooling under scripts/. Read by
+# sonarqube.yml's "Measure coverage" step and by the `python-coverage`
+# pre-push hook in .pre-commit-config.yaml.
+#
+# 100%, lines and branches both. SonarQube Cloud's Free plan quality gate is
+# fixed at 80% on new code and cannot be raised, so this is what holds the
+# higher bar. Branches too, so every `if` has been seen going both ways, not
+# only reached.
+[run]
+source = scripts
+branch = true
+
+[report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+# The one line a test cannot reach without running the file as a program.
+# Everything it calls is main(), which the tests drive directly.
+exclude_also =
+    if __name__ == .__main__.:

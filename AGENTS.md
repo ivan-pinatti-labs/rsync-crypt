@@ -399,12 +399,17 @@ above.
 quality gate does. The gate is the Free plan's fixed "Sonar way": no custom
 rules or profiles, and any new issue in new code fails it, including an old
 finding on a line a pull request edits, as does new Python under 80%
-covered by the suite (`sonarqube.yml` runs it under `coverage`). Fix what a rule asks for, or mark the
-single finding false positive or accepted in SonarQube Cloud with a reason;
-never `# NOSONAR`. Automatic Analysis must stay off in the project settings,
-or every CI scan aborts. Why each piece is the way it is (merge queue, forks,
-dispatch after `resolve-apk-pins.yml`'s push) is in docs/MERGE_PIPELINE.md and
-docs/SECURITY.md's "What Scans What".
+covered by the suite. On top of that gate, `.coveragerc` holds `scripts/` at
+100% line and branch coverage, enforced after the scan in CI and by the
+`python-coverage` pre-push hook; a new script ships with tests that reach every
+line and branch, Docker calls replaced by a stand-in, `main()` taking `argv`.
+Fix what a rule asks for, or mark the single finding false positive or
+accepted in SonarQube Cloud with a reason; never `# NOSONAR`. Automatic
+Analysis must stay off in the project settings, or every CI scan aborts.
+Why each piece is the way it is (merge queue, forks, dispatch after
+`resolve-apk-pins.yml`'s push) is in docs/MERGE_PIPELINE.md and
+docs/SECURITY.md's "What Scans What"; docs/SONARQUBE.md covers the coverage
+gate and SonarQube for IDE.
 
 ### Branch, PR, gates, then merge
 
