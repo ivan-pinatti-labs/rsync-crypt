@@ -9,7 +9,7 @@ in the `ivan-pinatti-labs` organization, on the Free plan.
 
 | Check | Where it runs | What fails it |
 | --- | --- | --- |
-| SonarQube Cloud analysis and quality gate | `SonarQube` job in `sonarqube.yml`, every pull request and every push to `main` | Any new issue in new code, an unreviewed security hotspot, or new code under 80% covered |
+| SonarQube Cloud analysis and quality gate | `SonarQube` job in `sonarqube.yml`, every pull request and every push to `main` | New code rated below A for reliability, security or maintainability, an unreviewed security hotspot, over 3% duplication, or new code under 80% covered |
 | 100% coverage: Python lines and branches, shell lines | The same job: `make coverage` before the scan, its verdict after it | Any line or branch under `scripts/*.py`, or any line of the shell scripts and dotfiles, that no test reaches |
 | 100% coverage, before a push | `coverage` pre-push hook in `.pre-commit-config.yaml`, which runs `make coverage` | The same |
 | Findings while editing | SonarQube for IDE in VS Code, below | Nothing; it is advice, not a gate |

@@ -401,23 +401,25 @@ above.
 
 `sonarqube.yml` publishes the required `SonarQube` check and fails when the
 quality gate does. The gate is the Free plan's fixed "Sonar way": no custom
-rules or profiles, and any new issue in new code fails it, including an old
-finding on a line a pull request edits, as does new code under 80%
-covered by the tests. On top of that gate, `make coverage` holds the Python
-under `scripts/` at 100% line and branch coverage (`.coveragerc`) and the
-shell scripts and `files/bash/` dotfiles at 100% of their lines (kcov,
-`tests/shell/`), enforced after the scan in CI and by the `coverage` pre-push
-hook. A new Python script ships with tests marked `scripts` that reach every
-line and branch, Docker calls replaced by a stand-in, `main()` taking `argv`;
-a shell change ships with a `tests/shell/` case for every new line, external
-commands replaced by stand-ins on `PATH`.
-Fix what a rule asks for, or mark the single finding false positive or
-accepted in SonarQube Cloud with a reason; never `# NOSONAR`. Automatic
-Analysis must stay off in the project settings, or every CI scan aborts.
-Why each piece is the way it is (merge queue, forks, dispatch after
-`resolve-apk-pins.yml`'s push) is in docs/MERGE_PIPELINE.md and
-docs/SECURITY.md's "What Scans What"; docs/SONARQUBE.md covers the coverage
-gate and SonarQube for IDE.
+rules or profiles. It fails on new code rated below A for reliability,
+security or maintainability (any new bug or vulnerability, or code smells
+past the A debt threshold), including an old finding on a line a pull
+request edits, on an unreviewed new security hotspot, on more than 3%
+duplication, and on new code under 80% covered by the tests. On top of that
+gate, `make coverage` holds the Python under `scripts/` at 100% line and
+branch coverage (`.coveragerc`) and the shell scripts and `files/bash/`
+dotfiles at 100% of their lines (kcov, `tests/shell/`), enforced after the
+scan in CI and by the `coverage` pre-push hook. A new Python script ships
+with tests marked `scripts` that reach every line and branch, Docker calls
+replaced by a stand-in, `main()` taking `argv`; a shell change ships with a
+`tests/shell/` case for every new line, external commands replaced by
+stand-ins on `PATH`. Fix what a rule asks for, or mark the single finding
+false positive or accepted in SonarQube Cloud with a reason; never `#
+NOSONAR`. Automatic Analysis must stay off in the project settings, or every
+CI scan aborts. Why each piece is the way it is (merge queue, forks,
+dispatch after `resolve-apk-pins.yml`'s push) is in docs/MERGE_PIPELINE.md
+and docs/SECURITY.md's "What Scans What"; docs/SONARQUBE.md covers the
+coverage gate and SonarQube for IDE.
 
 ### Branch, PR, gates, then merge
 

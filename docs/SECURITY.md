@@ -189,8 +189,10 @@ too. Its old `codeql-python` alerts in the Security tab stop updating; they
 are history, not current findings.
 
 The quality gate is the Free plan's built-in "Sonar way", which cannot be
-edited, and neither can its rule set. It fails on any new issue in new code,
-and when less than 80% of new code is covered by the tests, which is why
+edited, and neither can its rule set. It fails when new code is rated below A
+for reliability, security or maintainability, when a new security hotspot is
+left unreviewed, when more than 3% of new code is duplicated, and when less
+than 80% of new code is covered by the tests, which is why
 `sonarqube.yml` runs `make coverage` before scanning. That covers the shell as
 well as the Python: SonarQube Cloud has no shell coverage importer of its own,
 so kcov's report reaches it through the generic coverage format. The
