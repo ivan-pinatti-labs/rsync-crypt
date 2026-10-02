@@ -474,23 +474,29 @@ SHELL_SOURCES := scripts/backup.sh scripts/restore.sh scripts/view.sh \
 _empty :=
 _comma := ,
 _kcov_include := $(subst $(_empty) $(_empty),$(_comma),$(addprefix /tmp/w/,$(SHELL_SOURCES)))
+# Builds $$out/src.tar: the files git would commit (tracked, plus new ones
+# not ignored), minus any deleted in the working tree, each step checked,
+# so the containers never measure a partial tree.
 _sources := git ls-files -z --cached --others --exclude-standard --deduplicate \
-	| tar --create --owner=0 --group=0 --numeric-owner --null --files-from=- \
-		--ignore-failed-read --file=-
+		>"$$out/all" || exit 1; \
+	xargs -0 sh -c 'for f do if [ -e "$$f" ] || [ -L "$$f" ]; then printf "%s\0" "$$f"; fi; done' sh \
+		<"$$out/all" >"$$out/list" || exit 1; \
+	tar --create --owner=0 --group=0 --numeric-owner --null --files-from="$$out/list" --file="$$out/src.tar" || exit 1
 _unpack := set -e; mkdir /tmp/w; tar -x --no-same-owner -C /tmp/w; cd /tmp/w; st=0
 _locked := --cap-drop=ALL --security-opt no-new-privileges
 
 coverage:
 	@set -u; out="$$(mktemp -d)"; trap 'rm -rf "$$out"' EXIT; \
+	$(_sources); \
 	mkdir "$$out/python" "$$out/shell"; py=0; sh=0; \
-	$(_sources) | $(PODMAN) run --rm --interactive $(_locked) \
+	$(PODMAN) run <"$$out/src.tar" --rm --interactive $(_locked) \
 		-v "$$out/python:/out:rw,Z" "$(PYTHON_IMAGE)" sh -c '$(_unpack); \
 			pip install --quiet --disable-pip-version-check --root-user-action=ignore \
 				--require-hashes --only-binary=:all: -r tests/requirements.txt; \
 			coverage run -m pytest -q -m scripts tests || st=1; \
 			coverage xml -q --fail-under=0 -o /out/coverage.xml; \
 			coverage report || st=1; exit $$st' || py=$$?; \
-	$(_sources) | $(PODMAN) run --rm --interactive $(_locked) \
+	$(PODMAN) run <"$$out/src.tar" --rm --interactive $(_locked) \
 		--network=none --read-only --tmpfs /tmp \
 		-v "$$out/shell:/out:rw,Z" "$(KCOV_IMAGE)" sh -c '$(_unpack); \
 			kcov --include-path=$(_kcov_include) \
