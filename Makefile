@@ -499,7 +499,7 @@ coverage:
 				/tmp/kcov tests/shell/run.sh || st=1; \
 			python3 scripts/kcov-to-sonar.py /tmp/w /tmp/kcov/run.sh.*/cobertura.xml \
 				/out/shell.xml $(SHELL_SOURCES) || st=1; exit $$st' || sh=$$?; \
-	rm -rf "$(COVERAGE_DIR)"; mkdir -p "$(COVERAGE_DIR)"; \
+	mkdir -p "$(COVERAGE_DIR)"; rm -f "$(COVERAGE_DIR)/coverage.xml" "$(COVERAGE_DIR)/shell.xml"; \
 	for report in "$$out/python/coverage.xml" "$$out/shell/shell.xml"; do \
 		if [ -f "$$report" ]; then cp "$$report" "$(COVERAGE_DIR)"/; fi; \
 	done; \
