@@ -198,7 +198,9 @@ well as the Python: SonarQube Cloud has no shell coverage importer of its own,
 so kcov's report reaches it through the generic coverage format. The
 repository holds both to 100% anyway, the Python by lines and branches and the
 shell by lines; [SONARQUBE.md](SONARQUBE.md) has where that is enforced and
-how to see findings in VS Code. Two consequences worth knowing:
+how to see findings in VS Code. On a change under 20 new lines SonarQube
+Cloud skips the coverage and duplication conditions; the 100% gate still
+applies. Two consequences worth knowing:
 
 - **Editing a line makes it new code.** An old finding on that line then
   counts against the pull request, which is why the initial findings were

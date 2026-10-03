@@ -509,7 +509,8 @@ coverage:
 	for report in "$$out/python/coverage.xml" "$$out/shell/shell.xml"; do \
 		if [ -f "$$report" ]; then cp "$$report" "$(COVERAGE_DIR)"/ || exit 1; fi; \
 	done; \
-	test "$$py" -eq 0 && test "$$sh" -eq 0
+	test "$$py" -eq 0 && test "$$sh" -eq 0 && \
+		test -s "$(COVERAGE_DIR)/coverage.xml" && test -s "$(COVERAGE_DIR)/shell.xml"
 
 # WARNING: permanently deletes the passkey, gocryptfs config files, and Docker image.
 # Make sure the master key is backed up before running this.
