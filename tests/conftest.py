@@ -89,7 +89,14 @@ def run_make(target, env_file, timeout=900, extra_args=()):
 
 
 def docker_rm(name):
-    """Remove a container if it exists, without relying on error suppression."""
+    """Remove a container if it exists, without relying on error suppression.
+
+    With no docker at all there is nothing to remove. The `scripts` tests run
+    without it, in `make coverage`'s container, and this runs around every
+    test through clean_run_container below.
+    """
+    if DOCKER is None:
+        return
     exists = run([DOCKER, "inspect", "--type", "container", name])
     if exists.returncode == 0:
         run([DOCKER, "rm", "--force", name])

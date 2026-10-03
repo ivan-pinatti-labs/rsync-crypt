@@ -1,16 +1,24 @@
 # Coverage settings for the Python tooling under scripts/. Read by
-# sonarqube.yml's "Measure coverage" step and by the `python-coverage`
-# pre-push hook in .pre-commit-config.yaml.
+# `make coverage`, which .github/workflows/sonarqube.yml and the `coverage`
+# pre-push hook in .pre-commit-config.yaml both run.
 #
 # 100%, lines and branches both. SonarQube Cloud's Free plan quality gate is
 # fixed at 80% on new code and cannot be raised, so this is what holds the
 # higher bar. Branches too, so every `if` has been seen going both ways, not
-# only reached.
+# only reached. The shell is held to 100% of its lines by kcov, see
+# scripts/kcov-to-sonar.py.
 [run]
+# Paths in coverage.xml relative to the repository root, which is what
+# SonarQube Cloud resolves them against; the tests run in a container whose
+# copy of the tree lives elsewhere.
+relative_files = true
 source = scripts
 branch = true
 
 [report]
+# Measure a .py file even where its directory has no __init__.py, so a
+# new untested file shows up at 0% and fails, rather than going unseen.
+include_namespace_packages = true
 fail_under = 100
 show_missing = true
 skip_covered = true

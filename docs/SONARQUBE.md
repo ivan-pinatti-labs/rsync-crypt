@@ -9,9 +9,9 @@ in the `ivan-pinatti-labs` organization, on the Free plan.
 
 | Check | Where it runs | What fails it |
 | --- | --- | --- |
-| SonarQube Cloud analysis and quality gate | `SonarQube` job in `sonarqube.yml`, every pull request and every push to `main` | Any new issue in new code, an unreviewed security hotspot, or new Python under 80% covered |
-| 100% Python coverage, lines and branches | The same job, after the scan (`coverage report`) | Any line or branch under `scripts/` that no test reaches |
-| 100% Python coverage, before a push | `python-coverage` pre-push hook in `.pre-commit-config.yaml` | The same, measured on the tests marked `scripts` |
+| SonarQube Cloud analysis and quality gate | `SonarQube` job in `sonarqube.yml`, every pull request and every push to `main` | New code rated below A for reliability, security or maintainability, an unreviewed security hotspot, over 3% duplication, or new code under 80% covered |
+| 100% coverage: Python lines and branches, shell lines | The same job: `make coverage` before the scan, its verdict after it | Any line or branch under `scripts/*.py`, or any line of the shell scripts and dotfiles, that no test reaches |
+| 100% coverage, before a push | `coverage` pre-push hook in `.pre-commit-config.yaml`, which runs `make coverage` | The same |
 | Findings while editing | SonarQube for IDE in VS Code, below | Nothing; it is advice, not a gate |
 
 `SonarQube` is a required status check on `main`. Why it passes without
@@ -19,26 +19,66 @@ scanning on a merge queue commit, and why a fork's pull request fails it, is in
 [MERGE_PIPELINE.md](MERGE_PIPELINE.md). Why Sonar replaced CodeQL and how
 findings are marked is in [SECURITY.md](SECURITY.md#what-scans-what).
 
-## Python coverage is held at 100%
+## Coverage is held at 100%
 
 The Free plan's quality gate is fixed at 80% coverage on new code and cannot be
-raised, so the higher bar lives in `.coveragerc` instead: `fail_under = 100`,
-with `branch = true` so every `if` has to be seen going both ways. The only
-excluded line is `if __name__ == "__main__":`; each script's `main()` takes
-`argv` so the tests drive it directly.
+raised, so the higher bar lives in this repository instead, in one Makefile
+target, `make coverage`, which CI and the pre-push hook both run:
 
-Run it locally the same way the hook does:
+- **Python**, the tooling under `scripts/`, by lines and branches, under
+  coverage.py. `.coveragerc` sets `fail_under = 100` and `branch = true`, so
+  every `if` has to be seen going both ways. The only excluded line is
+  `if __name__ == "__main__":`; each script's `main()` takes `argv` so the
+  tests drive it directly. The tests marked `scripts` are the ones measured,
+  so a test for a script under `scripts/` carries that mark.
+- **Shell**, by lines (kcov has no branch data for bash), under kcov:
+  `backup.sh`, `restore.sh` and `view.sh`, which the image runs, and
+  `files/bash/.bashrc` and `.bash_aliases`, which it copies into each home
+  directory. `tests/shell/run.sh` runs every `tests/shell/*.test.sh`, and each
+  of those runs its script as its own bash process once per case, with
+  gocryptfs, rsync, sshfs, fusermount, ssh-keygen, sshd, pkill and sleep
+  replaced by stand-ins on `PATH`. The dotfiles are sourced, the way a shell
+  reads them. The real tools are exercised by the image tests in the `Tests`
+  job instead.
+
+Both run in podman containers that see the source only as a tar stream on
+standard input and write their report into one empty scratch directory; the
+Makefile's comment above the target has the rest. Run it the same way CI
+does:
 
 ```bash
-python3 -m venv tests/.venv
-tests/.venv/bin/pip install --require-hashes --only-binary=:all: -r tests/requirements.txt
-tests/.venv/bin/coverage run -m pytest -q -m scripts tests
-tests/.venv/bin/coverage report
+make coverage
 ```
 
-`report` lists every missing line and branch. The `scripts` tests need no
-Docker; they replace the one `docker run` each script makes with a stand-in.
-Shell has no coverage in SonarQube Cloud, so this is Python only.
+It prints every missing Python line and branch, and every uncovered shell line
+by number, and leaves `coverage/coverage.xml` and `coverage/shell.xml` behind.
+It needs podman, and network for the pip install inside the Python container.
+
+SonarQube Cloud reads both reports. It has no importer of its own for shell
+coverage, so `scripts/kcov-to-sonar.py` rewrites kcov's Cobertura report into
+SonarQube's generic coverage format (`sonar.coverageReportPaths`); that same
+script is what fails the shell below 100%, since kcov has no threshold. The
+two dotfiles are the exception on the SonarQube side: `sonar.lang.patterns.shell`
+names them, so the shell rules read them, but the generic coverage sensor
+skips any file whose name starts with a dot and logs their coverage as
+belonging to "unknown files". Their 100% is held by `make coverage` alone.
+
+kcov is told to leave out three kinds of line, all on the `coverage` target:
+
+- An empty case arm (`a) ;;`) and the redirection after a loop
+  (`done <file`). kcov lists both as code, but neither produces a trace line
+  however the script runs, so they would always read as missed.
+- A block between `kcov-exclude-start` and `kcov-exclude-end` comments, for
+  code the script cannot reach on its own. There is one: the unknown value arm
+  of `__build_network_mount_excludes` in `backup.sh`, which the script never
+  reaches because it validates `BACKUP_EXCLUDE_NETWORK_MOUNTS` at startup, and
+  which `tests/test_network_mounts.py` runs directly.
+
+Three overrides exist in the scripts for the tests alone, and the Makefile
+never sets them: `RSYNC_CRYPT_TEST_MOUNTINFO` hands `backup.sh` a synthetic
+mount table instead of `/proc/self/mountinfo`, and `RSYNC_CRYPT_TEST_SSH_DIR`
+and `RSYNC_CRYPT_TEST_SSHD` point `view.sh` at a scratch key directory and a
+stand-in sshd instead of `/root/.ssh` and `/usr/sbin/sshd`.
 
 ## Seeing findings in VS Code
 
@@ -123,6 +163,11 @@ def _sonar_probe(value):
 
 Use that probe rather than a hardcoded password: a password is a security
 hotspot, and hotspots never appear in the Problems panel.
+
+The CI check and the pre-push hook do not depend on the extension. In a
+workbench, run the coverage target as `l2 --engine --net -- make coverage`:
+it starts containers of its own and installs `coverage` and `pytest` from
+PyPI.
 
 ---
 

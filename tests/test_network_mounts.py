@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import shutil
 import subprocess
 
 import pytest
@@ -567,6 +568,9 @@ def test_rsync_does_not_use_one_file_system():
             assert flag not in line, f"rsync is using {flag!r}: {line}"
 
 
+# make is the one thing these need that `make coverage`'s Python container
+# does not have; the Tests job runs them, and they measure no Python.
+@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
 @pytest.mark.parametrize("target", ["backup", "backup_as_root"])
 def test_the_setting_reaches_both_backup_targets(target):
     """Both targets run backup.sh, so both have to pass the setting through."""

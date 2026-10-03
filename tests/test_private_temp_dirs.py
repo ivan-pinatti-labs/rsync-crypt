@@ -84,7 +84,8 @@ def test_view_host_key_and_config_are_written_to_the_scratch_paths():
 def test_view_stops_the_sshd_it_started():
     """The pkill pattern and the sshd -f argument must name the same file."""
     body = _script("view.sh")
-    started = re.search(r"/usr/sbin/sshd -f \"(?P<path>[^\"]+)\"", body)
+    assert "__sshd=${RSYNC_CRYPT_TEST_SSHD:-/usr/sbin/sshd}" in body
+    started = re.search(r'"\$\{__sshd\}" -f "(?P<path>[^"]+)"', body)
     assert started, "view.sh must start sshd with a quoted config path"
 
     killed = re.findall(r'pkill -f "sshd -f (?P<path>[^"]+)"', body)

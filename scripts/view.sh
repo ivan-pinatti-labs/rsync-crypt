@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
-: ' Script to browse the encrypted remote backup read-only via sshfs + gocryptfs.
-    The decrypted view is served over SFTP on port 22 (mapped to host port 2222).
-    Connect Thunar to the decrypted mount point, sftp://root@localhost:2222
-    # exit(s) status code(s)
-    0 - success
-    1 - fail
-    2 - binary is missing
-    3 - user cancelled
-    '
+# Script to browse the encrypted remote backup read-only via sshfs + gocryptfs.
+# The decrypted view is served over SFTP on port 22 (mapped to host port 2222).
+# Connect Thunar to the decrypted mount point, sftp://root@localhost:2222
+# exit(s) status code(s):
+#   0 - success
+#   1 - fail
+#   2 - binary is missing
+#   3 - user cancelled
 
 # check if debug flag is set
 if [[ "${DEBUG}" = true ]]; then
@@ -52,6 +51,13 @@ __remote_backup_folder=${2:-"/remote/backup"}     # encrypted backup folder on t
 __passkey_file=${3:-"/view/passfile"}             # gocryptfs master key
 __view_enc_folder=${4:-"/gocrypt-view/encrypted"} # sshfs mount point (remote encrypted files)
 __view_dec_folder=${5:-"/gocrypt-view/decrypted"} # gocryptfs mount point (decrypted read-only view)
+
+# Where the SSH key is mounted and which sshd serves the view. Both are fixed
+# in the container; the RSYNC_CRYPT_TEST_* overrides are for tests/shell only,
+# which cannot write to /root or replace /usr/sbin, and the Makefile never sets
+# them.
+__ssh_dir=${RSYNC_CRYPT_TEST_SSH_DIR:-/root/.ssh}
+__sshd=${RSYNC_CRYPT_TEST_SSHD:-/usr/sbin/sshd}
 
 #===============================================================
 # Per-session private scratch directory
@@ -127,8 +133,8 @@ done
 
 echo "Mounting remote encrypted backup from ${__remote_server}:${__remote_backup_folder}..."
 if ! sshfs "${__remote_server}:${__remote_backup_folder}" "${__view_enc_folder}" \
-  -o IdentityFile=/root/.ssh/id_rsa \
-  -o UserKnownHostsFile=/root/.ssh/known_hosts \
+  -o IdentityFile="${__ssh_dir}/id_rsa" \
+  -o UserKnownHostsFile="${__ssh_dir}/known_hosts" \
   -o StrictHostKeyChecking=yes; then
   echo "sshfs failed"
   exit 1
@@ -163,13 +169,13 @@ fi
 #===============================================================
 
 # Derive public key from the mounted SSH private key → authorized_keys
-ssh-keygen -y -f /root/.ssh/id_rsa >/root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
+ssh-keygen -y -f "${__ssh_dir}/id_rsa" >"${__ssh_dir}/authorized_keys"
+chmod 600 "${__ssh_dir}/authorized_keys"
 
 # Generate a per-session sshd host key inside the private scratch directory
 ssh-keygen -t ed25519 -f "${__view_host_key}" -N ""
 
-# Write a minimal sshd config. The heredoc is unquoted so the scratch paths
+# Write a minimal sshd config. The heredoc is unquoted so the paths above
 # interpolate; nothing in the body below is shell-expandable other than those.
 # ForceCommand serves ${__view_dec_folder} rather than a second, hardcoded
 # copy of its default: the two agreed only because every caller passes the
@@ -178,14 +184,14 @@ ssh-keygen -t ed25519 -f "${__view_host_key}" -N ""
 cat >"${__view_sshd_config}" <<EOF
 Port 22
 HostKey ${__view_host_key}
-AuthorizedKeysFile /root/.ssh/authorized_keys
+AuthorizedKeysFile ${__ssh_dir}/authorized_keys
 PermitRootLogin prohibit-password
 PasswordAuthentication no
 Subsystem sftp internal-sftp
 ForceCommand internal-sftp -d ${__view_dec_folder}
 EOF
 
-/usr/sbin/sshd -f "${__view_sshd_config}"
+"${__sshd}" -f "${__view_sshd_config}"
 
 echo ""
 echo "VIEWER MODE: decrypted backup accessible via SFTP:"

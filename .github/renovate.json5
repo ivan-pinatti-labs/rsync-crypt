@@ -245,9 +245,10 @@
       automerge: true,
       addLabels: ["automerge"],
     },
-    // Scoped to the datasource rather than to the manager. Only one custom
-    // regex manager is left (ALPINE_VERSION, a Docker tag); the second one,
-    // which watched asdf plugin commits through git-refs, went with asdf.
+    // Scoped to the datasource rather than to the manager. Both custom regex
+    // managers left (ALPINE_VERSION, and the Makefile's coverage images) are
+    // Docker ones; a third, which watched asdf plugin commits through
+    // git-refs, went with asdf.
     {
       matchManagers: ["custom.regex"],
       matchDatasources: ["docker"],
@@ -296,6 +297,17 @@
       matchDepTypes: ["github-runner", "uses-with"],
       enabled: false,
     },
+    // The two images `make coverage` runs in the Makefile move by digest
+    // only, which the first rule above lets merge unattended and `Pin Only`
+    // grades with its digest grammar. A tag change is not a pin bump: the
+    // python tag is the interpreter tests/test_python_version_pin.py holds
+    // in step with CI, and kcov publishes nothing but `latest`.
+    {
+      matchManagers: ["custom.regex"],
+      matchFileNames: ["Makefile"],
+      matchUpdateTypes: ["major", "minor", "patch"],
+      enabled: false,
+    },
   ],
 
   customManagers: [
@@ -332,6 +344,17 @@
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: versioning=(?<versioning>[^\\s]+))?\\s+ARG [A-Z0-9_]+=(?<currentValue>[^\\s]+)",
       ],
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+    },
+    {
+      // The container images in the Makefile's `coverage` target, each
+      // annotated the way Renovate documents for a regex manager:
+      //   # renovate: datasource=docker depName=<image>
+      //   NAME ?= <image>:<tag>@sha256:<digest>
+      customType: "regex",
+      managerFilePatterns: ["/^Makefile$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+[A-Z_]+ \\?= \\S+?:(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
     },
   ],
 }
