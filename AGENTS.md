@@ -59,11 +59,14 @@ podman run --rm --network=none \
   this repository's own `Makefile` or hooks start. In a workbench both run in
   L2 too.
 
-### Parallel work uses worktrees
+### Parallel work uses separate checkouts
 
 More than one agent may work in a repository at the same time. Give each task
-its own worktree under `.claude/worktrees/<branch>` (gitignored), and never
-switch branches in a checkout someone else may be using.
+its own checkout under `.claude/worktrees/<name>` (gitignored), and never
+switch branches in a checkout someone else may be using. In a
+devcontainer-airlock session that checkout is the session's own clone, made
+with `airlock-worktree <repo> [<branch>]`, because the main clone is read
+only there. Elsewhere a `git worktree` serves the same purpose.
 
 ### Unattended work runs on a bounded tick
 
@@ -851,10 +854,12 @@ why the line stays. `tests/test_container_user.py` locks the invariant, and
 [#69](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/69) is where it
 was settled.
 
-### Parallel agents need separate worktrees
+### Parallel agents need separate checkouts
 
 More than one agent working in this repository at the same time must each get
-their own `git worktree`. They cannot share the checkout.
+their own checkout: a `git worktree`, or in a devcontainer-airlock session the
+session's own clone made with `airlock-worktree`, as "Parallel work uses
+separate checkouts" above says. They cannot share the checkout.
 
 This was learned the hard way: two agents were dispatched into this
 repository's checkout at once to verify two different dependency pull requests.
