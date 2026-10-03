@@ -854,10 +854,12 @@ why the line stays. `tests/test_container_user.py` locks the invariant, and
 [#69](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/69) is where it
 was settled.
 
-### Parallel agents need separate worktrees
+### Parallel agents need separate checkouts
 
 More than one agent working in this repository at the same time must each get
-their own `git worktree`. They cannot share the checkout.
+their own checkout: a `git worktree`, or in a devcontainer-airlock session the
+session's own clone made with `airlock-worktree`, as "Parallel work uses
+separate checkouts" above says. They cannot share the checkout.
 
 This was learned the hard way: two agents were dispatched into this
 repository's checkout at once to verify two different dependency pull requests.
