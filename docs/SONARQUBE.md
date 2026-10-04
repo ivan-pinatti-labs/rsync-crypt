@@ -31,10 +31,15 @@ target, `make coverage`, which CI and the pre-push hook both run:
   `if __name__ == "__main__":`; each script's `main()` takes `argv` so the
   tests drive it directly. The tests marked `scripts` are the ones measured,
   so a test for a script under `scripts/` carries that mark.
-- **Shell**, by lines (kcov has no branch data for bash), under kcov:
-  `backup.sh`, `restore.sh` and `view.sh`, which the image runs, and
-  `files/bash/.bashrc` and `.bash_aliases`, which it copies into each home
-  directory. `tests/shell/run.sh` runs every `tests/shell/*.test.sh`, and each
+- **Shell**, by lines (kcov has no branch data for bash), under kcov. The
+  scripts are discovered, not listed: every file git would commit, outside
+  `tests/`, that ends in `.sh` or `.bash` or starts with a shebang running
+  `sh`, `bash` or `dash` (today `backup.sh`, `restore.sh` and `view.sh`,
+  which the image runs), plus `SHELL_EXTRA` in the `Makefile` for shell
+  nothing identifies (`files/bash/.bashrc` and `.bash_aliases`, which the
+  image copies into each home directory). `make print-shell-scripts` lists
+  the set, and `SHELL_EXCLUDE` would hold vendored shell, with a reason per
+  entry. `tests/shell/run.sh` runs every `tests/shell/*.test.sh`, and each
   of those runs its script as its own bash process once per case, with
   gocryptfs, rsync, sshfs, fusermount, ssh-keygen, sshd, pkill and sleep
   replaced by stand-ins on `PATH`. The dotfiles are sourced, the way a shell

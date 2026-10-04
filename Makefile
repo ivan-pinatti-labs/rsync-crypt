@@ -125,7 +125,8 @@ endef
 # 'new-profile' joins 'help' in not requiring an env file: it is the target
 # that creates one, so demanding one first would make it unreachable on a
 # fresh clone, which is exactly when it is most useful. 'coverage' runs the
-# tests and reads no backup configuration at all. The workbench
+# tests and reads no backup configuration at all, and neither does
+# 'print-shell-scripts', which lists what it measures. The workbench
 # targets (host/workbench.mk, included at the end) join them both for the
 # same reason from the other direction: they open the workbenches, which is
 # where somebody would go to work on this repository, and an env file is
@@ -133,7 +134,7 @@ endef
 # one would mean a fresh clone could not get to work without first inventing
 # a backup profile it is not going to use.
 WORKBENCH_GOALS := claude codex claude-shell codex-shell unlock workbench-help workbench-up workbench-down workbench-status workbench-build workbench-pull
-ifneq ($(filter-out help new-profile coverage $(WORKBENCH_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(filter-out help new-profile coverage print-shell-scripts $(WORKBENCH_GOALS),$(MAKECMDGOALS)),)
 ifeq ($(wildcard $(ENV_FILE)),)
 $(error $(_missing_env_file_message))
 endif
@@ -246,7 +247,7 @@ endef
 .PHONY: restore restore_to_origin restore_as_root restore_as_root_to_origin
 .PHONY: r ro rr rro view view_as_root v vr
 .PHONY: run_container run_container_as_root check-passkey clean new-profile
-.PHONY: third-party-licenses third-party-licenses-check coverage
+.PHONY: third-party-licenses third-party-licenses-check coverage print-shell-scripts
 
 all: build run_container
 
@@ -279,6 +280,7 @@ help:
 		'  third-party-licenses        Regenerate THIRD_PARTY_LICENSES.md from the built image.' \
 		'  third-party-licenses-check  Fail if THIRD_PARTY_LICENSES.md has drifted from it.' \
 		'  coverage                    Python and shell test coverage in containers, 100% or fail.' \
+		'  print-shell-scripts         List the shell scripts coverage measures.' \
 		'  help                        Show this help.' \
 		'  workbench-help              The workbench targets: make claude, make codex, make unlock...' \
 		'' \
@@ -426,10 +428,9 @@ third-party-licenses-check:
 
 # Coverage of the code this repository writes, held at 100%: the Python under
 # scripts/ (lines and branches, .coveragerc) under coverage.py, and the shell
-# (lines; kcov reports no branches for bash) under kcov. The shell is the
-# three scripts the image runs plus the two dotfiles it copies into each home
-# directory, driven by tests/shell/run.sh with every external command
-# replaced by a stand-in. Writes the two reports SonarQube Cloud reads,
+# (lines; kcov reports no branches for bash) under kcov. The shell is found,
+# not listed (SHELL_SOURCES below), and driven by tests/shell/run.sh with
+# every external command replaced by a stand-in. Writes the two reports SonarQube Cloud reads,
 # $(COVERAGE_DIR)/coverage.xml and $(COVERAGE_DIR)/shell.xml, and fails if
 # either language is under 100%. .github/workflows/sonarqube.yml runs this,
 # and so does the `coverage` pre-push hook.
@@ -468,8 +469,26 @@ PODMAN ?= $(if $(CONTAINER_HOST),podman-remote,podman)
 PYTHON_IMAGE ?= docker.io/library/python:3.14-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d
 # renovate: datasource=docker depName=docker.io/kcov/kcov
 KCOV_IMAGE ?= docker.io/kcov/kcov:latest@sha256:481289ae32e55e5b733019515acd10948a4f76dfed381765577db909664fc603
-SHELL_SOURCES := scripts/backup.sh scripts/restore.sh scripts/view.sh \
-	files/bash/.bashrc files/bash/.bash_aliases
+# The shell coverage measures is discovered, never listed by hand, so a new
+# script is held at 100% from its first commit. A shell script is a file git
+# would commit (tracked, plus new ones not ignored) whose name ends in .sh or
+# .bash, or whose first line is a shebang running sh, bash or dash (any
+# interpreter path, env with or without options). Anything under tests/ is
+# the tests, not the code under test. A path deleted in the working tree is
+# still listed by git, so only regular files reach awk: mawk, the default awk
+# on Debian and Ubuntu, stops at the first file it cannot open and silently
+# drops every file after it. git's stderr is discarded, so a copy without
+# .git (a release archive) parses quietly.
+# tests/test_shell_discovery.py repeats the rule in Python and fails if this
+# turns back into a list.
+#
+# SHELL_EXCLUDE: vendored or third party shell, never measured. Each entry
+# says why. None today.
+SHELL_EXCLUDE :=
+# SHELL_EXTRA: shell that neither the name nor a shebang identifies. The two
+# dotfiles the image copies into each home directory, sourced by bash.
+SHELL_EXTRA := files/bash/.bashrc files/bash/.bash_aliases
+SHELL_SOURCES := $(sort $(filter-out $(SHELL_EXCLUDE),$(shell git ls-files -z --cached --others --exclude-standard 2>/dev/null | xargs -0 -r sh -c 'for f do if [ -f "$$f" ]; then printf "%s\0" "$$f"; fi; done' sh | xargs -0 -r awk 'FNR == 1 { if (FILENAME ~ /\.(sh|bash)$$/ || $$0 ~ /^#![[:space:]]*([^[:space:]]*\/)?(env[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?(ba|da)?sh([[:space:]]|$$)/) print FILENAME; nextfile }' 2>/dev/null | grep -v '^tests/')) $(SHELL_EXTRA))
 
 _empty :=
 _comma := ,
@@ -511,6 +530,10 @@ coverage:
 	done; \
 	test "$$py" -eq 0 && test "$$sh" -eq 0 && \
 		test -s "$(COVERAGE_DIR)/coverage.xml" && test -s "$(COVERAGE_DIR)/shell.xml"
+
+# The shell scripts `make coverage` measures, one per line.
+print-shell-scripts:
+	@printf '%s\n' $(SHELL_SOURCES)
 
 # WARNING: permanently deletes the passkey, gocryptfs config files, and Docker image.
 # Make sure the master key is backed up before running this.
