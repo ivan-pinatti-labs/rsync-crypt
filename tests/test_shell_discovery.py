@@ -188,3 +188,16 @@ def test_makefile_measures_what_the_rule_finds():
         text=True,
     ).stdout
     assert set(out.split()) == discover(REPO_ROOT) | KNOWN_EXTRA
+
+
+def test_discovery_refuses_unsafe_script_names():
+    """A script name reaches make's recipes as shell text, so discovery has to
+    refuse any name outside [A-Za-z0-9._/+-] (a committed `x;id;#.sh` would
+    otherwise run `id`)."""
+    here = Path(__file__).resolve().parent
+    while not (here / "Makefile").is_file():
+        here = here.parent
+    text = (here / "Makefile").read_text()
+    assert "_shell_safe = $(if $(filter UNSAFE:," in text
+    assert "$(call _shell_safe," in text
+    assert '? FILENAME : "UNSAFE:")' in text

@@ -488,7 +488,11 @@ SHELL_EXCLUDE :=
 # SHELL_EXTRA: shell that neither the name nor a shebang identifies. The two
 # dotfiles the image copies into each home directory, sourced by bash.
 SHELL_EXTRA := files/bash/.bashrc files/bash/.bash_aliases
-SHELL_SOURCES := $(sort $(filter-out $(SHELL_EXCLUDE),$(shell git ls-files -z --cached --others --exclude-standard 2>/dev/null | xargs -0 -r sh -c 'for f do if [ -f "$$f" ]; then printf "%s\0" "$$f"; fi; done' sh | xargs -0 -r awk 'FNR == 1 { if (FILENAME ~ /\.(sh|bash)$$/ || $$0 ~ /^#![[:space:]]*([^[:space:]]*\/)?(env[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?(ba|da)?sh([[:space:]]|$$)/) print FILENAME; nextfile }' 2>/dev/null | grep -v '^tests/')) $(SHELL_EXTRA))
+# A script name outside [A-Za-z0-9._/+-] would reach the recipes as shell text
+# (a committed `x;id;#.sh` would run `id`), so discovery marks it UNSAFE: and
+# make stops here instead.
+_shell_safe = $(if $(filter UNSAFE:,$(1)),$(error a shell script name holds a character outside A-Za-z0-9._/+-; rename it),$(1))
+SHELL_SOURCES := $(call _shell_safe,$(sort $(filter-out $(SHELL_EXCLUDE),$(shell git ls-files -z --cached --others --exclude-standard 2>/dev/null | xargs -0 -r sh -c 'for f do if [ -f "$$f" ]; then printf "%s\0" "$$f"; fi; done' sh | xargs -0 -r awk 'FNR == 1 { if (FILENAME ~ /\.(sh|bash)$$/ || $$0 ~ /^#![[:space:]]*([^[:space:]]*\/)?(env[[:space:]]+(-[^[:space:]]+[[:space:]]+)*)?(ba|da)?sh([[:space:]]|$$)/) print (FILENAME ~ /^[A-Za-z0-9._\/+-]+$$/ ? FILENAME : "UNSAFE:"); nextfile }' 2>/dev/null | grep -v '^tests/')) $(SHELL_EXTRA)))
 
 _empty :=
 _comma := ,
