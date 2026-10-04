@@ -151,7 +151,11 @@ def test_every_workflow_python_version_is_quoted_and_the_same():
 LOCK_FILES = sorted((REPO_ROOT / "tests").glob("requirements*.txt"))
 LOCK_DOC = REPO_ROOT / "docs/USAGE.md"
 LOCK_PYTHON = re.compile(r"--python-version[ =](?P<major>\d+)\.(?P<minor>\d+)\b")
-DOC_IMAGE = re.compile(r"\blibrary/python:(?P<major>\d+)\.(?P<minor>\d+)-")
+# Any reference to the python image: `python:3.14-slim`, `docker.io/python:...`
+# or `docker.io/library/python:...`, with or without a variant suffix.
+DOC_IMAGE = re.compile(
+    r"(?<![\w.-])(?:[\w.-]+/)*python:(?P<major>\d+)\.(?P<minor>\d+)\b"
+)
 
 
 def _lock_header(path: Path) -> str:
@@ -180,6 +184,9 @@ def test_hash_lock_is_resolved_for_the_interpreter_ci_runs():
     assert any(
         name == LOCK_DOC.name and "--python-version" in text for name, text, _ in found
     ), f"no --python-version found in {LOCK_DOC.name}'s lock command"
+    assert any(
+        name == LOCK_DOC.name and "python:" in text for name, text, _ in found
+    ), f"no python image found in {LOCK_DOC.name}'s lock command"
     drifted = sorted(f"{name}: {text}" for name, text, got in found if got != ci)
     assert not drifted, (
         f"the lock is resolved for a different Python than {WORKFLOW.name}'s "
