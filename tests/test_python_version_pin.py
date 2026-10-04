@@ -116,3 +116,80 @@ def test_coverage_image_runs_the_same_interpreter_as_ci():
         f"{WORKFLOW.name} runs Python {ci[0]}.{ci[1]}. Both have to move "
         "together; nothing derives one from the other."
     )
+
+
+# Every other workflow that sets up Python. Only pull-request-validation.yml
+# does today; one added later has to run the same interpreter, quoted.
+WORKFLOWS = sorted((REPO_ROOT / ".github/workflows").glob("*.y*ml"))
+ANY_PYTHON_VERSION = re.compile(
+    r"^\s*python-version:\s*(?P<value>.*?)\s*$", re.MULTILINE
+)
+
+
+def test_every_workflow_python_version_is_quoted_and_the_same():
+    workflow = WORKFLOW_PYTHON.search(WORKFLOW.read_text())
+    assert workflow, f"no quoted python-version found in {WORKFLOW.name}"
+    ci = f'"{workflow.group("major")}.{workflow.group("minor")}"'
+
+    found = {
+        f"{path.name}: {match.group('value')}"
+        for path in WORKFLOWS
+        for match in ANY_PYTHON_VERSION.finditer(path.read_text())
+    }
+    wrong = sorted(entry for entry in found if not entry.endswith(f": {ci}"))
+    assert not wrong, (
+        f"every python-version has to be {ci}, quoted, as in {WORKFLOW.name}; "
+        f"found {wrong}"
+    )
+
+
+# The hash lock tests/requirements.txt is resolved for one interpreter
+# (`uv pip compile --python-version`). Its header points at the documented
+# command instead of restating it, so both are read: a `--python-version` in
+# any lock header, and in the command docs/USAGE.md gives, along with the
+# python image that command runs in.
+LOCK_FILES = sorted((REPO_ROOT / "tests").glob("requirements*.txt"))
+LOCK_DOC = REPO_ROOT / "docs/USAGE.md"
+LOCK_PYTHON = re.compile(r"--python-version[ =](?P<major>\d+)\.(?P<minor>\d+)\b")
+# Any reference to the python image: `python:3.14-slim`, `docker.io/python:...`
+# or `docker.io/library/python:...`, with or without a variant suffix.
+DOC_IMAGE = re.compile(
+    r"(?<![\w.-])(?:[\w.-]+/)*python:(?P<major>\d+)\.(?P<minor>\d+)\b"
+)
+
+
+def _lock_header(path: Path) -> str:
+    lines = []
+    for line in path.read_text().splitlines():
+        if not line.startswith("#"):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def test_hash_lock_is_resolved_for_the_interpreter_ci_runs():
+    workflow = WORKFLOW_PYTHON.search(WORKFLOW.read_text())
+    assert workflow, f"no quoted python-version found in {WORKFLOW.name}"
+    ci = (workflow.group("major"), workflow.group("minor"))
+
+    assert LOCK_FILES, "no tests/requirements*.txt lock found"
+    sources = {path.name: _lock_header(path) for path in LOCK_FILES}
+    sources[LOCK_DOC.name] = LOCK_DOC.read_text()
+    found = [
+        (name, match.group(0), (match.group("major"), match.group("minor")))
+        for name, text in sources.items()
+        for pattern in (LOCK_PYTHON, DOC_IMAGE)
+        for match in pattern.finditer(text)
+    ]
+    assert any(
+        name == LOCK_DOC.name and "--python-version" in text for name, text, _ in found
+    ), f"no --python-version found in {LOCK_DOC.name}'s lock command"
+    assert any(
+        name == LOCK_DOC.name and "python:" in text for name, text, _ in found
+    ), f"no python image found in {LOCK_DOC.name}'s lock command"
+    drifted = sorted(f"{name}: {text}" for name, text, got in found if got != ci)
+    assert not drifted, (
+        f"the lock is resolved for a different Python than {WORKFLOW.name}'s "
+        f"{ci[0]}.{ci[1]}: {drifted}. Regenerate it per {LOCK_DOC.name}, "
+        "Updating the test dependencies."
+    )

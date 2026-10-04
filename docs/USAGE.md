@@ -546,6 +546,7 @@ environment file; every target that performs work does.
 | `make check-passkey`             | n/a        | Create or verify the passkey file                                                                    |
 | `make clean`                     | n/a        | Remove container, image, passkey, and gocryptfs config files (destructive, prompts for confirmation) |
 | `make coverage`                  | n/a        | Run the Python and shell tests under coverage in containers; fails below 100% (needs podman)         |
+| `make print-shell-scripts`       | n/a        | List the shell scripts `make coverage` measures (discovered, not listed)                             |
 
 ---
 
@@ -584,9 +585,9 @@ pytest tests -m scripts
 ```
 
 They hold the Python under `scripts/` at 100% line and branch coverage.
-`tests/shell/` holds the shell scripts and the two dotfiles under
-`files/bash/` at 100% of their lines, with every external command replaced
-by a stand-in. `make coverage` runs both in containers; see
+`tests/shell/` holds every shell script (found, not listed) and the two
+dotfiles under `files/bash/` at 100% of their lines, with every external
+command replaced by a stand-in. `make coverage` runs both in containers; see
 [SONARQUBE.md](SONARQUBE.md#coverage-is-held-at-100) for what it measures and
 where that is enforced.
 
@@ -602,6 +603,7 @@ The tests run on every pull request via the `Tests` job.
 | `test_audit_security_ignores.py`        | Auditing `.trivyignore.yaml` entries for expiry and reproduction                         |
 | `test_generate_third_party_licenses.py` | Generating and checking the licence inventory                                            |
 | `test_kcov_to_sonar.py`                 | Turning kcov's shell coverage report into SonarQube's generic format                     |
+| `test_shell_discovery.py`               | Discovering the shell scripts `make coverage` measures, so none is left out              |
 | `shell/*.test.sh`                       | Every line of `backup.sh`, `restore.sh`, `view.sh` and the dotfiles, with stand-ins      |
 
 ### Updating the test dependencies
