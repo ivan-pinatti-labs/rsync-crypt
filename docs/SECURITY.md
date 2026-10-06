@@ -410,10 +410,10 @@ image; it is never a remediation for these entries, and moving to edge chasing
 one would regress the count.
 
 The remaining option, building gocryptfs from source off `master`, would clear
-them today and is deliberately rejected: see "Why not build gocryptfs from
-source" below. Which leaves the honest position, and it is a comfortable one
-rather than a resignation: nothing needs fixing, because the vulnerable
-packages are not linked into the binary at all.
+all but CVE-2026-56854 today (see above) and is deliberately rejected: see
+"Why not build gocryptfs from source" below. Which leaves the honest position,
+and it is a comfortable one rather than a resignation: nothing needs fixing,
+because the vulnerable packages are not linked into the binary at all.
 
 ### What the current entries are really about
 
