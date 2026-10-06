@@ -1,3 +1,4 @@
+---
 name: Publish Image
 
 # Builds the Docker image and pushes it to

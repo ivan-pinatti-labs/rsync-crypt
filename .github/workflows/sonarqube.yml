@@ -1,3 +1,4 @@
+---
 name: SonarQube
 
 # SonarQube Cloud static analysis: shell, Python, the Dockerfile, YAML and

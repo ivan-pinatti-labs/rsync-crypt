@@ -1,14 +1,27 @@
 ---
 # Checked by checklist-yaml (yamllint). Starts from yamllint's own "default"
-# rule set and only relaxes line length, to 100, matching the
-# `max_line_length = 100` .editorconfig sets for *.{yml,yaml} in this repo.
+# rule set and relaxes two rules: line length, and the spacing before a
+# trailing comment.
 #
-# Unlike Markdown, YAML line length is enforced in both places on purpose:
-# editorconfig-checker and yamllint agree on what a long YAML line is, so
-# there is no conflict of the kind that made .editorconfig defer to
-# markdownlint for *.md.
+# Line length goes to 100, matching the `max_line_length = 100`
+# .editorconfig sets for *.{yml,yaml} in this repo. Unlike Markdown, YAML
+# line length is enforced in both places on purpose: editorconfig-checker and
+# yamllint agree on what a long YAML line is, so there is no conflict of the
+# kind that made .editorconfig defer to markdownlint for *.md.
 extends: default
 
 rules:
   line-length:
     max: 100
+  # checklist-yaml also runs Prettier over every YAML file, and Prettier
+  # normalizes a trailing same-line comment to exactly one space before the
+  # #, not the default rule's two. Left at the default, the two hooks fight:
+  # yamllint asks for two spaces, Prettier rewrites it back to one, and every
+  # SHA-pinned `uses:` line warns forever. github-template carries the same
+  # relaxation, and pre-commit-checklists tracks it for its own template.
+  comments:
+    min-spaces-from-content: 1
+  # GitHub Actions keys every workflow's triggers on `on:`, which YAML 1.1
+  # reads as a boolean key. Values are still checked; only keys are exempt.
+  truthy:
+    check-keys: false

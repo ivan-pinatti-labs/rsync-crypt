@@ -295,6 +295,14 @@ def test_parse_ignorefile_ignores_keys_before_the_vulnerabilities_section():
     assert [e.id for e in entries] == ["CVE-2026-22222"]
 
 
+def test_parse_ignorefile_accepts_a_document_start_marker():
+    # yamllint's document-start rule puts `---` on the real file's first line.
+    entries = audit.parse_ignorefile(
+        "---\n# header\nvulnerabilities:\n  - id: CVE-2026-22223\n"
+    )
+    assert [e.id for e in entries] == ["CVE-2026-22223"]
+
+
 def test_parse_ignorefile_stops_at_the_next_top_level_key():
     entries = audit.parse_ignorefile(
         "vulnerabilities:\n"
