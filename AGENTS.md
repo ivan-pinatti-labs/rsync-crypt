@@ -714,6 +714,14 @@ doesn't appear to call these". `go list -deps ./...` corroborates it, showing
 anywhere in the build graph. The maintainer said the same on
 rfjakob/gocryptfs#973 in November 2025.
 
+Run `govulncheck` with the toolchain Alpine built the package with
+(`GOTOOLCHAIN=go1.26.8` for 3.24's package as of 2026-10-06), not whatever Go
+the image running it ships. Its stdlib findings come from the scanning
+toolchain, not from the shipped binary: on 2026-10-06 a go1.26.0 scanner
+reported 2 called and 4 imported vulnerabilities at v2.6.1, all Go stdlib,
+while go1.26.8 gave the clean result above. Current govulncheck ignores the
+`GOVULNDB` environment variable; pass the database with `-db`.
+
 **Alpine builds from the maintainer's tarball, not from the git tag.**
 `community/gocryptfs`'s APKBUILD fetches `gocryptfs_v${pkgver}_src-deps.tar.gz`,
 which the gocryptfs maintainer packages and signs on his own machine with no CI
@@ -749,7 +757,9 @@ Conflating them is easy and wrong, so keep them apart:
   of Alpine rebuilds will move `x/crypto` off v0.33.0.** Only a gocryptfs
   release that bumps its `go.mod` can, and `master` already carries v0.52.0
   with no release cut off it since v2.6.1 (2025-08-10), gaps historically
-  running one to nineteen months.
+  running one to nineteen months. That clears eleven of the twelve:
+  CVE-2026-56854 needs `x/crypto` v0.55.0, which `master` did not carry as of
+  2026-10-06.
 
 Measured 2026-09-08, which is what settles it: 3.24 `2.6.1-r6` is go1.26.8 with
 `x/crypto v0.33.0`, and edge `2.6.1-r7` is go1.26.5 with `x/crypto v0.33.0`.
