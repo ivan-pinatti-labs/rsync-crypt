@@ -26,3 +26,10 @@ MD013:
 # them worse, and would churn the anchors they are linked by.
 MD024:
   siblings_only: true
+
+# MD033: no-inline-html. The README's support block (sponsor badges and the
+# crypto QR table) is HTML, kept identical across the organization's
+# repositories; allow exactly the elements it uses. The centred header still
+# turns the rule off inline, for the reason its own comment gives.
+MD033:
+  allowed_elements: [a, br, code, div, img, table, td, tr]

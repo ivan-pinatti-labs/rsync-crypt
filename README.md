@@ -56,99 +56,6 @@ It supports:
 
 ---
 
-## Contribute / Donate
-
-If you are using this code entirely or partially forking the project, or getting inspired by it,
-please consider becoming a sponsor, buying me a coffee, or maybe a beer. I work on this project in
-my spare time, and your support would be greatly appreciated! 😃
-
-<!-- The crypto table is raw HTML with <img> QR codes: a Markdown pipe
-    table cannot centre cells or stack an image over a label. Several
-    attempts to express this as Markdown have failed; it stays as HTML
-    deliberately.
-
-    MD045 is deliberately NOT suppressed. An earlier version of this comment
-    argued that alt text would be noise because the QR images are themselves
-    the content. That was backwards: a QR code is opaque to a screen reader,
-    so the alt attribute is the only thing that can say which coin an image
-    is for. Every image below names its coin. -->
-<!-- markdownlint-disable MD013 MD033 -->
-<div align="center">
-
-[![GitHub Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-fe8e86?logo=github&style=for-the-badge)](https://github.com/sponsors/ivan-pinatti)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black&style=for-the-badge)](https://www.buymeacoffee.com/ivan.pinatti)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-003087?logo=paypal&style=for-the-badge)](https://www.paypal.com/paypalme/ivanrpinatti)
-
-</div>
-
-<table>
-  <tr>
-    <td align="center"><img alt="Bitcoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/btc.png" width="85"><br><code>&nbsp;BTC&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Ethereum (ERC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/eth.png" width="85"><br><code>ERC&#8209;20</code></td>
-    <td align="center"><img alt="Monero donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xmr.png" width="85"><br><code>&nbsp;XMR&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="XRP donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xrp.png" width="85"><br><code>&nbsp;XRP&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Cardano donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ada.png" width="85"><br><code>&nbsp;ADA&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="Cosmos donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/atom.png" width="85"><br><code>&nbsp;ATOM&nbsp;</code></td>
-    <td align="center"><img alt="Bitcoin Cash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bch.png" width="85"><br><code>&nbsp;BCH&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="BNB (BEP-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bnb.png" width="85"><br><code>BEP&#8209;20</code></td>
-    <td align="center"><img alt="Dogecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/doge.png" width="85"><br><code>&nbsp;DOGE&nbsp;</code></td>
-    <td align="center"><img alt="Kava donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/kava.png" width="85"><br><code>&nbsp;KAVA&nbsp;</code></td>
-    <td align="center"><img alt="Litecoin donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ltc.png" width="85"><br><code>&nbsp;LTC&nbsp;&nbsp;</code></td>
-    <td align="center"><img alt="TRON (TRC-20) donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/trx.png" width="85"><br><code>TRC&#8209;20</code></td>
-    <td align="center"><img alt="Zcash donation address QR code" src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/zec.png" width="85"><br><code>&nbsp;ZEC&nbsp;&nbsp;</code></td>
-  </tr>
-</table>
-<!-- markdownlint-enable -->
-
-_\* ERC-20 accepts ETH, USDT, and USDC · BEP-20 accepts BNB, USDT, and USDC · TRC-20 accepts TRX, USDT, and USDC · [All addresses and networks](https://github.com/ivan-pinatti-labs/.github/blob/main/docs/crypto/addresses.md)_
-
-### Contributing
-
-Contributions, bug reports, and feature requests are welcome!
-
-1. [Open an issue](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/new) to report a bug or
-   suggest a feature
-2. Fork the repository
-3. Install the hooks: `pre-commit install`. This wires up both the `pre-commit`
-   and `commit-msg` stages; without it the commit message check never runs
-   locally and fails in CI instead
-4. Create a feature branch (`git checkout -b fix/my-thing`). Branch names must
-   be lowercase slugs, optionally prefixed (`fix/`, `docs/`, `chore/`); commits
-   straight to `main` are blocked
-5. Commit your changes using
-   [Conventional Commits](https://www.conventionalcommits.org/): `feat: add x`,
-   `fix(scope): correct y`. Valid types are `feat`, `fix`, `docs`, `style`,
-   `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. **A message
-   that is not in this form is rejected at commit time**
-6. Open a pull request as a **draft** first, let the checks run, fix anything
-   they report, then mark it ready for review
-7. Address the review comments, and merge once everything is green
-
-### What the hooks need installed
-
-Linting comes from
-[ivan-pinatti-labs/pre-commit-checklists](https://github.com/ivan-pinatti-labs/pre-commit-checklists),
-pinned in `.pre-commit-config.yaml`. Running `pre-commit run --all-files`
-locally needs more than the tool itself does:
-
-| Needed for | Why |
-| ---------- | --- |
-| Docker or Podman | `hadolint`, `actionlint` and `dotenv-linter` run in containers |
-| Node | Prettier, markdownlint, cspell and the link checker |
-| Python 3.10+ | `zizmor`, installed into its own hook environment |
-
-Everything else is fetched and cached by `pre-commit` on first run.
-
-[devcontainer-airlock](.devcontainer/README.md) carries all of it, plus the
-test suite's own dependencies, in containers, so the host needs only
-rootless Podman and the one time setup its documentation describes.
-
-CI never rewrites your branch. A hook that can fix something will fix it on
-your machine, but in CI the same finding fails the job and waits for you to
-push the fix.
-
----
-
 ## Table of Contents
 
 - [About](#about)
@@ -158,6 +65,7 @@ push the fix.
 - [Documentation](#documentation)
 - [AI Usage and Attribution](#ai-usage-and-attribution)
 - [License](#license)
+- [Contribute / Donate](#contribute--donate)
 
 Full documentation lives under [`docs/`](docs/):
 
@@ -465,3 +373,169 @@ See [LICENSE](LICENSE) for full details.
 > MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. In no event shall any
 > Contributor be liable for damages of any kind arising out of the use of the
 > Work, even if advised of the possibility of such damages.
+
+---
+
+## Contribute / Donate
+
+Contributions, bug reports, and feature requests are welcome; see
+[Contributing](#contributing) below.
+
+If you are using this code, forking it, or getting ideas from it, sponsorships
+and donations help keep the project maintained.
+
+<!-- markdownlint-disable MD013 -->
+<!-- Badge URLs, QR image URLs, and the networks footnote below cannot be
+     wrapped without breaking the rendered layout. -->
+
+<div align="center">
+
+<a href="https://github.com/sponsors/ivan-pinatti">
+  <img
+  src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-fe8e86?logo=github&style=for-the-badge"
+  alt="GitHub Sponsor">
+</a>
+<a href="https://www.buymeacoffee.com/ivan.pinatti">
+  <img
+  src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black&style=for-the-badge"
+  alt="Buy Me a Coffee">
+</a>
+<a href="https://www.paypal.com/paypalme/ivanrpinatti">
+  <img
+  src="https://img.shields.io/badge/PayPal-Donate-003087?logo=paypal&style=for-the-badge"
+  alt="PayPal">
+</a>
+
+</div>
+
+<table>
+  <tr>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/btc.png"
+        alt="BTC donation QR code" width="85">
+      <br><code>&nbsp;BTC&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/eth.png"
+        alt="ETH donation QR code" width="85">
+      <br><code>ERC&#8209;20</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xmr.png"
+        alt="XMR donation QR code" width="85">
+      <br><code>&nbsp;XMR&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/xrp.png"
+        alt="XRP donation QR code" width="85">
+      <br><code>&nbsp;XRP&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ada.png"
+        alt="ADA donation QR code" width="85">
+      <br><code>&nbsp;ADA&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/atom.png"
+        alt="ATOM donation QR code" width="85">
+      <br><code>&nbsp;ATOM&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bch.png"
+        alt="BCH donation QR code" width="85">
+      <br><code>&nbsp;BCH&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/bnb.png"
+        alt="BNB donation QR code" width="85">
+      <br><code>BEP&#8209;20</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/doge.png"
+        alt="DOGE donation QR code" width="85">
+      <br><code>&nbsp;DOGE&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/kava.png"
+        alt="KAVA donation QR code" width="85">
+      <br><code>&nbsp;KAVA&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/ltc.png"
+        alt="LTC donation QR code" width="85">
+      <br><code>&nbsp;LTC&nbsp;&nbsp;</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/trx.png"
+        alt="TRX donation QR code" width="85">
+      <br><code>TRC&#8209;20</code>
+    </td>
+    <td align="center">
+      <img
+src="https://raw.githubusercontent.com/ivan-pinatti-labs/.github/main/docs/crypto/qr-codes/zec.png"
+        alt="ZEC donation QR code" width="85">
+      <br><code>&nbsp;ZEC&nbsp;&nbsp;</code>
+    </td>
+  </tr>
+</table>
+
+_\* ERC-20 accepts ETH, USDT, and USDC · BEP-20 accepts BNB, USDT, and USDC ·
+TRC-20 accepts TRX, USDT, and USDC. See the
+[full list](https://github.com/ivan-pinatti-labs/.github/blob/main/docs/crypto/addresses.md)_
+
+<!-- markdownlint-enable MD013 -->
+
+### Contributing
+
+1. [Open an issue](https://github.com/ivan-pinatti-labs/rsync-crypt/issues/new) to report a bug or
+   suggest a feature
+2. Fork the repository
+3. Install the hooks: `pre-commit install`. This wires up both the `pre-commit`
+   and `commit-msg` stages; without it the commit message check never runs
+   locally and fails in CI instead
+4. Create a feature branch (`git checkout -b fix/my-thing`). Branch names must
+   be lowercase slugs, optionally prefixed (`fix/`, `docs/`, `chore/`); commits
+   straight to `main` are blocked
+5. Commit your changes using
+   [Conventional Commits](https://www.conventionalcommits.org/): `feat: add x`,
+   `fix(scope): correct y`. Valid types are `feat`, `fix`, `docs`, `style`,
+   `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. **A message
+   that is not in this form is rejected at commit time**
+6. Open a pull request as a **draft** first, let the checks run, fix anything
+   they report, then mark it ready for review
+7. Address the review comments, and merge once everything is green
+
+### What the hooks need installed
+
+Linting comes from
+[ivan-pinatti-labs/pre-commit-checklists](https://github.com/ivan-pinatti-labs/pre-commit-checklists),
+pinned in `.pre-commit-config.yaml`. Running `pre-commit run --all-files`
+locally needs more than the tool itself does:
+
+| Needed for | Why |
+| ---------- | --- |
+| Docker or Podman | `hadolint`, `actionlint` and `dotenv-linter` run in containers |
+| Node | Prettier, markdownlint, cspell and the link checker |
+| Python 3.10+ | `zizmor`, installed into its own hook environment |
+
+Everything else is fetched and cached by `pre-commit` on first run.
+
+[devcontainer-airlock](.devcontainer/README.md) carries all of it, plus the
+test suite's own dependencies, in containers, so the host needs only
+rootless Podman and the one time setup its documentation describes.
+
+CI never rewrites your branch. A hook that can fix something will fix it on
+your machine, but in CI the same finding fails the job and waits for you to
+push the fix.
