@@ -390,7 +390,9 @@ v0.33.0.** That is why the Go-stdlib entries this list used to carry cleared by
 themselves while these did not: 3.24's `2.6.1-r6` is compiled with go1.26.8,
 new enough to shed the stdlib findings, and still vendors `x/crypto` v0.33.0.
 gocryptfs `master` already carries v0.52.0; until a release is cut off it,
-there is nothing for Alpine to package.
+there is nothing for Alpine to package. That covers eleven of the twelve
+entries: CVE-2026-56854 is fixed only in `x/crypto` v0.55.0, which `master`
+did not carry as of 2026-10-06, so it needs a further upstream bump as well.
 
 **A newer Alpine is not the answer either, and is currently worse.** Measured
 2026-09-08 against the extracted binary:
@@ -408,10 +410,10 @@ image; it is never a remediation for these entries, and moving to edge chasing
 one would regress the count.
 
 The remaining option, building gocryptfs from source off `master`, would clear
-them today and is deliberately rejected: see "Why not build gocryptfs from
-source" below. Which leaves the honest position, and it is a comfortable one
-rather than a resignation: nothing needs fixing, because the vulnerable
-packages are not linked into the binary at all.
+all but CVE-2026-56854 today (see above) and is deliberately rejected: see
+"Why not build gocryptfs from source" below. Which leaves the honest position,
+and it is a comfortable one rather than a resignation: nothing needs fixing,
+because the vulnerable packages are not linked into the binary at all.
 
 ### What the current entries are really about
 
@@ -471,9 +473,10 @@ see "CI never autofixes" in `AGENTS.md`.
 
 The Dockerfile installs gocryptfs from Alpine's own package repository
 (`apk add gocryptfs~=${GOCRYPTFS_VERSION}`), not by compiling gocryptfs's
-`master` branch. `master` already carries the fix for every CVE in
+`master` branch. `master` already carries the fix for all but one CVE in
 `.trivyignore.yaml`: it has moved past the vendored `golang.org/x/crypto`
-version the Alpine package still ships. Building from source would clear
+version the Alpine package still ships, though not yet (as of 2026-10-06)
+to the v0.55.0 that CVE-2026-56854 needs. Building from source would clear
 most of the accepted-risk list immediately.
 
 That trade is deliberate, not an oversight. The Alpine package is built,

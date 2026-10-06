@@ -157,6 +157,8 @@
     "glusterfs",
     "gocrypt",
     "goofys",
+    "GOTOOLCHAIN",
+    "GOVULNDB",
     "gvfs",
     "gvfsd",
     "HKDF",

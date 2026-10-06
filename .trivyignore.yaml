@@ -47,7 +47,8 @@
 # already bumped to x/crypto v0.52.0 and Go 1.25.0, but no release has
 # shipped with that bump yet. All CVE IDs below are upstream, in gocryptfs's
 # own vendored dependencies, with no fix available on our side until
-# gocryptfs cuts a release off that branch. docs/SECURITY.md's "Why not build
+# gocryptfs cuts a release off that branch (and, for CVE-2026-56854, bumps
+# x/crypto again first; see below). docs/SECURITY.md's "Why not build
 # gocryptfs from source" spells out the trade-off that makes that the
 # accepted position rather than something to route around.
 #
@@ -151,12 +152,23 @@
 # risk-acceptance practice of keeping the window inside 90 days for a HIGH and
 # tightening it for a CRITICAL:
 #
-#   2026-10-08 (30 days) - CVE-2026-56854, the one CRITICAL.
+#   2026-11-05 (30 days) - CVE-2026-56854, the one CRITICAL.
 #   2026-11-07 (60 days) - the eleven HIGH entries.
 #
 # Both windows are shorter than they would need to be if these were reachable
 # risks being tolerated, which they are not. They are re-verification
 # deadlines.
+#
+# Renewal log. 2026-10-06, CVE-2026-56854 (GO-2026-6303), first window
+# 2026-10-08: re-verified at the v2.6.1 tag, `go list -deps ./...` lists the
+# same seven x/crypto packages and no ssh, zero non-vendored source files
+# import x/crypto/ssh, and `govulncheck ./...` built with go1.26.8 (the
+# toolchain 3.24's package uses) reports "0 vulnerabilities ... 0 in packages
+# you import and 22 in modules you require", the same result as 2026-09-08.
+# Still reproducing per the 2026-10-05 security-ignore-audit run. Run
+# govulncheck with the toolchain Alpine built with: the default one in an
+# older Go image adds stdlib findings that are the scanner's, not the
+# binary's (go1.26.0 reported 2 called and 4 imported, all stdlib).
 #
 # On what would actually resolve them, keep two classes of CVE apart, because
 # conflating them sends people looking in the wrong place. A Go *stdlib* CVE
@@ -168,7 +180,9 @@
 # versions, so no Alpine rebuild will ever move x/crypto off v0.33.0. Only a
 # gocryptfs release bumping its go.mod can, and master already carries
 # v0.52.0 with nothing cut off it since v2.6.1 (2025-08-10, thirteen months,
-# with historical gaps of one to nineteen).
+# with historical gaps of one to nineteen). That clears eleven of the twelve.
+# CVE-2026-56854 needs v0.55.0, which master did not carry as of 2026-10-06,
+# so it needs a further bump upstream before a release can clear it.
 #
 # Measured 2026-09-08: 3.24's 2.6.1-r6 is go1.26.8 with x/crypto v0.33.0, and
 # edge's 2.6.1-r7 is go1.26.5 with x/crypto v0.33.0. Do not reach for a newer
@@ -188,9 +202,12 @@ vulnerabilities:
       vendored by gocryptfs v2.6.1. Not reachable: govulncheck source mode
       at that tag reports it uncalled, and x/crypto/ssh is not in the
       build graph at all. Flagged only because Trivy resolves a Go binary's
-      vulnerabilities per module, not per linked package. Re-verify it is
-      still uncalled, then renew or drop.
-    expired_at: 2026-10-08
+      vulnerabilities per module, not per linked package. Fixed upstream in
+      x/crypto v0.55.0, past the v0.52.0 gocryptfs master carried on
+      2026-10-06, so a release cut from that master would not clear it.
+      Re-verified 2026-10-06 and renewed. Re-verify it is still uncalled,
+      then renew or drop.
+    expired_at: 2026-11-05
   # HIGH, 60-day re-verification window.
   - id: CVE-2025-22869
     statement: >-
