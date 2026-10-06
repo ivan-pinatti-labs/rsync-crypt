@@ -37,9 +37,134 @@ reviews:
     # on it, and a default that quietly changed would change the order too.
     drafts: false
 
+  # How hard to look. assertive raises more than chill does; this
+  # repository encrypts and ships people's backups, so a missed edge case
+  # costs more than an extra comment.
+  profile: assertive
+
+  # Review guidance. The first two entries are the organization's
+  # public-repository rules, kept the same in every ivan-pinatti-labs
+  # repository; the rest are specific to rsync-crypt and come from the
+  # gotchas in AGENTS.md. Pre-commit already runs the linters, so these ask
+  # for judgment the hooks cannot make.
   path_instructions:
+    - path: "**"
+      instructions: |
+        This repository is public. Flag, as a blocking issue, anything in the
+        diff that should not be published:
+        - secrets, tokens, keys, passwords, session cookies, connection
+          strings, or anything that looks like one, even in tests or docs;
+        - personal data: names other than the maintainer's public handle,
+          email addresses other than a users.noreply.github.com one, phone
+          numbers, physical addresses;
+        - machine specific details: absolute home paths (/home/<user>,
+          /Users/<user>), host names, LAN or private IP addresses, internal
+          domains, cloud account IDs, ARNs, AWS profile names, cluster
+          contexts, and details of anyone's own deployment;
+        - AI attribution in any file, commit message or the pull request
+          text: a Co-Authored-By trailer naming an AI agent, a "Generated
+          with" line, an agent session link, or any other line that names
+          or links the agent that wrote the change.
+        Also check that every behavior change comes with tests that would
+        fail without it, and that the docs describe the new behavior. The
+        organization's rule is 100% test coverage of the code it ships:
+        flag, as a blocking issue, any new or changed line or branch of code
+        (not docs or configuration) that no test exercises, and name the
+        test that would cover it. Do not comment on formatting the
+        pre-commit hooks already enforce.
+    - path: "**/*.md"
+      instructions: |
+        Prose does not use a hyphen, em dash or en dash as punctuation; use
+        commas, parentheses or separate sentences (hyphens inside compound
+        words, code, paths and flags are fine). Point out claims the code in
+        this pull request does not back up.
     - path: "Makefile"
       instructions: >
         Keep help and target discovery independent of ENV_FILE. Targets that
         perform backup, restore, view, build, or cleanup work must still load
-        and validate ENV_FILE before using its values.
+        and validate ENV_FILE before using its values. A value that reaches a
+        positional argument stays wrapped in double quotes around the subst
+        call that strips double quotes from the variable: flag a change that
+        reverts it to a quoted or unquoted plain expansion of the variable,
+        since a blank value then shifts every later argument one slot
+        (AGENTS.md, "Makefile expansions are wrapped"). Relative config paths
+        resolve against the env file through env_rel, not the working
+        directory.
+    - path: "scripts/**/*.sh"
+      instructions: |
+        These scripts decide what leaves the machine and whether it is
+        encrypted. Flag any path that carries on silently where it must fail
+        closed: an unparseable mount table, an unknown GOCRYPTFS_CIPHER (or
+        xchacha) falling back to a default, or anything that could turn on
+        GOCRYPTFS_ENCRYPT_NAMES and so defeat the filter rules. rsync exit
+        codes 23 and 24 are success with a warning, never a retry. Network
+        mounts are excluded through gocryptfs -exclude, not rsync filters or
+        --one-file-system; see the gotchas in AGENTS.md.
+    - path: "Dockerfile"
+      instructions: |
+        Every apk package is pinned with an ARG `~=` constraint. Each of the
+        seven re-resolved pins needs its `# apk-pin: resolved-from=ALPINE_VERSION`
+        marker directly above it; a newly added apk package needs its ARG,
+        that marker, and an entry in scripts/resolve-apk-pins.py's
+        PACKAGE_TO_VAR. `USER 1000` stays even though the Makefile runs as
+        root (rootless Podman makes that the unprivileged choice), and the
+        gocryptfs `-bs` flag must not come back.
+    - path: "{.github/workflows/**,.trivyignore.yaml}"
+      instructions: |
+        CI never autofixes: flag any workflow step that commits or pushes to
+        a branch, a checkout without persist-credentials: false, or a job
+        granted more than contents: read, except resolve-apk-pins.yml's
+        documented push. In .trivyignore.yaml every entry needs an
+        expired_at within its severity window (30 days CRITICAL, 60 HIGH,
+        never past 90) and a statement saying what resolves it; a base layer
+        CVE fixed by an Alpine rebuild does not belong there (AGENTS.md and
+        docs/SECURITY.md).
+
+  # Pull request checks shown in the walkthrough. Warnings, not errors: the
+  # merge pipeline already gates on CodeRabbit's review through Review
+  # Verified (docs/MERGE_PIPELINE.md).
+  pre_merge_checks:
+    title:
+      mode: warning
+      requirements: >-
+        Conventional Commits: type(optional scope): imperative subject,
+        lowercase, no trailing period, at most 72 characters.
+    description:
+      mode: warning
+    custom_checks:
+      - name: Public repository hygiene
+        mode: warning
+        instructions: >-
+          Fail if the diff, commit messages or pull request text add a
+          secret or something that looks like one, an email address other
+          than a users.noreply.github.com one, an absolute home path, a
+          private or machine specific host name, a private IP address, a
+          cloud account ID or ARN, or details of a personal deployment. Pass
+          otherwise.
+      - name: No AI attribution
+        mode: warning
+        instructions: >-
+          Fail if any commit message, the pull request title or description,
+          or any file in the diff contains a Co-Authored-By trailer naming an
+          AI agent, a "Generated with" line, an agent session link, or any
+          other line that names or links the AI agent that made the change.
+          Pass otherwise.
+
+# Tone of review comments and chat.
+tone_instructions: >-
+  Direct and specific: lead with the defect and a concrete fix, in plain
+  words. No praise, no emoji, no hype. Skip style points a linter already
+  reports.
+
+# The repository's own rules, read as coding guidelines for every review.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - CLAUDE.md
+      # Guidelines outside the root apply only to their own folder unless
+      # applyTo widens them, and these govern the whole repository.
+      - files: "docs/USAGE.md,docs/SECURITY.md,docs/PODMAN.md,\
+          docs/MERGE_PIPELINE.md,docs/SONARQUBE.md"
+        applyTo: "**/*"
