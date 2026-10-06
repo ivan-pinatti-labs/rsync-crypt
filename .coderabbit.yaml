@@ -82,12 +82,14 @@ reviews:
       instructions: >
         Keep help and target discovery independent of ENV_FILE. Targets that
         perform backup, restore, view, build, or cleanup work must still load
-        and validate ENV_FILE before using its values. Values that reach a
-        positional argument stay wrapped as "$(subst ",,${VAR})": flag a
-        change back to "${VAR}" or to an unquoted expansion, since a blank
-        value then shifts every later argument one slot (AGENTS.md, "Makefile
-        expansions are wrapped"). Relative config paths resolve against the
-        env file through env_rel, not the working directory.
+        and validate ENV_FILE before using its values. A value that reaches a
+        positional argument stays wrapped in double quotes around the subst
+        call that strips double quotes from the variable: flag a change that
+        reverts it to a quoted or unquoted plain expansion of the variable,
+        since a blank value then shifts every later argument one slot
+        (AGENTS.md, "Makefile expansions are wrapped"). Relative config paths
+        resolve against the env file through env_rel, not the working
+        directory.
     - path: "scripts/**/*.sh"
       instructions: |
         These scripts decide what leaves the machine and whether it is
@@ -135,9 +137,10 @@ reviews:
         instructions: >-
           Fail if the diff, commit messages or pull request text add a
           secret or something that looks like one, an email address other
-          than a users.noreply.github.com one, an absolute home path, a host
-          name, a private IP address, a cloud account ID or ARN, or details
-          of a personal deployment. Pass otherwise.
+          than a users.noreply.github.com one, an absolute home path, a
+          private or machine specific host name, a private IP address, a
+          cloud account ID or ARN, or details of a personal deployment. Pass
+          otherwise.
       - name: No AI attribution
         mode: warning
         instructions: >-
@@ -160,8 +163,8 @@ knowledge_base:
     filePatterns:
       - AGENTS.md
       - CLAUDE.md
-      - docs/USAGE.md
-      - docs/SECURITY.md
-      - docs/PODMAN.md
-      - docs/MERGE_PIPELINE.md
-      - docs/SONARQUBE.md
+      # Guidelines outside the root apply only to their own folder unless
+      # applyTo widens them, and these govern the whole repository.
+      - files: "docs/USAGE.md,docs/SECURITY.md,docs/PODMAN.md,\
+          docs/MERGE_PIPELINE.md,docs/SONARQUBE.md"
+        applyTo: "**/*"
