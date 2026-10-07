@@ -1,3 +1,4 @@
+---
 name: Nightly Build
 
 # Rebuilds the image from the same Dockerfile ARG defaults publish-image.yml

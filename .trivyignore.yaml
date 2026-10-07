@@ -1,3 +1,4 @@
+---
 # Accepted-risk CVEs for this image's Trivy scans (local pre-push hook and
 # CI, both --severity CRITICAL,HIGH). See docs/SECURITY.md's "Accepted-risk
 # CVEs" section for the full reasoning; the short version is below.
