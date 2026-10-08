@@ -462,7 +462,7 @@ jobs:
         # registries share the same digest either way, and that digest is
         # the same one that gets promoted to the public tags below,
         # regardless of which tag currently names it.
-        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864 # v1.26.0
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
@@ -485,7 +485,7 @@ jobs:
       - name: Scan the staging image for known vulnerabilities (Docker Scout, arm64)
         # Same as the amd64 step above, targeting the other platform in the
         # manifest list.
-        uses: docker/scout-action@7c6b6c3f7844478ace1ffd4e7aef649053d1f87d # v1.24.0
+        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864 # v1.26.0
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
