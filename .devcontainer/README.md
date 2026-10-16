@@ -38,7 +38,7 @@ engine behind `docker`. The hooks that build images run there too
 | File | What |
 | --- | --- |
 | `l2/Dockerfile` | This repository's L2 image, on the shared one pinned by digest, plus pytest and the ssh client the test suite uses. `l2` builds it in the L2 engine the first time and whenever it changes; Renovate keeps the digest current. |
-| `egress-sets` | The network services the egress proxy allows for this repository: the Alpine packages and the Docker Hub images the product image builds from, and trivy's database for the pre-push scan. |
+| `egress-sets` | The network services the egress proxy allows for this repository: the Alpine packages and the Docker Hub images the product image builds from, trivy's database for the pre-push scan, and the Go module proxy for the govulncheck run that re-verifies each `.trivyignore.yaml` renewal. |
 | `workbench-profile` | `nested-network`, so the test suite's containers get a bridge network of their own and the sshd container an address to rsync to, and `hooks-engine`, for the hooks that build images. |
 
 ## The round trip tests

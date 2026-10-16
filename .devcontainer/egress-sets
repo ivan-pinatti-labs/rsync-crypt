@@ -5,3 +5,6 @@ docker-hub
 alpine
 trivy
 sonarqube-cloud
+# golang: the Go module proxy, for re-verifying .trivyignore.yaml entries with
+# govulncheck at the gocryptfs tag before each renewal (AGENTS.md).
+golang
