@@ -120,7 +120,7 @@ jobs:
     # rather than a line one, so it gets the pair below.
     # editorconfig-checker-disable
     # yamllint disable-line rule:line-length
-    uses: ivan-pinatti-labs/gh-actions/.github/workflows/reusable-coderabbit-gate.yml@4b00caae4c5d3d7c7e03cfbc153717d5be22888e # v0.7.2
+    uses: ivan-pinatti-labs/gh-actions/.github/workflows/reusable-coderabbit-gate.yml@4720af02650955e6c7cb6d492ffc6891b210d69c # v0.7.6
     # editorconfig-checker-enable
     permissions:
       contents: read
