@@ -60,7 +60,8 @@ name: Bot Auto Merge
 # job checks out the pull request, and the author condition each is gated on
 # comes from the immutable copy.
 on:
-  # zizmor: ignore[dangerous-triggers]
+  # dangerous-triggers is ignored on each trigger line below, which is where
+  # zizmor reports it from 1.31 on; an ignore up here no longer reaches it.
   #
   # Flagged by default, and the reasoning above is why it stays. The checkout
   # below is pinned to the base branch, and the only thing read from the pull
@@ -73,7 +74,7 @@ on:
   # is docker-torrent-box-with-vpn's #55, ported here as a fix rather than
   # something this repository has hit itself. The label arriving is now its
   # own trigger.
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, synchronize, reopened, labeled]
     branches:
       - main
@@ -108,7 +109,7 @@ on:
   # restriction because it reacts to the run itself finishing, not to an
   # API call a token made during it, which is why it exists as the
   # sanctioned way to chain workflows without a personal access token.
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: ["CodeRabbit Gate", "PR Validation", "SonarQube"]
     types: [completed]
 

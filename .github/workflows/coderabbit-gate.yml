@@ -67,13 +67,14 @@ name: CodeRabbit Gate
 #                         both statuses have to be republished there too or the
 #                         queue can never see them.
 on:
-  # zizmor: ignore[dangerous-triggers]
+  # dangerous-triggers is ignored on each trigger line below, which is where
+  # zizmor reports it from 1.31 on; an ignore up here no longer reaches it.
   #
   # Flagged by default, and the reasoning is the same as bot-auto-merge.yml's:
   # this never checks out the pull request. The shared workflow pins its
   # checkout to the default branch and reads the pull request only as API
   # data: its number, its metadata and its diff.
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # `status` fires on every commit status this repository receives, including
   # a plain push to `main`, which carries no open pull request at all. The
