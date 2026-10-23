@@ -103,7 +103,8 @@ name: Resolve apk Pins
 # (`pull-request-validation.yml` and `coderabbit-gate.yml`), not a broad
 # synchronize this workflow itself would otherwise also react to.
 on:
-  # zizmor: ignore[dangerous-triggers]
+  # dangerous-triggers is ignored on each trigger line below, which is where
+  # zizmor reports it from 1.31 on; an ignore up here no longer reaches it.
   #
   # Flagged by default, and the reasoning is bot-auto-merge.yml's: the branch
   # this reacts to is never a fork's (guarded below), so nothing here is
@@ -117,7 +118,7 @@ on:
   # a separate step, never from the pull request's own copy of them. See "Fetch
   # the pull request's branch into its own worktree" and "Resolve apk pins"
   # for exactly what is and is not read from where.
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, synchronize, reopened]
     branches:
       - main
