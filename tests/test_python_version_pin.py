@@ -40,12 +40,16 @@ RUFF_TARGET = re.compile(
 )
 
 
-def test_workflow_declares_exactly_one_python_version():
-    """More than one would make "the interpreter CI uses" ambiguous."""
+def test_workflow_declares_one_python_version():
+    """Two different values would make "the interpreter CI uses" ambiguous.
+
+    The `Pre-commit` and `Tests` jobs each set Python up, so the value appears
+    more than once; it has to be the same value every time.
+    """
     matches = WORKFLOW_PYTHON.findall(WORKFLOW.read_text())
-    assert len(matches) == 1, (
-        f"expected exactly one quoted python-version in {WORKFLOW.name}, "
-        f"found {len(matches)}: {matches}"
+    assert len(set(matches)) == 1, (
+        f"expected one quoted python-version in {WORKFLOW.name}, "
+        f"found {len(matches)} with {len(set(matches))} values: {matches}"
     )
 
 
