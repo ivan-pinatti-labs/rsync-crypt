@@ -80,6 +80,14 @@ env:
   # pull-request-validation.yml already exercises every pull request; see
   # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN below for the push side of that.
   IMAGE_DOCKERHUB: docker.io/ivanpinatti/rsync-crypt
+  # Trivy's official image, pinned by tag and digest. Every copy in this
+  # repository (each workflow's TRIVY_IMAGE and the two pre-push hooks)
+  # moves in one Renovate pull request, and tests/test_trivy_version_pin.py
+  # fails if any of them differs.
+  # editorconfig-checker-disable
+  # yamllint disable-line rule:line-length
+  TRIVY_IMAGE: docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  # editorconfig-checker-enable
 
 jobs:
   resolve-version:
@@ -442,12 +450,9 @@ jobs:
       # pointed at a multi-platform ref with no platform selected, which
       # would let a CRITICAL/HIGH finding that exists only in the arm64
       # build bypass every gate below silently. 'docker/scout-action' has a
-      # 'platform:' input for this; 'aquasecurity/trivy-action' has none,
-      # so its steps set 'TRIVY_PLATFORM' instead, which Trivy's own CLI
-      # reads directly (confirmed against this exact pinned action commit:
-      # the same digest resolves a different image ID per platform with
-      # that variable set, so it is genuinely selecting the manifest, not a
-      # no-op).
+      # 'platform:' input for this; the Trivy steps pass Trivy's own
+      # '--platform' flag, which selects the manifest from the list the
+      # same way the TRIVY_PLATFORM variable did under trivy-action.
       - name: Scan the staging image for known vulnerabilities (Docker Scout, amd64)
         # Report-only: no 'exit-code' input is set, so a finding here never
         # fails this job; this is visibility (the SARIF upload below,
@@ -511,56 +516,66 @@ jobs:
         # it), which is exactly why both platforms need their own check
         # here rather than assuming local coverage extends to arm64.
         #
-        # This step is report-only on purpose (no 'exit-code'), and runs
+        # This step is report-only on purpose (no '--exit-code'), and runs
         # before the blocking step below: SARIF upload happens either way,
         # so a genuine finding still reaches the Security tab even if the
-        # blocking step below then fails the job on it. A single
-        # 'aquasecurity/trivy-action' invocation cannot both emit SARIF and
-        # fail the job on a different format's output, so this is split into
-        # two runs the same way Docker Scout above is split from the
-        # 'exit-code' gate a plain CVE scan would otherwise need elsewhere.
+        # blocking step below then fails the job on it. One Trivy run cannot
+        # both emit SARIF and fail the job on a different format's output,
+        # so this is split into two runs the same way Docker Scout above is
+        # split from the gate. No '--severity': SARIF carries every severity,
+        # as it did under trivy-action, which dropped the filter for that
+        # format.
         #
-        # 'version:' is pinned explicitly rather than left to the action's
-        # own default: the exact commit this action is pinned to below
-        # defaults to an older Trivy release than the local pre-push hook
-        # uses ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml),
-        # and relying on two different Trivy versions to agree on findings
-        # against the same '.trivyignore.yaml' is exactly the kind of drift this
-        # explicit pin avoids.
+        # Trivy runs from its official image (TRIVY_IMAGE above), in a
+        # container that sees the ignore file read only, an output folder
+        # and its database cache, and nothing else: not this job's registry
+        # logins, not its environment. It pulls the image it scans
+        # anonymously, so it reads the staging image from GHCR (the digest
+        # the build pushed to both registries), where anonymous pulls are not
+        # rate limited the way Docker Hub's are on shared runner addresses.
+        # '--platform' picks the manifest, as TRIVY_PLATFORM did before. The
+        # vulnerability database is downloaded fresh once per run into
+        # RUNNER_TEMP and shared by every Trivy step in this job, and never
+        # restored from the Actions cache: on the release gate, a cache entry
+        # another workflow can write is a way to pass a database with entries
+        # missing.
         env:
-          TRIVY_PLATFORM: linux/amd64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: sarif
-          output: trivy-results-amd64.sarif
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/trivy-cache" "${RUNNER_TEMP}/trivy-out"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/amd64 \
+            --format sarif --output /out/trivy-results-amd64.sarif \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          sarif_file: trivy-results-amd64.sarif
+          sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-amd64.sarif
           category: trivy-amd64
 
       - name: Scan the staging image with Trivy (report, arm64)
         # Same as the amd64 report step above, targeting the other platform.
         env:
-          TRIVY_PLATFORM: linux/arm64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: sarif
-          output: trivy-results-arm64.sarif
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/arm64 \
+            --format sarif --output /out/trivy-results-arm64.sarif \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (arm64) scan to code scanning
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
-          sarif_file: trivy-results-arm64.sarif
+          sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-arm64.sarif
           category: trivy-arm64
 
       - name: Scan the staging image with Trivy (gate, amd64)
@@ -576,31 +591,30 @@ jobs:
         # Hub description sync) only runs if both pass: a finding in either
         # platform stops the image from ever reaching 'latest' or its
         # version tag, rather than merely failing the job after the fact.
-        # Same explicit 'version:' pin as the report steps above, for the
-        # same reason.
+        # Same container, image and GHCR reference as the report steps above.
         env:
-          TRIVY_PLATFORM: linux/amd64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/amd64 \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Scan the staging image with Trivy (gate, arm64)
         # Same as the amd64 gate step above, targeting the other platform.
         env:
-          TRIVY_PLATFORM: linux/arm64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/arm64 \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       # The two gate steps above scan the image; neither one can see the CVEs
       # '.trivyignore.yaml' actually lists. Trivy tracks gocryptfs purely as
@@ -638,17 +652,16 @@ jobs:
         # in the binary's vendored dependencies stops the promotion below.
         # 'scanners: vuln' keeps this to vulnerabilities; the secret and
         # misconfiguration scanners have nothing to say about a stripped Go
-        # binary and would only add runtime.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: rootfs
-          scan-ref: gobinary-amd64
-          version: v0.74.0
-          scanners: vuln
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          trivyignores: .trivyignore.yaml
+        # binary and would only add runtime. The binary is mounted read only.
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${PWD}/gobinary-amd64:/scan:ro" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" rootfs --cache-dir /cache --scanners vuln \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            --ignorefile /work/.trivyignore.yaml /scan
 
       - name: Extract the gocryptfs binary from the staging image (arm64)
         # 'docker create' plus 'docker cp' only reads bytes out of the image;
@@ -666,16 +679,15 @@ jobs:
 
       - name: Scan the gocryptfs binary with Trivy (gate, arm64)
         # Same as the amd64 gobinary gate above, targeting the other platform.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: rootfs
-          scan-ref: gobinary-arm64
-          version: v0.74.0
-          scanners: vuln
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          trivyignores: .trivyignore.yaml
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${PWD}/gobinary-arm64:/scan:ro" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" rootfs --cache-dir /cache --scanners vuln \
+            --severity CRITICAL,HIGH --exit-code 1 \
+            --ignorefile /work/.trivyignore.yaml /scan
 
       - name: Promote the scanned image to its public tags
         # Reached only if the blocking Trivy scan above passed. Aliases the
