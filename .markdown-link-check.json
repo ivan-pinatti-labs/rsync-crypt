@@ -9,29 +9,28 @@
     "This file is for links no CI can resolve, not for links that are merely",
     "broken."
   ],
-  "comment_aliveStatusCodes": [
-    "418 is here for THIRD_PARTY_LICENSES.md's generated inventory, which",
-    "carries one gitlab.alpinelinux.org/alpine/aports source-tree link per",
-    "bundled package. Every one of them resolves with a plain `curl` (200, or",
-    "307 to the same page) when checked slowly, one at a time.",
-    "markdown-link-check",
-    "fires all of them in quick succession and gitlab.alpinelinux.org answers a",
-    "chunk of that burst with 418 (a rate-limit / anti-bot response, not a real",
-    "dead link), and which links get hit depends on request timing, so the",
-    "failing set is not even stable between runs.",
-    "",
-    "Accepting 418 here rather than ignorePatterns-ing the whole host: every",
-    "link is still actually requested and would still fail on a real 404, a",
-    "typo'd path, or a renamed aports directory. Only the rate-limit response",
-    "itself is treated as passing, so a genuinely broken link keeps getting",
-    "caught."
+  "comment_gitlab": [
+    "gitlab.alpinelinux.org is ignored for THIRD_PARTY_LICENSES.md's generated",
+    "inventory: one aports source-tree link per bundled package, pinned to the",
+    "aports commit apk's own database records for it. A link checker adds",
+    "nothing to those: scripts/generate-third-party-licenses.py writes them",
+    "from that database, so a typo is impossible, and a path at a pinned commit",
+    "cannot be renamed under them; --check against a fresh build is what",
+    "catches a stale inventory. What the checker did catch was the host:",
+    "it answered bursts with 418, and from 2026-10-28 it stopped answering at",
+    "all for more than a day (connections to both its old and new address",
+    "timed out), which failed every pull request in this repository while",
+    "every link was correct."
   ],
   "retryOn429": true,
   "retryCount": 3,
-  "aliveStatusCodes": [200, 206, 307, 418],
+  "aliveStatusCodes": [200, 206, 307],
   "ignorePatterns": [
     {
       "pattern": "^https://www\\.buymeacoffee\\.com/"
+    },
+    {
+      "pattern": "^https://gitlab\\.alpinelinux\\.org/alpine/aports/"
     }
   ]
 }
