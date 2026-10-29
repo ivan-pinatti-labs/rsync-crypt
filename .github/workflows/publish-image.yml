@@ -462,7 +462,7 @@ jobs:
         # registries share the same digest either way, and that digest is
         # the same one that gets promoted to the public tags below,
         # regardless of which tag currently names it.
-        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864 # v1.26.0
+        uses: docker/scout-action@a4119c5a8c5076236a54e4ce99531f7e4dd2ef84 # v1.27.0
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
@@ -477,7 +477,7 @@ jobs:
         # without a distinct category per platform (and per scanner) each
         # later upload would silently replace an earlier one on the same
         # commit instead of appearing alongside it.
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: scout-results-amd64.sarif
           category: scout-amd64
@@ -485,7 +485,7 @@ jobs:
       - name: Scan the staging image for known vulnerabilities (Docker Scout, arm64)
         # Same as the amd64 step above, targeting the other platform in the
         # manifest list.
-        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864 # v1.26.0
+        uses: docker/scout-action@a4119c5a8c5076236a54e4ce99531f7e4dd2ef84 # v1.27.0
         with:
           command: cves
           image: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
@@ -495,7 +495,7 @@ jobs:
           sarif-file: scout-results-arm64.sarif
 
       - name: Upload the Docker Scout (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: scout-results-arm64.sarif
           category: scout-arm64
@@ -539,7 +539,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (amd64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-results-amd64.sarif
           category: trivy-amd64
@@ -558,7 +558,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Upload the Trivy (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-results-arm64.sarif
           category: trivy-arm64
