@@ -51,6 +51,16 @@ on:
 
 permissions: {}
 
+env:
+  # Trivy's official image, pinned by tag and digest. Every copy in this
+  # repository (each workflow's TRIVY_IMAGE and the two pre-push hooks)
+  # moves in one Renovate pull request, and tests/test_trivy_version_pin.py
+  # fails if any of them differs.
+  # editorconfig-checker-disable
+  # yamllint disable-line rule:line-length
+  TRIVY_IMAGE: docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  # editorconfig-checker-enable
+
 jobs:
   audit:
     name: Audit ignore-list entries and dismissed alerts
@@ -163,15 +173,23 @@ jobs:
         # exists to report what is still there, ignore list included, and must
         # never fail the audit on a finding the audit's whole job is to
         # describe.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: rootfs
-          scan-ref: gobinary
-          version: v0.74.0
-          scanners: vuln
-          format: json
-          output: unfiltered-findings.json
-          severity: CRITICAL,HIGH
+        #
+        # Trivy runs from its official image (TRIVY_IMAGE above), in a
+        # container that sees the extracted binaries read only and an output
+        # folder, and nothing else: not the GHCR login above, not this job's
+        # environment. Its database is downloaded fresh, never restored from
+        # the Actions cache.
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/trivy-cache" "${RUNNER_TEMP}/trivy-out"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            -v "${PWD}/gobinary:/scan:ro" \
+            "${TRIVY_IMAGE}" rootfs --cache-dir /cache --scanners vuln \
+            --severity CRITICAL,HIGH --format json \
+            --output /out/unfiltered-findings.json /scan
+          cp "${RUNNER_TEMP}/trivy-out/unfiltered-findings.json" .
 
       - name: Run the audit
         id: audit

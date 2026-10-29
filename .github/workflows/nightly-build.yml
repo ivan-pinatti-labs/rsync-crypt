@@ -46,6 +46,14 @@ permissions: {}
 env:
   IMAGE_GHCR: ghcr.io/ivan-pinatti-labs/rsync-crypt
   IMAGE_DOCKERHUB: docker.io/ivanpinatti/rsync-crypt
+  # Trivy's official image, pinned by tag and digest. Every copy in this
+  # repository (each workflow's TRIVY_IMAGE and the two pre-push hooks)
+  # moves in one Renovate pull request, and tests/test_trivy_version_pin.py
+  # fails if any of them differs.
+  # editorconfig-checker-disable
+  # yamllint disable-line rule:line-length
+  TRIVY_IMAGE: docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  # editorconfig-checker-enable
 
 jobs:
   nightly-build:
@@ -204,54 +212,60 @@ jobs:
           sarif_file: scout-results-arm64.sarif
           category: scout-arm64
 
+      # Trivy runs from its official image (TRIVY_IMAGE above), in a
+      # container that sees the ignore file read only, an output folder and
+      # its database cache, and nothing else: not this job's registry
+      # logins, not its environment. It pulls the image it scans
+      # anonymously, so it reads it from GHCR (the same digest Docker Hub
+      # holds), where anonymous pulls are not rate limited the way Docker
+      # Hub's are on shared runner addresses. Its vulnerability database is
+      # downloaded fresh once per run and shared by both steps, and never
+      # restored from the Actions cache: a cache entry another workflow can
+      # write is a way to feed this scan a database with entries missing.
       - name: Scan the nightly image with Trivy (amd64)
-        # Report-only here too: no 'exit-code'. See this file's header for
+        # Report-only here too: no '--exit-code'. See this file's header for
         # why a nightly, unattended scan should surface findings rather than
         # hard-fail on one. Same '.trivyignore.yaml' as the blocking gate in
         # publish-image.yml and the local pre-push hook, so the known
         # upstream gocryptfs CVEs (docs/SECURITY.md) stay quiet here too; a
         # genuinely new finding still shows up in this run's SARIF upload.
-        #
-        # 'version:' pinned explicitly to match the local pre-push hook
-        # ('docker.io/aquasec/trivy:0.74.0' in .pre-commit-config.yaml) and
-        # publish-image.yml's own Trivy steps, rather than relying on this
-        # action's own default, which (at the commit pinned below) is an
-        # older Trivy release. 'TRIVY_PLATFORM' selects which platform of
-        # the manifest list Trivy resolves; there is no dedicated action
-        # input for it, but Trivy's own CLI reads the environment variable
-        # directly.
+        # No '--severity' either: SARIF carries every severity, as it did
+        # under trivy-action, which dropped the filter for that format.
         env:
-          TRIVY_PLATFORM: linux/amd64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: sarif
-          output: trivy-results-amd64.sarif
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/trivy-cache" "${RUNNER_TEMP}/trivy-out"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/amd64 \
+            --format sarif --output /out/trivy-results-amd64.sarif \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (amd64) scan to code scanning
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          sarif_file: trivy-results-amd64.sarif
+          sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-amd64.sarif
           category: trivy-amd64
 
       - name: Scan the nightly image with Trivy (arm64)
         # Same as the amd64 step above, targeting the other platform.
         env:
-          TRIVY_PLATFORM: linux/arm64
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_DOCKERHUB }}@${{ steps.build.outputs.digest }}
-          version: v0.74.0
-          format: sarif
-          output: trivy-results-arm64.sarif
-          severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          IMAGE_REF: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "${RUNNER_TEMP}/trivy-cache:/cache" \
+            -v "${RUNNER_TEMP}/trivy-out:/out" \
+            -v "${PWD}/.trivyignore.yaml:/work/.trivyignore.yaml:ro" \
+            "${TRIVY_IMAGE}" image --cache-dir /cache --platform linux/arm64 \
+            --format sarif --output /out/trivy-results-arm64.sarif \
+            --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (arm64) scan to code scanning
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          sarif_file: trivy-results-arm64.sarif
+          sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-arm64.sarif
           category: trivy-arm64

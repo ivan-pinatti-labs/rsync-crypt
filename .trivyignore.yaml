@@ -24,14 +24,15 @@
 # a fix. See docs/SECURITY.md's "Dismissal guidelines" for what a renewal or
 # a new entry has to satisfy before it goes back in this file.
 #
-# Verified against `docker.io/aquasec/trivy:0.74.0`, the exact version pinned
-# in .pre-commit-config.yaml, publish-image.yml and nightly-build.yml: a
-# local scan against a throwaway image confirmed `expired_at` in the future
-# suppresses a finding and `expired_at` in the past does not, and confirmed
-# `aquasecurity/trivy-action`'s `trivyignores:` input (pinned to v0.36.0,
-# well past the v0.34.2 release that added YAML detection by file extension)
-# passes a `.yaml`-suffixed path straight through to `TRIVY_IGNOREFILE`
-# rather than flattening it into the old plain-list format.
+# Verified against `docker.io/aquasec/trivy:0.74.0`: a local scan against a
+# throwaway image confirmed `expired_at` in the future suppresses a finding
+# and `expired_at` in the past does not. Every scan now passes this file to
+# Trivy's own `--ignorefile`, no longer through trivy-action. Re-measured
+# 2026-10-28 with the `0.76.1` image every workflow and hook now pins, by
+# `trivy rootfs --ignorefile` over the gocryptfs binary from the published
+# image (amd64): 5 CRITICAL/HIGH with this file, none of them listed here,
+# and 17 with every `expired_at` moved into the past, so all 12 entries come
+# back once they expire. 0.74.0 gave the same counts on the same binary.
 #
 # `.github/workflows/security-ignore-audit.yml` re-checks every entry below
 # on a schedule and opens or updates a tracking issue when one is stale (no

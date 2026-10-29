@@ -288,6 +288,11 @@ repos:
       # Blocking still exists where it belongs: publish-image.yml. That is the
       # moment this project chooses to ship, and shipping a known CRITICAL is
       # a decision someone should make on purpose.
+      # The pinned Trivy image below is longer than the line limit and sits
+      # inside a folded scalar, where no comment can go, so both checkers
+      # are paused around this one hook.
+      # editorconfig-checker-disable
+      # yamllint disable rule:line-length
       - id: trivy-image-scan
         name: trivy image scan (aquasecurity/trivy, report-only)
         language: system
@@ -321,7 +326,7 @@ repos:
           -v "${tarball}:/image.tar:ro,Z"
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
-          docker.io/aquasec/trivy:0.74.0 image
+          docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image
           --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml --input /image.tar;
           container="$("${runtime}" create "${tag}")";
@@ -331,7 +336,9 @@ repos:
           -v "${bin_dir}:/scan:ro,Z"
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
-          docker.io/aquasec/trivy:0.74.0 rootfs
+          docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c rootfs
           --scanners vuln --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml /scan
           '
+      # yamllint enable rule:line-length
+      # editorconfig-checker-enable

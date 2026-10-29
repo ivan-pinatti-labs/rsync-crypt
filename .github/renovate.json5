@@ -399,6 +399,24 @@
       versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
     },
     {
+      // Trivy's official image, pinned by tag and digest wherever it runs:
+      // TRIVY_IMAGE in each workflow that scans, and the two pre-push hook
+      // entries in .pre-commit-config.yaml. One dependency, so every copy
+      // moves in the same pull request; tests/test_trivy_version_pin.py
+      // fails if one is ever left behind. No annotation: the image name is
+      // the anchor, written out in full so nothing else can match.
+      customType: "regex",
+      managerFilePatterns: [
+        "/^\\.github/workflows/.+\\.yml$/",
+        "/^\\.pre-commit-config\\.yaml$/",
+      ],
+      matchStrings: [
+        "docker\\.io/aquasec/trivy:(?<currentValue>[0-9][\\w.-]*)@(?<currentDigest>sha256:[0-9a-f]{64})",
+      ],
+      datasourceTemplate: "docker",
+      depNameTemplate: "docker.io/aquasec/trivy",
+    },
+    {
       // The container images in the Makefile's `coverage` target, each
       // annotated the way Renovate documents for a regex manager:
       //   # renovate: datasource=docker depName=<image>

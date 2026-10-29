@@ -30,6 +30,10 @@ rules:
   # keep their tags fixed, so only the digest ever moves.
   - path: Makefile
     grammars: [digest]
+  # image_ref_pin moves the tag and digest of Trivy's image, pinned as
+  # docker.io/aquasec/trivy:<tag>@sha256:<digest> in TRIVY_IMAGE and in the
+  # pre-push hooks, and nothing else: the image name and everything else on
+  # the line are kept, and a reference without a digest does not qualify.
   - path: .github/workflows/
     grammars:
       - name: action_sha
@@ -38,5 +42,8 @@ rules:
         when: outside_block_scalar
       - name: rev_pin
         when: outside_block_scalar
+      - image_ref_pin
+  - path: .pre-commit-config.yaml
+    grammars: [action_sha, bare_action_version, rev_pin, image_ref_pin]
 
 default_grammars: [action_sha, bare_action_version, rev_pin]

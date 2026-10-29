@@ -322,9 +322,9 @@ the point.
 ### Every entry expires
 
 The file is YAML, not a plain CVE list, specifically for the `expired_at`
-field Trivy's YAML ignore format supports (confirmed against the exact
-pinned Trivy version, v0.74.0, and the exact pinned `aquasecurity/trivy-action`
-release both CI workflows and the local pre-push hook use). Every entry
+field Trivy's YAML ignore format supports (confirmed against the Trivy image
+every workflow and the local pre-push hook pin, most recently on 2026-10-28;
+`.trivyignore.yaml`'s header records the measurement). Every entry
 carries an `expired_at` date and a `statement` explaining what would resolve
 it. Once that date passes, Trivy stops honoring the entry: the CVE reappears
 in the scan, the CRITICAL/HIGH gate fails, and the next person to touch this

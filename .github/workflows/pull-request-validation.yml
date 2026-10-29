@@ -37,10 +37,35 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run pre-commit
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      # Explicit steps rather than pre-commit/action, which installs whatever
+      # pre-commit PyPI has newest, calls actions/cache by tag, and ran the
+      # hooks on the runner's default Python. The version is the one Ubuntu
+      # ships in the development container, so CI and a local run agree.
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          extra_args: --all-files
+          python-version: "3.14"
+
+      # Keyed on the exact Python patch release as well as the config: a hook
+      # virtualenv links to the interpreter it was built with, so one restored
+      # across a patch update would be rebuilt on every run until evicted.
+      - name: Cache pre-commit hook environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: >-
+            pre-commit|${{ steps.python.outputs.python-version }}|${{
+            hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit|${{ steps.python.outputs.python-version }}|
+
+      # Wheels only, so no package's build script runs at install time.
+      - name: Install pre-commit
+        run: pip install "--only-binary=:all:" "pre-commit==4.5.1"
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files --show-diff-on-failure --color always
 
   tests:
     name: Tests
