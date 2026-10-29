@@ -42,17 +42,23 @@ jobs:
       # hooks on the runner's default Python. The version is the one Ubuntu
       # ships in the development container, so CI and a local run agree.
       - name: Set up Python
+        id: python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
 
+      # Keyed on the exact Python patch release as well as the config: a hook
+      # virtualenv links to the interpreter it was built with, so one restored
+      # across a patch update would be rebuilt on every run until evicted.
       - name: Cache pre-commit hook environments
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit|${{ hashFiles('.pre-commit-config.yaml') }}
+          key: >-
+            pre-commit|${{ steps.python.outputs.python-version }}|${{
+            hashFiles('.pre-commit-config.yaml') }}
           restore-keys: |
-            pre-commit|
+            pre-commit|${{ steps.python.outputs.python-version }}|
 
       # Wheels only, so no package's build script runs at install time.
       - name: Install pre-commit
