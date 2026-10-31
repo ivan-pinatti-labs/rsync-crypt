@@ -204,7 +204,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -215,7 +215,7 @@ jobs:
         # alongside it: 'docker/metadata-action' below tags this one build
         # for both registries, so both need to be logged in before
         # 'docker/build-push-action' pushes.
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -831,7 +831,7 @@ jobs:
       # non-secret login_registry host and the registry stays the sole
       # branch key.
       - name: Log in to ${{ matrix.registry }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ matrix.login_registry }}
           username: ${{ matrix.registry == 'ghcr' && github.actor ||
