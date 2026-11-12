@@ -2,7 +2,7 @@
 # credentials (see docs/LAYERS.md in devcontainer-airlock). The suite builds
 # the product image and starts sshd and gocryptfs containers of its own, so it
 # runs with `l2 --engine`, which points `docker` at the L2 engine.
-ARG L2_IMAGE=ghcr.io/ivan-pinatti-labs/airlock-l2@sha256:2e62313dfdaae5fa37e4debaf000c3e78fdfebf17b8073e333b56329c2fc23a0
+ARG L2_IMAGE=ghcr.io/ivan-pinatti-labs/airlock-l2@sha256:1e618a30cb388898b78a1da2dd9bb7a153372183075392521dc7ed86e53381f6
 # hadolint ignore=DL3006
 FROM ${L2_IMAGE}
 USER 0:0
