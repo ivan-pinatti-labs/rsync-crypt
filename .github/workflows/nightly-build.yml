@@ -150,7 +150,7 @@ jobs:
           provenance: mode=max
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Sign the published images
         # Keyless signing, same as publish-image.yml: a short-lived Fulcio
@@ -190,7 +190,7 @@ jobs:
         # commit is how code scanning dedupes, so without distinct
         # categories each later upload would silently replace an earlier
         # one on this run's commit instead of appearing alongside it.
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: scout-results-amd64.sarif
           category: scout-amd64
@@ -207,7 +207,7 @@ jobs:
           sarif-file: scout-results-arm64.sarif
 
       - name: Upload the Docker Scout (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: scout-results-arm64.sarif
           category: scout-arm64
@@ -245,7 +245,7 @@ jobs:
             --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (amd64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-amd64.sarif
           category: trivy-amd64
@@ -265,7 +265,7 @@ jobs:
             --ignorefile /work/.trivyignore.yaml "${IMAGE_REF}"
 
       - name: Upload the Trivy (arm64) scan to code scanning
-        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: ${{ runner.temp }}/trivy-out/trivy-results-arm64.sarif
           category: trivy-arm64
