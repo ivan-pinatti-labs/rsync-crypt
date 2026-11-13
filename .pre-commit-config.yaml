@@ -326,7 +326,7 @@ repos:
           -v "${tarball}:/image.tar:ro,Z"
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
-          docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image
+          docker.io/aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb image
           --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml --input /image.tar;
           container="$("${runtime}" create "${tag}")";
@@ -336,7 +336,7 @@ repos:
           -v "${bin_dir}:/scan:ro,Z"
           -v "$(pwd)/.trivyignore.yaml:/work/.trivyignore.yaml:ro,Z"
           -w /work
-          docker.io/aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c rootfs
+          docker.io/aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb rootfs
           --scanners vuln --severity CRITICAL,HIGH --exit-code 0
           --ignorefile /work/.trivyignore.yaml /scan
           '
